@@ -23,9 +23,9 @@ Copyright 2026 Spalishe
 #include <sys/mman.h>
 #include <unordered_map>
 
-#define RVJIT_MIN_INSTRUCTIONS 1
+#define RVJIT_MIN_INSTRUCTIONS 12
 #define RVJIT_MAX_INSTRUCTIONS 48
-#define RVJIT_PC_CAP		   100
+#define RVJIT_PC_CAP		   0x300
 #define RVJIT_FUNC_SIZE		   0x1000 // DONT CHANGE IT IF YOU DONT KNOW WHAT YOU'RE DOING! If emitted function will overflow arena's buffer, it will be your fault
 #define RVJIT_ARENA_PAGES	   0x400  // Linux default page size is 4096, then 1024 * 4096 = 4194304 bytes, 4 MB
 static constexpr size_t JIT_CACHE_SIZE = 1 << 20;

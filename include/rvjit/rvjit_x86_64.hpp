@@ -260,11 +260,34 @@ inline void add_riw(JIT_Block& blk, char dest, int32_t imm32)
 	blk.bytes[blk.byte_pos++] = (imm32 >> 16) & 0xFF;
 	blk.bytes[blk.byte_pos++] = (imm32 >> 24) & 0xFF;
 }
+// NEG r64
+inline void neg(JIT_Block& blk, char dest)
+{
+	blk.bytes[blk.byte_pos++] = rex(1, 0, 0, (dest > 7));
+	blk.bytes[blk.byte_pos++] = 0xF7;
+	blk.bytes[blk.byte_pos++] = modrm(3, 3, (dest & 7));
+}
+// NEG r32
+inline void neg32(JIT_Block& blk, char dest)
+{
+	blk.bytes[blk.byte_pos++] = rex(0, 0, 0, (dest > 7));
+	blk.bytes[blk.byte_pos++] = 0xF7;
+	blk.bytes[blk.byte_pos++] = modrm(3, 3, (dest & 7));
+}
+
 // XOR r/m64, r64
 inline void xor_rr(JIT_Block& blk, char dest, char source)
 {
 	// dest is RM, source is REG
 	blk.bytes[blk.byte_pos++] = rex(1, (source > 7), 0, (dest > 7));
+	blk.bytes[blk.byte_pos++] = 0x31;
+	blk.bytes[blk.byte_pos++] = modrm(3, (source & 7), (dest & 7));
+}
+// XOR r/m32, r32
+inline void xor_rr32(JIT_Block& blk, char dest, char source)
+{
+	// dest is RM, source is REG
+	blk.bytes[blk.byte_pos++] = rex(0, (source > 7), 0, (dest > 7));
 	blk.bytes[blk.byte_pos++] = 0x31;
 	blk.bytes[blk.byte_pos++] = modrm(3, (source & 7), (dest & 7));
 }
@@ -598,6 +621,14 @@ inline void sar_r32imm8(JIT_Block& blk, char dest, uint8_t imm8)
 	blk.bytes[blk.byte_pos++] = modrm(3, 0b111, (dest & 7));
 	blk.bytes[blk.byte_pos++] = imm8 & 0xFF;
 }
+// TEST r/m64,r64
+inline void test(JIT_Block& blk, char dest, char source)
+{
+	// dest is RM, source is REG
+	blk.bytes[blk.byte_pos++] = rex(1, (source > 7), 0, dest > 7);
+	blk.bytes[blk.byte_pos++] = 0x85;
+	blk.bytes[blk.byte_pos++] = modrm(3, source & 7, dest & 7);
+}
 // CMP r/m64,r64
 inline void cmp(JIT_Block& blk, char dest, char source)
 {
@@ -722,6 +753,24 @@ inline void jmp32(JIT_Block& blk, int32_t rel32)
 inline void js8(JIT_Block& blk, int8_t rel8)
 {
 	blk.bytes[blk.byte_pos++] = 0x78;
+	blk.bytes[blk.byte_pos++] = rel8;
+}
+// JNS rel8
+inline void jns8(JIT_Block& blk, int8_t rel8)
+{
+	blk.bytes[blk.byte_pos++] = 0x79;
+	blk.bytes[blk.byte_pos++] = rel8;
+}
+// JG rel8
+inline void jg8(JIT_Block& blk, int8_t rel8)
+{
+	blk.bytes[blk.byte_pos++] = 0x7F;
+	blk.bytes[blk.byte_pos++] = rel8;
+}
+// JLE rel8
+inline void jle8(JIT_Block& blk, int8_t rel8)
+{
+	blk.bytes[blk.byte_pos++] = 0x7E;
 	blk.bytes[blk.byte_pos++] = rel8;
 }
 // MOVZX r64, r/m8
@@ -910,6 +959,34 @@ inline HReg* JIT_Emitter::spill(JIT_Block& blk, uint64_t locked)
 	vreg.dirty	   = false;
 	return victim;
 }
+inline void JIT_Emitter::flush_all(JIT_Block& blk)
+{
+	for(auto& reg : host_regs)
+	{
+		if(!reg.used)
+			continue;
+		VReg& vreg = vregs[reg.vreg];
+		if(vreg.dirty)
+			mov_mr(blk, reg.host_reg, REG_R13, NO_INDEX, 0, reg.vreg * 8);
+	}
+}
+inline void JIT_Emitter::invalidate_all()
+{
+	for(auto& reg : host_regs)
+	{
+		if(reg.used)
+		{
+			if(!reg.used)
+				continue;
+			reg.used	   = false;
+			VReg& vreg	   = vregs[reg.vreg];
+			vreg.allocated = false;
+			vreg.valid	   = false;
+			vreg.dirty	   = false;
+		}
+	}
+}
+
 inline VReg& JIT_Emitter::rvjit_alloc_reg(JIT_Block& blk, uint8_t user_reg, uint64_t locked)
 {
 	// Check if requested user_reg == x0

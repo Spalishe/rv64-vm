@@ -91,6 +91,8 @@ struct JIT_Emitter
 	VReg& rvjit_alloc_reg(JIT_Block& blk, uint8_t user_reg, uint64_t locked);
 	void ensure_loaded(JIT_Block& blk, VReg& vreg);
 	HReg* spill(JIT_Block& blk, uint64_t locked);
+	void flush_all(JIT_Block& blk);
+	void invalidate_all();
 	void realize_label(JIT_Block& blk, const std::string& label);
 
 	void inst_emit_r_type(Hart& h, InstructionData& inst, JIT_Block& blk, bool optimize_if_rsz, ROpFunction emit_op, uint64_t pc = 0, void* tmp = nullptr);
