@@ -79,7 +79,7 @@ __attribute__((noinline)) InstructionCache& InstructionDecoder::decode_inst_slow
 	return entry;
 }
 
-void InstructionDecoder::register_instr(std::string mask, ExecReturn (*func)(Hart&, InstructionData&), uint64_t (*imm_decode_func)(uint32_t inst))
+Instruction* InstructionDecoder::register_instr(std::string mask, ExecReturn (*func)(Hart&, InstructionData&), uint64_t (*imm_decode_func)(uint32_t inst))
 {
 	assert((mask.size() == 16 || mask.size() == 32) && "Instruction mask size isn't 32 or 16 bits, good luck finding this broken instruction.");
 	uint32_t inst_mask	= 0;
@@ -115,6 +115,7 @@ void InstructionDecoder::register_instr(std::string mask, ExecReturn (*func)(Har
 	// unsigned long opcode = bits.to_ulong();
 	// opcode_table[opcode].push_back(inst);
 	global_hash_mask |= inst_mask;
+	return &instructions.back();
 }
 
 void InstructionDecoder::init_all_instrs()

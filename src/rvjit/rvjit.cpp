@@ -14,7 +14,6 @@ Copyright 2026 Spalishe
    limitations under the License.
 
 */
-
 #ifdef USE_JIT
 #include "../../include/rvjit/rvjit.hpp"
 #include "../../include/hart.hpp"
@@ -22,84 +21,55 @@ Copyright 2026 Spalishe
 #include "../../include/rvjit/rvjit_x86_64.hpp"
 #include <cassert>
 
-#define assert_msg(condition, format_str, ...)                              \
-	do                                                                      \
-	{                                                                       \
-		if(!(condition))                                                    \
-		{                                                                   \
-			std::cerr << "Assertion failed: (" #condition "), message: "    \
-					  << std::format(format_str, __VA_ARGS__) << std::endl; \
-			assert(condition);                                              \
-		}                                                                   \
-	} while(false)
-
 void JIT_Context::handleInstruction(Hart& h, InstructionCache& cache, uint64_t prev_pc)
 {
-	// This function excepts it will run after instruction execution, so subtract from current pc instruction size to get previous one
 	uint64_t pc = prev_pc;
 	if(prev_pc < 0x80000000) return;
 	if(jits[jit_index(pc)].valid) return;
 
-	uint64_t page_idx = (pc - 0x80000000) >> 12;
-	assert_msg(page_idx < pc_hits.size(), "page_idx: {}; pc: {} pc_hits.size(): {}", page_idx, pc, pc_hits.size());
-	if(!pc_hits[page_idx])
-	{
-		pc_hits[page_idx] = new HitPage{};
-	}
-	HitPage* hpage = pc_hits[page_idx];
-
-	if(hpage->is_ignore(pc)) return;
 	if(block_c)
 	{
-		auto jc = h.jidec->decode_inst(cache);
-		if(!jc.valid || block.count >= RVJIT_MAX_INSTRUCTIONS || pc != block.pc + block.size)
+		auto jc = cache.inst->jit_func;
+		if(jc == nullptr || block.count >= RVJIT_MAX_INSTRUCTIONS || pc > block.pc + block.size)
 		{
 			goto end_block_gen;
 			return;
 		}
 		if(!(pc < block.pc + block.size))
 		{
-			bool stop = jc.inst.func(h, jc.data, block, emitter);
+			bool stop = jc(h, cache.data, block, emitter);
 			block.size += cache.inst->size;
 			block.count++;
-			hpage->set_ignore(pc);
 			if(stop)
 				goto end_block_gen;
 		}
 		return;
 	}
 
+	// Check if there any reference of this instruction in decoder
 	{
 		// If not block creating rn
-		uint16_t& hits = hpage->hits[(pc & 0xFFF) >> 1];
-		hits++;
-		if(hits > RVJIT_PC_CAP && !block_c)
+		auto jc = cache.inst->jit_func;
+		if(jc != nullptr)
 		{
-			// Check if there any reference of this instruction in decoder
-			auto jc = h.jidec->decode_inst(cache);
+			block_c = true;
+			memset(&block.bytes, 0, sizeof(block.bytes));
+			memset(&block.inst_addr_jmp, 0xFF, sizeof(block.inst_addr_jmp));
+			block.byte_pos = 0;
+			block.valid	   = true;
+			block.pc	   = pc;
+			block.size	   = 0;
+			block.count	   = 0;
+			block.jmp_labels.clear();
 
-			if(jc.valid)
-			{
-				block_c = true;
-				memset(&block.bytes, 0, sizeof(block.bytes));
-				memset(&block.inst_addr_jmp, 0xFF, sizeof(block.inst_addr_jmp));
-				block.byte_pos = 0;
-				block.valid	   = true;
-				block.pc	   = pc;
-				block.size	   = 0;
-				block.count	   = 0;
-				block.jmp_labels.clear();
+			emitter.reset();
+			emitter.rvjit_emit_prologue(block);
 
-				emitter.reset();
-				emitter.rvjit_emit_prologue(block);
-
-				bool stop	= jc.inst.func(h, jc.data, block, emitter);
-				block.size	= cache.inst->size;
-				block.count = 1;
-				if(stop)
-					goto end_block_gen;
-			}
-			hpage->set_ignore(pc);
+			bool stop	= jc(h, cache.data, block, emitter);
+			block.size	= cache.inst->size;
+			block.count = 1;
+			if(stop)
+				goto end_block_gen;
 		}
 	}
 	return;
@@ -120,25 +90,19 @@ end_block_gen:
 
 		/*char name[64];
 		snprintf(name, 64, "/tmp/jit_0x%lx.bin", block.pc);
-		FILE* f = fopen(name, "wb");
+		FILEhttps://i.ibb.co/7dCCzgMS/image.png* f = fopen(name, "wb");
 		fwrite(block.bytes, 1, block.byte_pos, f);
 		fclose(f);
 		printf("jit: 0x%lx\n", block.pc);*/
 
 		// We built block sized enough. Go go gadget w^x allocations
-		JIT_Function func		  = arena.push_function(block.bytes, block.byte_pos);
+		JIT_Function func		  = arena.push_function(block.bytes, block.byte_pos, last_arena);
 		func.inst_size			  = block.size;
 		func.pc					  = block.pc;
 		func.page_version		  = page_verion_bitmap[(block.pc - 0x80000000) >> 12];
 		jits[jit_index(block.pc)] = std::move(func);
 		count++;
-
-		if(block.pc == 0x80377fb8)
-		{
-			printf("yea we compiled at 0x80377fb8 with guest size: %d\n", block.size);
-		}
 	}
-	hpage->set_ignore(pc);
 }
 void JIT_Context::stopBlock()
 {
@@ -153,11 +117,28 @@ void JIT_Context::stopBlock()
 
 void JIT_Context::createNewArena()
 {
-	last_arena++;
+	size_t arena_size = RVJIT_ARENA_PAGES * sysconf(_SC_PAGESIZE);
+	while(total_allocated + arena_size > max_cache_size && !arenas.empty())
+	{
+		uint64_t old_idx = arena_order.front();
+		arena_order.pop();
 
+		for(size_t i = 0; i < JIT_CACHE_SIZE; ++i)
+		{
+			if(jits[i].valid && jits[i].arena_index == old_idx)
+			{
+				jits[i].valid = false;
+			}
+		}
+
+		total_allocated -= arenas[old_idx].size;
+		arenas.erase(old_idx);
+	}
+	last_arena++;
 	arenas.insert({ last_arena, JIT_Arena() });
-	JIT_Arena& arena = arenas.at(last_arena);
-	arena.init();
+	arenas.at(last_arena).init();
+	total_allocated += arenas[last_arena].size;
+	arena_order.push(last_arena);
 }
 
 void JIT_Arena::allocate()
@@ -185,7 +166,7 @@ void JIT_Arena::allocate()
 	valid	  = true;
 	used_size = 0;
 }
-JIT_Function JIT_Arena::push_function(const void* code, size_t code_size)
+JIT_Function JIT_Arena::push_function(const void* code, size_t code_size, uint64_t arena_index)
 {
 	if(used_size + RVJIT_FUNC_SIZE > size)
 	{
@@ -224,9 +205,10 @@ JIT_Function JIT_Arena::push_function(const void* code, size_t code_size)
 
 	used_size += RVJIT_FUNC_SIZE;
 	JIT_Function result;
-	result.func	 = reinterpret_cast<JITCompilatedFunc>(func_pos);
-	result.size	 = code_size;
-	result.valid = true;
+	result.func		   = reinterpret_cast<JITCompilatedFunc>(func_pos);
+	result.size		   = code_size;
+	result.valid	   = true;
+	result.arena_index = arena_index;
 	return result;
 }
 

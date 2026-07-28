@@ -18,17 +18,18 @@ Copyright 2026 Spalishe
 #ifdef USE_JIT
 #include "../decode.hpp"
 #include "../mmio.hpp"
+#include "rvjit_cfg.hpp"
 #include <cstdint>
 #include <cstring>
+#include <queue>
 #include <sys/mman.h>
 #include <unordered_map>
 
-#define RVJIT_MIN_INSTRUCTIONS 12
-#define RVJIT_MAX_INSTRUCTIONS 48
-#define RVJIT_PC_CAP		   0x300
-#define RVJIT_FUNC_SIZE		   0x1000 // DONT CHANGE IT IF YOU DONT KNOW WHAT YOU'RE DOING! If emitted function will overflow arena's buffer, it will be your fault
-#define RVJIT_ARENA_PAGES	   0x400  // Linux default page size is 4096, then 1024 * 4096 = 4194304 bytes, 4 MB
-static constexpr size_t JIT_CACHE_SIZE = 1 << 20;
+#ifdef RVJIT_FUNC_SIZE
+#undef RVJIT_FUNC_SIZE
+#endif
+
+static constexpr size_t JIT_CACHE_SIZE = (1 << 20);
 
 #include "rvjit_emit.hpp"
 struct JIT_HartContext
@@ -53,6 +54,7 @@ struct JIT_Function
 	uint16_t inst_size	   = 0;
 	bool valid			   = false;
 	uint64_t page_version  = 0; // at which page version this function was created
+	uint64_t arena_index   = 0;
 
 	JIT_Function(const JIT_Function&)			 = delete;
 	JIT_Function& operator=(const JIT_Function&) = delete;
@@ -63,33 +65,37 @@ struct JIT_Function
 		  size(other.size),
 		  pc(other.pc),
 		  inst_size(other.inst_size),
-		  valid(other.valid)
+		  valid(other.valid),
+		  arena_index(other.arena_index)
 	{
-		other.func		= nullptr;
-		other.offset	= 0;
-		other.size		= 0;
-		other.pc		= 0;
-		other.inst_size = 0;
-		other.valid		= false;
+		other.func		  = nullptr;
+		other.offset	  = 0;
+		other.size		  = 0;
+		other.pc		  = 0;
+		other.inst_size	  = 0;
+		other.valid		  = false;
+		other.arena_index = 0;
 	}
 
 	JIT_Function& operator=(JIT_Function&& other) noexcept
 	{
 		if(this != &other)
 		{
-			func	  = other.func;
-			offset	  = other.offset;
-			size	  = other.size;
-			pc		  = other.pc;
-			inst_size = other.inst_size;
-			valid	  = other.valid;
+			func		= other.func;
+			offset		= other.offset;
+			size		= other.size;
+			pc			= other.pc;
+			inst_size	= other.inst_size;
+			valid		= other.valid;
+			arena_index = other.arena_index;
 
-			other.func		= nullptr;
-			other.offset	= 0;
-			other.size		= 0;
-			other.pc		= 0;
-			other.inst_size = 0;
-			other.valid		= false;
+			other.func		  = nullptr;
+			other.offset	  = 0;
+			other.size		  = 0;
+			other.pc		  = 0;
+			other.inst_size	  = 0;
+			other.valid		  = false;
+			other.arena_index = 0;
 		}
 		return *this;
 	}
@@ -158,7 +164,7 @@ struct JIT_Arena
 	uint64_t size	   = 0;
 	uint64_t used_size = 0;
 
-	JIT_Function push_function(const void* code, size_t code_size);
+	JIT_Function push_function(const void* code, size_t code_size, uint64_t arena_index);
 	void init()
 	{
 		allocate();
@@ -196,7 +202,6 @@ struct JIT_Context
 		emitter			   = JIT_Emitter();
 		jits			   = new JIT_Function[JIT_CACHE_SIZE];
 		page_verion_bitmap = new uint64_t[memory_size >> 12]{};
-		pc_hits.resize(memory_size >> 12, nullptr);
 		createNewArena();
 	};
 	~JIT_Context()
@@ -205,10 +210,6 @@ struct JIT_Context
 			delete[] jits;
 		if(page_verion_bitmap)
 			delete[] page_verion_bitmap;
-		for(auto ptr : pc_hits)
-		{
-			if(ptr) delete ptr;
-		}
 	}
 
 	// Forbid copy
@@ -219,7 +220,7 @@ struct JIT_Context
 	JIT_Context(JIT_Context&& other) noexcept
 		: last_arena(other.last_arena), jits(std::move(other.jits)),
 		  arenas(std::move(other.arenas)),
-		  block_c(other.block_c), block(other.block), pc_hits(std::move(other.pc_hits))
+		  block_c(other.block_c), block(std::move(other.block)), arena_order(std::move(other.arena_order))
 	{
 		// Copy pc_hits
 		// memcpy(pc_hits, other.pc_hits, sizeof(pc_hits));
@@ -234,22 +235,23 @@ struct JIT_Context
 			arenas = std::move(other.arenas);
 			// memcpy(&ignore_pc, &other.ignore_pc, sizeof(ignore_pc));
 
-			pc_hits	   = std::move(other.pc_hits);
-			block_c	   = other.block_c;
-			block	   = other.block;
-			last_arena = other.last_arena;
+			block_c		= other.block_c;
+			block		= std::move(other.block);
+			last_arena	= other.last_arena;
+			arena_order = std::move(other.arena_order);
 		}
 
 		return *this;
 	}
 
-	// std::unordered_map<uint64_t, JIT_Function> jits;
+	std::queue<uint64_t> arena_order;
+	size_t total_allocated = 0;
+	size_t max_cache_size  = 64 * 1024 * 1024; // 64 MB by default
 
 	JIT_Function* jits;
 	std::unordered_map<uint64_t, JIT_Arena> arenas;
-	std::vector<HitPage*> pc_hits;
-	bool block_c	= false;
-	JIT_Block block = { 0 };
+	bool block_c = false;
+	JIT_Block block;
 
 	uint64_t* page_verion_bitmap;
 
@@ -260,13 +262,14 @@ struct JIT_Context
 	JIT_Emitter emitter;
 
 	void handleInstruction(Hart& h, InstructionCache& cache, uint64_t prev_pc);
+
 	void stopBlock();
 	void createNewArena();
-
-	inline void clear_pc_hits()
-	{
-		pc_hits.clear();
-		pc_hits.resize(memory_size >> 12, nullptr);
-	}
 };
+
+void init_jit_rv64i();
+inline void init_jit_all_instrs()
+{
+	init_jit_rv64i();
+}
 #endif

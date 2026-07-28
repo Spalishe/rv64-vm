@@ -81,9 +81,6 @@ void Hart::tick()
 			if(jit_entry.page_version != jctx->page_verion_bitmap[(pc - 0x80000000) >> 12]) [[unlikely]]
 			{
 				jit_entry.valid = false;
-				for(auto* val : jctx->pc_hits)
-					delete val;
-				jctx->clear_pc_hits();
 				return;
 			}
 			hctx.exit_pc	= 0;

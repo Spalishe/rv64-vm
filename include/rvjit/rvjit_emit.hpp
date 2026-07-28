@@ -15,17 +15,15 @@ Copyright 2026 Spalishe
 
 */
 #pragma once
-#include <unordered_map>
+#include <string>
+#include <vector>
 #ifdef USE_JIT
-#include "../decode.hpp"
+
+#include "rvjit_cfg.hpp"
+
 #include "../host.hpp"
 #ifdef HOST_TARGET_X86_64
 #define HOST_REGS_COUNT 8
-#endif
-
-// Must be changed from rvjit.hpp, dont touch it here
-#ifndef RVJIT_FUNC_SIZE
-#define RVJIT_FUNC_SIZE 0x400
 #endif
 
 #include <cstdint>
@@ -58,6 +56,37 @@ struct JumpLabel
 struct Hart;
 struct JIT_Block
 {
+	JIT_Block()
+		: bytes{}, inst_addr_jmp{}, byte_pos(0), valid(false), pc(0), size(0), count(0)
+	{
+	}
+	JIT_Block(const JIT_Block&)			   = delete;
+	JIT_Block& operator=(const JIT_Block&) = delete;
+
+	JIT_Block(JIT_Block&& other) noexcept
+		: byte_pos(other.byte_pos), valid(other.valid), pc(other.pc),
+		  size(other.size), count(other.count),
+		  jmp_labels(std::move(other.jmp_labels))
+	{
+		std::copy(std::begin(other.bytes), std::end(other.bytes), std::begin(bytes));
+		std::copy(std::begin(other.inst_addr_jmp), std::end(other.inst_addr_jmp), std::begin(inst_addr_jmp));
+	}
+
+	JIT_Block& operator=(JIT_Block&& other) noexcept
+	{
+		if(this != &other)
+		{
+			std::copy(std::begin(other.bytes), std::end(other.bytes), std::begin(bytes));
+			std::copy(std::begin(other.inst_addr_jmp), std::end(other.inst_addr_jmp), std::begin(inst_addr_jmp));
+			byte_pos   = other.byte_pos;
+			valid	   = other.valid;
+			pc		   = other.pc;
+			size	   = other.size;
+			count	   = other.count;
+			jmp_labels = std::move(other.jmp_labels);
+		}
+		return *this;
+	}
 	uint8_t bytes[RVJIT_FUNC_SIZE];
 	uint16_t byte_pos = 0;
 	std::vector<JumpLabel> jmp_labels;

@@ -1,5 +1,4 @@
-/*
-Copyright 2026 Spalishe
+/* Copyright 2026 Spalishe
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,8 +13,7 @@ Copyright 2026 Spalishe
    limitations under the License.
 
 */
-
-#ifdef USE_JIT
-#include "../../include/rvjit/rvjit.hpp"
-
-#endif
+#define RVJIT_MIN_INSTRUCTIONS 2
+#define RVJIT_MAX_INSTRUCTIONS 128
+#define RVJIT_FUNC_SIZE		   0x1000 // DONT CHANGE IT IF YOU DONT KNOW WHAT YOU'RE DOING! If emitted function will overflow arena's buffer, it will be your fault
+#define RVJIT_ARENA_PAGES	   0x400  // Linux default page size is 4096, then 1024 * 4096 = 4194304 bytes, 4 MB

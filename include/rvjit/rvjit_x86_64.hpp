@@ -17,6 +17,7 @@
 #pragma once
 #include "rvjit.hpp"
 #ifdef USE_JIT
+#include "rvjit_cfg.hpp"
 #include "rvjit_emit.hpp"
 #include <cstdint>
 #ifdef HOST_TARGET_X86_64

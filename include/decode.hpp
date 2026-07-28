@@ -180,6 +180,9 @@ struct InstructionData
 #endif
 };
 
+#ifdef USE_JIT
+#include "rvjit/rvjit_emit.hpp"
+#endif
 struct Instruction
 {
 	uint32_t mask;
@@ -187,6 +190,9 @@ struct Instruction
 	ExecReturn (*func)(Hart& h, InstructionData& data);
 	uint64_t (*imm_decode_func)(uint32_t inst);
 	uint8_t size = 4;
+#ifdef USE_JIT
+	bool (*jit_func)(Hart& h, InstructionData& data, JIT_Block& ctx, JIT_Emitter& emitter) = nullptr;
+#endif
 };
 
 struct InstructionCache
@@ -245,7 +251,7 @@ struct InstructionDecoder
 
 	uint32_t global_hash_mask = 0;
 	void build_lut();
-	void register_instr(std::string mask, ExecReturn (*func)(Hart&, InstructionData&), uint64_t (*imm_decode_func)(uint32_t inst) = NULL);
+	Instruction* register_instr(std::string mask, ExecReturn (*func)(Hart&, InstructionData&), uint64_t (*imm_decode_func)(uint32_t inst) = NULL);
 	static inline uint32_t get_lut_index(uint32_t inst)
 	{
 		return _pext_u32(inst, HASH_MASK);

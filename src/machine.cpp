@@ -164,10 +164,6 @@ void Machine::init_mmap()
 	mmio = new MMIO(mmap, memory_size);
 	idec = new InstructionDecoder();
 	idec->init_all_instrs();
-#ifdef USE_JIT
-	jidec = new JIT_InstructionDecoder();
-	jidec->init_all_instrs();
-#endif
 }
 
 void Machine::init_auto_devices()
@@ -216,9 +212,7 @@ void Machine::run()
 		h.mmap	= mmap;
 		h.mmio	= mmio;
 		h.idec	= idec;
-#ifdef USE_JIT
-		h.jidec = jidec;
-#endif
+
 		h.init(dtb_path_in_memory, entry_pc);
 	}
 
@@ -276,9 +270,7 @@ void Machine::work()
 				hart.mmap  = mmap;
 				hart.mmio  = mmio;
 				hart.idec  = idec;
-#ifdef USE_JIT
-				hart.jidec = jidec;
-#endif
+
 				hart.init(dtb_path_in_memory, entry_pc);
 			}
 // prepare
@@ -376,9 +368,7 @@ void Machine::reset()
 			hart.mmap  = mmap;
 			hart.mmio  = mmio;
 			hart.idec  = idec;
-#ifdef USE_JIT
-			hart.jidec = jidec;
-#endif
+
 			hart.init(dtb_path_in_memory, entry_pc);
 		}
 // prepare

@@ -21,7 +21,6 @@ Copyright 2026 Spalishe
 #include "memory_map.hpp"
 #include "mmio.hpp"
 #include "rvjit/rvjit.hpp"
-#include "rvjit/rvjit_decode.hpp"
 #include "structs/timecmp_st.hpp"
 #include <cstdint>
 
@@ -91,7 +90,6 @@ struct Hart
 	InstructionDecoder* idec;
 #ifdef USE_JIT
 	JIT_Context* jctx;
-	JIT_InstructionDecoder* jidec;
 	JIT_HartContext hctx;
 	uint64_t last_jit_pc_exit = 0;
 #endif

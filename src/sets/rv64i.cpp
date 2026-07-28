@@ -511,72 +511,6 @@ ExecReturn exec_FENCE(Hart& hart, InstructionData& inst)
 	return { true, false, 4, 0, 0 };
 }
 
-void InstructionDecoder::init_rv64i()
-{
-	// R-Type
-	register_instr("0000000**********000*****0110011", exec_ADD);
-	register_instr("0000000**********000*****0111011", exec_ADDW);
-	register_instr("0100000**********000*****0110011", exec_SUB);
-	register_instr("0100000**********000*****0111011", exec_SUBW);
-	register_instr("0000000**********100*****0110011", exec_XOR);
-	register_instr("0000000**********110*****0110011", exec_OR);
-	register_instr("0000000**********111*****0110011", exec_AND);
-	register_instr("0000000**********001*****0110011", exec_SLL);
-	register_instr("0000000**********001*****0111011", exec_SLLW);
-	register_instr("0000000**********101*****0110011", exec_SRL);
-	register_instr("0000000**********101*****0111011", exec_SRLW);
-	register_instr("0100000**********101*****0110011", exec_SRA);
-	register_instr("0100000**********101*****0111011", exec_SRAW);
-	register_instr("0000000**********010*****0110011", exec_SLT);
-	register_instr("0000000**********011*****0110011", exec_SLTU);
-
-	// I-Type
-	register_instr("*****************000*****0010011", exec_ADDI, imm_I);
-	register_instr("*****************000*****0011011", exec_ADDIW, imm_I);
-	register_instr("*****************100*****0010011", exec_XORI, imm_I);
-	register_instr("*****************110*****0010011", exec_ORI, imm_I);
-	register_instr("*****************111*****0010011", exec_ANDI, imm_I);
-	register_instr("000000***********001*****0010011", exec_SLLI, shamt64);
-	register_instr("0000000**********001*****0011011", exec_SLLIW, shamt);
-	register_instr("0000000**********101*****0011011", exec_SRLIW, shamt);
-	register_instr("0100000**********101*****0011011", exec_SRAIW, shamt);
-	register_instr("000000***********101*****0010011", exec_SRLI, shamt64);
-	register_instr("010000***********101*****0010011", exec_SRAI, shamt64);
-	register_instr("*****************010*****0010011", exec_SLTI, imm_I);
-	register_instr("*****************011*****0010011", exec_SLTIU, imm_I);
-	register_instr("*****************000*****0000011", exec_LB, imm_I);
-	register_instr("*****************001*****0000011", exec_LH, imm_I);
-	register_instr("*****************010*****0000011", exec_LW, imm_I);
-	register_instr("*****************011*****0000011", exec_LD, imm_I);
-	register_instr("*****************100*****0000011", exec_LBU, imm_I);
-	register_instr("*****************101*****0000011", exec_LHU, imm_I);
-	register_instr("*****************110*****0000011", exec_LWU, imm_I);
-
-	// S-Type
-	register_instr("*****************000*****0100011", exec_SB, imm_S);
-	register_instr("*****************001*****0100011", exec_SH, imm_S);
-	register_instr("*****************010*****0100011", exec_SW, imm_S);
-	register_instr("*****************011*****0100011", exec_SD, imm_S);
-
-	// B-Type
-	register_instr("*****************000*****1100011", exec_BEQ, imm_B);
-	register_instr("*****************001*****1100011", exec_BNE, imm_B);
-	register_instr("*****************100*****1100011", exec_BLT, imm_B);
-	register_instr("*****************101*****1100011", exec_BGE, imm_B);
-	register_instr("*****************110*****1100011", exec_BLTU, imm_B);
-	register_instr("*****************111*****1100011", exec_BGEU, imm_B);
-
-	// what
-	register_instr("*************************1101111", exec_JAL, imm_J);
-	register_instr("*****************000*****1100111", exec_JALR, imm_I);
-	register_instr("*************************0110111", exec_LUI, imm_U);
-	register_instr("*************************0010111", exec_AUIPC, imm_U);
-
-	register_instr("00000000000000000000000001110011", exec_ECALL);
-	register_instr("00000000000100000000000001110011", exec_EBREAK);
-
-	register_instr("0000********00000000000000001111", exec_FENCE, imm_I);
-}
 #ifdef USE_JIT
 #include "../../include/rvjit/rvjit_x86_64.hpp"
 bool execjit_ADD(Hart& hart, InstructionData& inst, JIT_Block& blk, JIT_Emitter& emitter)
@@ -944,14 +878,18 @@ bool execjit_ADDI(Hart& hart, InstructionData& inst, JIT_Block& blk, JIT_Emitter
 }
 bool execjit_ADDIW(Hart& hart, InstructionData& inst, JIT_Block& blk, JIT_Emitter& emitter)
 {
-	emitter.inst_emit_i_type(hart, inst, blk, true, [](JIT_Emitter& em, JIT_Block& blk, VReg& rd, VReg& rs1, uint64_t imm, uint64_t pc, void* tmp)
+	emitter.inst_emit_i_type(hart, inst, blk, false, [](JIT_Emitter& em, JIT_Block& blk, VReg& rd, VReg& rs1, uint64_t imm, uint64_t pc, void* tmp)
 	{
+		if(rs1.vreg == 0)
+		{
+			mov_imm64(blk, rd.host_reg, imm);
+			return;
+		}
 		if(rd.vreg != rs1.vreg)
 		{
 			mov(blk, rd.host_reg, rs1.host_reg);
 		}
-
-		add_r32imm32(blk, rd.host_reg, imm);
+		add_r32imm32(blk, rd.host_reg, (int32_t)imm);
 		movsxd(blk, rd.host_reg, rd.host_reg);
 	}, blk.pc + blk.size);
 	return false;
@@ -1791,58 +1729,122 @@ bool execjit_AUIPC(Hart& hart, InstructionData& inst, JIT_Block& blk, JIT_Emitte
 	}, blk.pc + blk.size);
 	return false;
 }
-
-void JIT_InstructionDecoder::init_rv64i()
-{
-	conversion_tbl[&exec_ADD]	= &execjit_ADD;
-	conversion_tbl[&exec_ADDW]	= &execjit_ADDW;
-	conversion_tbl[&exec_SUB]	= &execjit_SUB;
-	conversion_tbl[&exec_SUBW]	= &execjit_SUBW;
-	conversion_tbl[&exec_XOR]	= &execjit_XOR;
-	conversion_tbl[&exec_OR]	= &execjit_OR;
-	conversion_tbl[&exec_AND]	= &execjit_AND;
-	conversion_tbl[&exec_SLL]	= &execjit_SLL;
-	conversion_tbl[&exec_SLLW]	= &execjit_SLLW;
-	conversion_tbl[&exec_SRL]	= &execjit_SRL;
-	conversion_tbl[&exec_SRLW]	= &execjit_SRLW;
-	conversion_tbl[&exec_SRA]	= &execjit_SRA;
-	conversion_tbl[&exec_SRAW]	= &execjit_SRAW;
-	conversion_tbl[&exec_SLT]	= &execjit_SLT;
-	conversion_tbl[&exec_SLTU]	= &execjit_SLTU;
-	conversion_tbl[&exec_ADDI]	= &execjit_ADDI;
-	conversion_tbl[&exec_ADDIW] = &execjit_ADDIW;
-	conversion_tbl[&exec_XORI]	= &execjit_XORI;
-	conversion_tbl[&exec_ORI]	= &execjit_ORI;
-	conversion_tbl[&exec_ANDI]	= &execjit_ANDI;
-	conversion_tbl[&exec_SLLI]	= &execjit_SLLI;
-	conversion_tbl[&exec_SLLIW] = &execjit_SLLIW;
-	conversion_tbl[&exec_SRLI]	= &execjit_SRLI;
-	conversion_tbl[&exec_SRLIW] = &execjit_SRLIW;
-	conversion_tbl[&exec_SRAI]	= &execjit_SRAI;
-	conversion_tbl[&exec_SRAIW] = &execjit_SRAIW;
-	conversion_tbl[&exec_SLTI]	= &execjit_SLTI;
-	conversion_tbl[&exec_SLTIU] = &execjit_SLTIU;
-
-	conversion_tbl[&exec_LB]	= &execjit_LB;
-	conversion_tbl[&exec_LBU]	= &execjit_LBU;
-	conversion_tbl[&exec_LH]	= &execjit_LH;
-	conversion_tbl[&exec_LHU]	= &execjit_LHU;
-	conversion_tbl[&exec_LW]	= &execjit_LW;
-	conversion_tbl[&exec_LWU]	= &execjit_LWU;
-	conversion_tbl[&exec_LD]	= &execjit_LD;
-	conversion_tbl[&exec_SB]	= &execjit_SB;
-	conversion_tbl[&exec_SH]	= &execjit_SH;
-	conversion_tbl[&exec_SW]	= &execjit_SW;
-	conversion_tbl[&exec_SD]	= &execjit_SD;
-	// conversion_tbl[&exec_BEQ]	= &execjit_BEQ;
-	//  conversion_tbl[&exec_BNE]	= &execjit_BNE;
-	//   conversion_tbl[&exec_BLT]	= &execjit_BLT;
-	//   conversion_tbl[&exec_BGE]	= &execjit_BGE;
-	//   conversion_tbl[&exec_BLTU]	= &execjit_BLTU;
-	//   conversion_tbl[&exec_BGEU]	= &execjit_BGEU;
-	//    conversion_tbl[&exec_JAL]	= &execjit_JAL;
-	//    conversion_tbl[&exec_JALR]	= &execjit_JALR;
-	conversion_tbl[&exec_LUI]	= &execjit_LUI;
-	conversion_tbl[&exec_AUIPC] = &execjit_AUIPC;
-}
 #endif
+
+void InstructionDecoder::init_rv64i()
+{
+	// R-Type
+	auto inst_add  = register_instr("0000000**********000*****0110011", exec_ADD);
+	auto inst_addw = register_instr("0000000**********000*****0111011", exec_ADDW);
+	auto inst_sub  = register_instr("0100000**********000*****0110011", exec_SUB);
+	auto inst_subw = register_instr("0100000**********000*****0111011", exec_SUBW);
+	auto inst_xor  = register_instr("0000000**********100*****0110011", exec_XOR);
+	auto inst_or   = register_instr("0000000**********110*****0110011", exec_OR);
+	auto inst_and  = register_instr("0000000**********111*****0110011", exec_AND);
+	auto inst_sll  = register_instr("0000000**********001*****0110011", exec_SLL);
+	auto inst_sllw = register_instr("0000000**********001*****0111011", exec_SLLW);
+	auto inst_srl  = register_instr("0000000**********101*****0110011", exec_SRL);
+	auto inst_srlw = register_instr("0000000**********101*****0111011", exec_SRLW);
+	auto inst_sra  = register_instr("0100000**********101*****0110011", exec_SRA);
+	auto inst_sraw = register_instr("0100000**********101*****0111011", exec_SRAW);
+	auto inst_slt  = register_instr("0000000**********010*****0110011", exec_SLT);
+	auto inst_sltu = register_instr("0000000**********011*****0110011", exec_SLTU);
+
+	// I-Type
+	auto inst_addi	= register_instr("*****************000*****0010011", exec_ADDI, imm_I);
+	auto inst_addiw = register_instr("*****************000*****0011011", exec_ADDIW, imm_I);
+	auto inst_xori	= register_instr("*****************100*****0010011", exec_XORI, imm_I);
+	auto inst_ori	= register_instr("*****************110*****0010011", exec_ORI, imm_I);
+	auto inst_andi	= register_instr("*****************111*****0010011", exec_ANDI, imm_I);
+	auto inst_slli	= register_instr("000000***********001*****0010011", exec_SLLI, shamt64);
+	auto inst_slliw = register_instr("0000000**********001*****0011011", exec_SLLIW, shamt);
+	auto inst_srliw = register_instr("0000000**********101*****0011011", exec_SRLIW, shamt);
+	auto inst_sraiw = register_instr("0100000**********101*****0011011", exec_SRAIW, shamt);
+	auto inst_srli	= register_instr("000000***********101*****0010011", exec_SRLI, shamt64);
+	auto inst_srai	= register_instr("010000***********101*****0010011", exec_SRAI, shamt64);
+	auto inst_slti	= register_instr("*****************010*****0010011", exec_SLTI, imm_I);
+	auto inst_sltiu = register_instr("*****************011*****0010011", exec_SLTIU, imm_I);
+	auto inst_lb	= register_instr("*****************000*****0000011", exec_LB, imm_I);
+	auto inst_lh	= register_instr("*****************001*****0000011", exec_LH, imm_I);
+	auto inst_lw	= register_instr("*****************010*****0000011", exec_LW, imm_I);
+	auto inst_ld	= register_instr("*****************011*****0000011", exec_LD, imm_I);
+	auto inst_lbu	= register_instr("*****************100*****0000011", exec_LBU, imm_I);
+	auto inst_lhu	= register_instr("*****************101*****0000011", exec_LHU, imm_I);
+	auto inst_lwu	= register_instr("*****************110*****0000011", exec_LWU, imm_I);
+
+	// S-Type
+	auto inst_sb = register_instr("*****************000*****0100011", exec_SB, imm_S);
+	auto inst_sh = register_instr("*****************001*****0100011", exec_SH, imm_S);
+	auto inst_sw = register_instr("*****************010*****0100011", exec_SW, imm_S);
+	auto inst_sd = register_instr("*****************011*****0100011", exec_SD, imm_S);
+
+	// B-Type
+	auto inst_beq  = register_instr("*****************000*****1100011", exec_BEQ, imm_B);
+	auto inst_bne  = register_instr("*****************001*****1100011", exec_BNE, imm_B);
+	auto inst_blt  = register_instr("*****************100*****1100011", exec_BLT, imm_B);
+	auto inst_bge  = register_instr("*****************101*****1100011", exec_BGE, imm_B);
+	auto inst_bltu = register_instr("*****************110*****1100011", exec_BLTU, imm_B);
+	auto inst_bgeu = register_instr("*****************111*****1100011", exec_BGEU, imm_B);
+
+	// what
+	auto inst_jal	= register_instr("*************************1101111", exec_JAL, imm_J);
+	auto inst_jalr	= register_instr("*****************000*****1100111", exec_JALR, imm_I);
+	auto inst_lui	= register_instr("*************************0110111", exec_LUI, imm_U);
+	auto inst_auipc = register_instr("*************************0010111", exec_AUIPC, imm_U);
+
+	register_instr("00000000000000000000000001110011", exec_ECALL);
+	register_instr("00000000000100000000000001110011", exec_EBREAK);
+
+	register_instr("0000********00000000000000001111", exec_FENCE, imm_I);
+
+	inst_add->jit_func	 = &execjit_ADD;
+	inst_addw->jit_func	 = &execjit_ADDW;
+	inst_sub->jit_func	 = &execjit_SUB;
+	inst_subw->jit_func	 = &execjit_SUBW;
+	inst_xor->jit_func	 = &execjit_XOR;
+	inst_or->jit_func	 = &execjit_OR;
+	inst_and->jit_func	 = &execjit_AND;
+	inst_sll->jit_func	 = &execjit_SLL;
+	inst_sllw->jit_func	 = &execjit_SLLW;
+	inst_srl->jit_func	 = &execjit_SRL;
+	inst_srlw->jit_func	 = &execjit_SRLW;
+	inst_sra->jit_func	 = &execjit_SRA;
+	inst_sraw->jit_func	 = &execjit_SRAW;
+	inst_slt->jit_func	 = &execjit_SLT;
+	inst_sltu->jit_func	 = &execjit_SLTU;
+	inst_addi->jit_func	 = &execjit_ADDI;
+	inst_addiw->jit_func = &execjit_ADDIW;
+	inst_xori->jit_func	 = &execjit_XORI;
+	inst_ori->jit_func	 = &execjit_ORI;
+	inst_andi->jit_func	 = &execjit_ANDI;
+	inst_slli->jit_func	 = &execjit_SLLI;
+	inst_slliw->jit_func = &execjit_SLLIW;
+	inst_srli->jit_func	 = &execjit_SRLI;
+	inst_srliw->jit_func = &execjit_SRLIW;
+	inst_srai->jit_func	 = &execjit_SRAI;
+	inst_sraiw->jit_func = &execjit_SRAIW;
+	inst_slti->jit_func	 = &execjit_SLTI;
+	inst_sltiu->jit_func = &execjit_SLTIU;
+
+	/*inst_lb->jit_func	 = &execjit_LB;
+	inst_lbu->jit_func	 = &execjit_LBU;
+	inst_lh->jit_func	 = &execjit_LH;
+	inst_lhu->jit_func	 = &execjit_LHU;
+	inst_lw->jit_func	 = &execjit_LW;
+	inst_lwu->jit_func	 = &execjit_LWU;
+	inst_ld->jit_func	 = &execjit_LD;
+	inst_sb->jit_func	 = &execjit_SB;
+	inst_sh->jit_func	 = &execjit_SH;
+	inst_sw->jit_func	 = &execjit_SW;
+	inst_sd->jit_func	 = &execjit_SD;*/
+	// inst_beq->jit_func	= &execjit_BEQ;
+	// inst_bne->jit_func	= &execjit_BNE;
+	// inst_blt->jit_func	= &execjit_BLT;
+	// inst_bge->jit_func	= &execjit_BGE;
+	// inst_bltu->jit_func	= &execjit_BLTU;
+	// inst_bgeu->jit_func	= &execjit_BGEU;
+	// inst_jal->jit_func	= &execjit_JAL;
+	// inst_jalr->jit_func	= &execjit_JALR;
+	inst_lui->jit_func	 = &execjit_LUI;
+	inst_auipc->jit_func = &execjit_AUIPC;
+}

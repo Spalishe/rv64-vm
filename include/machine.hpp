@@ -21,7 +21,6 @@ Copyright 2026 Spalishe
 #include "libfdt.hpp"
 #include "memory_map.hpp"
 #include "mmio.hpp"
-#include "rvjit/rvjit_decode.hpp"
 #include <thread>
 #include <vector>
 
@@ -46,9 +45,6 @@ struct Machine
 		if(fdt)
 			fdt_node_free(fdt);
 		delete idec;
-#ifdef USE_JIT
-		delete jidec;
-#endif
 	}
 	uint64_t memory_size;
 	std::string append;
@@ -67,9 +63,6 @@ struct Machine
 	MemoryMap* mmap;
 	MMIO* mmio;
 	InstructionDecoder* idec;
-#ifdef USE_JIT
-	JIT_InstructionDecoder* jidec;
-#endif
 	uint64_t entry_pc = 0x80000000;
 	uint64_t timebase = 5'000'000ULL;
 	uint8_t harts_count;
