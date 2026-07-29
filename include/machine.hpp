@@ -24,7 +24,7 @@ Copyright 2026 Spalishe
 #include <thread>
 #include <vector>
 
-enum class MachineState
+enum class MachineState : uint8_t
 {
 	Off		  = 0,
 	Halted	  = 1,
