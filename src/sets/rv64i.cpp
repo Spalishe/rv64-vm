@@ -1416,8 +1416,17 @@ bool jit_store(Hart& hart, InstructionData& inst, JIT_Block& blk, JIT_Emitter& e
 		em.realize_label(blk, "fast_path");
 
 		auto function_ptr = reinterpret_cast<MovSignature>(function_data.fast_mov);
-
-		function_ptr(blk, rs2.host_reg, REG_R14, REG_RCX, 0, 0);
+		if(rs2.vreg == 0)
+		{
+			push(blk, REG_RAX);
+			xor_rr(blk, REG_RAX, REG_RCX);
+			function_ptr(blk, REG_RAX, REG_R14, REG_RCX, 0, 0);
+			pop(blk, REG_RAX);
+		}
+		else
+		{
+			function_ptr(blk, rs2.host_reg, REG_R14, REG_RCX, 0, 0);
+		}
 
 		em.realize_label(blk, "end");
 	}, blk.pc + blk.size, reinterpret_cast<void*>(&stru));
@@ -1826,7 +1835,7 @@ void InstructionDecoder::init_rv64i()
 	inst_slti->jit_func	 = &execjit_SLTI;
 	inst_sltiu->jit_func = &execjit_SLTIU;
 
-	/*inst_lb->jit_func	 = &execjit_LB;
+	inst_lb->jit_func	 = &execjit_LB;
 	inst_lbu->jit_func	 = &execjit_LBU;
 	inst_lh->jit_func	 = &execjit_LH;
 	inst_lhu->jit_func	 = &execjit_LHU;
@@ -1836,7 +1845,7 @@ void InstructionDecoder::init_rv64i()
 	inst_sb->jit_func	 = &execjit_SB;
 	inst_sh->jit_func	 = &execjit_SH;
 	inst_sw->jit_func	 = &execjit_SW;
-	inst_sd->jit_func	 = &execjit_SD;*/
+	inst_sd->jit_func	 = &execjit_SD;
 	// inst_beq->jit_func	= &execjit_BEQ;
 	// inst_bne->jit_func	= &execjit_BNE;
 	// inst_blt->jit_func	= &execjit_BLT;

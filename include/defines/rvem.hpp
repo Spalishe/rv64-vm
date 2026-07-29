@@ -18,5 +18,5 @@ Copyright 2026 Spalishe
 #pragma once
 
 #ifndef RVEM_VERSION
-#define RVEM_VERSION "riscv-em"
+#define RVEM_VERSION "rv64-vm; standalone"
 #endif

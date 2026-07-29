@@ -276,7 +276,7 @@ int main(int argc, char* argv[])
 		window.kb	  = std::dynamic_pointer_cast<HID_Keyboard>(kb);
 		window.width  = fb_w;
 		window.height = fb_h;
-		if(!InitializeNativeWindow(window, "riscv-em"))
+		if(!InitializeNativeWindow(window, "rv64-vm"))
 		{
 			return -1;
 		}

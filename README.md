@@ -1,6 +1,6 @@
-# riscv-em
-A software emulator for the RISC-V instruction set architecture (ISA) written in C++. This project aims to provide a functional emulator, capable of running XV6, OpenSBI, U-Boot, and many others.
-The emulator supports RV64IMA ISA, privileged ISA and peripheral devices. See the ["Features List" section](https://github.com/Spalishe/riscv-em#features-list) section for the details of features.
+# rv64-em
+A software emulator for the RISC-V instruction set architecture (ISA) written in C++. This project aims to provide a functional emulator, capable of running XV6, OpenSBI, U-Boot, and so on.
+The emulator supports RV64GC ISA, privileged ISA and peripheral devices. See the ["Features List" section](https://github.com/Spalishe/rv64-vm#features-list) section for the details of features.
 
 ## Running
 Available arguments are:
@@ -12,11 +12,9 @@ Available arguments are:
   --dumpdtb: Dumps auto-generated FDT to file
   --gdb: Starts GDB Stub on port 1512
   --append: Append command line arguments
-```
-
-Running:
-```bash
-./build/riscvem --bios fw_jump.bin --kernel u-boot.bin
+  --harts (-S): Set custom harts count (Default is 1)
+  --framebuffer (-fb): Enables framebuffer with defined size (F.e. 640x480)
+  --memsize (-M): Set custom memory size (Default is 512 MB)
 ```
 
 ## Features List
@@ -57,36 +55,40 @@ The emulator supports the following features:
 
 ## Build
 ```bash
-git clone https://github.com/Spalishe/riscv-em
-cd riscv-em
+git clone https://github.com/Spalishe/rv64-em
+cd rv64-em
 make
 ```
 Output program will be located in corresponding target and architecture folder(f.e. build.linux.x86_64/)
+
+### Library
 You can also compile emulator as lib:
 ```bash
-git clone https://github.com/Spalishe/riscv-em
-cd riscv-em
+git clone https://github.com/Spalishe/rv64-em
+cd rv64-em
 make lib
 ```
 And static lib as well:
 ```bash
-git clone https://github.com/Spalishe/riscv-em
-cd riscv-em
+git clone https://github.com/Spalishe/rv64-em
+cd rv64-em
 make slib
 ```
+
+See [Getting Started with libraries](https://github.com/Spalishe/rv64-vm/blob/main/docs/Library.md)
 
 ## Dependencies
 You can install all required dependencies using:
 
 Arch:
 ```bash
-sudo pacman -S make gcc
+sudo pacman -S make gcc git
 ```
 
 Ubuntu:
 ```bash
-sudo apt install make gcc
+sudo apt install make gcc git
 ```
 
 ## License
-This project is licensed under the Apache 2.0 License – see the [LICENSE](https://github.com/Spalishe/riscv-em/blob/main/LICENSE)
+This project is licensed under the Apache 2.0 License – see the [LICENSE](https://github.com/Spalishe/rv64-em/blob/main/LICENSE)

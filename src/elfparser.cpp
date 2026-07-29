@@ -93,7 +93,7 @@ bool ELFParser::parse(std::string file_path, uint64_t* entry_pc)
 	if(!file.is_open())
 	{
 		// error
-		printf("[RISCV-EM] File loading error! %s\n", std::strerror(errno));
+		printf("[RV64-VM] File loading error! %s\n", std::strerror(errno));
 		return false;
 	}
 

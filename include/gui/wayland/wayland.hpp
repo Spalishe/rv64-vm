@@ -342,7 +342,7 @@ namespace
 		window.xdg_toplevel = xdg_surface_get_toplevel(window.xdg_surface);
 		xdg_toplevel_add_listener(window.xdg_toplevel, &xdg_toplevel_listener, &window);
 
-		xdg_toplevel_set_title(window.xdg_toplevel, "riscv-em");
+		xdg_toplevel_set_title(window.xdg_toplevel, "rv64-vm");
 		xdg_toplevel_set_min_size(window.xdg_toplevel, width, height);
 		xdg_toplevel_set_max_size(window.xdg_toplevel, width, height);
 		wl_surface_commit(window.wl_surface);

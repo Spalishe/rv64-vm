@@ -17,12 +17,13 @@
 include objects.mk
 
 define banner
-         _                                                 
-  _ __  (_)  ___    ___  __   __           ___   _ __ ___  
- | '__| | | / __|  / __| \ \ / /  _____   / _ \ | '_ ` _ \ 
- | |    | | \__ \ | (__   \ V /  |_____| |  __/ | | | | | |
- |_|    |_| |___/  \___|   \_/            \___| |_| |_| |_|
-                                                           
+
+                  __     _  _                               
+  _ __  __   __  / /_   | || |           __   __  _ __ ___  
+ | '__| \ \ / / | '_ \  | || |_   _____  \ \ / / | '_ ` _ \ 
+ | |     \ V /  | (_) | |__   _| |_____|  \ V /  | | | | | |
+ |_|      \_/    \___/     |_|             \_/   |_| |_| |_|
+
 endef
 
 export banner
@@ -96,7 +97,7 @@ CXXFLAGS := -std=c++20 -std=gnu++20 $(LIBS) -O3 -g -march=native -flto -MMD -MP 
 
 CXXFLAGS += $(foreach v,$(USE_VARS),$(if $(filter-out 0,$($(v))),-D$(v)=$($(v))))
 
-CXXFLAGS += -DRVEM_VERSION='"riscv-em; git-$(GIT_HASH_SHORT)"'
+CXXFLAGS += -DRVEM_VERSION='"rv64-vm; git-$(GIT_HASH_SHORT)"'
 
 ifneq ($(findstring mingw,$(TRIPLET_WORDS)),)
     EXE_EXT := .exe

@@ -85,7 +85,7 @@ struct MemoryMap
 		if(!file.is_open())
 		{
 			// error
-			std::cout << "[RISCV-EM] File loading error! " << std::strerror(errno) << std::endl;
+			std::cout << "[RV64-VM] File loading error! " << std::strerror(errno) << std::endl;
 			return false;
 		}
 
