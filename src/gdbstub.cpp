@@ -29,6 +29,7 @@ Copyright 2026 Spalishe
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sstream>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <thread>
 #include <vector>
@@ -349,24 +350,34 @@ void Machine::GDBStub::stop()
 	if(is_executing)
 	{
 		is_executing = false;
-		std::cout << "[GDB] Disconnecting client" << std::endl;
 
-		if(server_fd)
+		if(is_executing.exchange(false, std::memory_order_acq_rel))
 		{
-			shutdown(server_fd, SHUT_RDWR);
-			close(server_fd);
-			server_fd = 0;
-		}
-		if(client_fd)
-		{
-			shutdown(client_fd, SHUT_RDWR);
-			close(client_fd);
-			client_fd = 0;
+			std::cout << "[GDB] Disconnecting client and closing server socket..." << std::endl;
+
+			if(client_fd)
+			{
+				shutdown(client_fd, SHUT_RDWR);
+				close(client_fd);
+				client_fd = 0;
+			}
+			if(server_fd)
+			{
+				shutdown(server_fd, SHUT_RDWR);
+				close(server_fd);
+				server_fd = 0;
+			}
 		}
 
-		if(worker_thread.joinable())
+		if(std::this_thread::get_id() != worker_thread.get_id())
 		{
-			worker_thread.join();
+			// Isolate the pointer completely
+			std::thread local_thread = std::move(worker_thread);
+
+			if(local_thread.joinable())
+			{
+				local_thread.join();
+			}
 		}
 	}
 }
@@ -405,14 +416,35 @@ std::string Machine::GDBStub::unformat_packet(const std::string& buffer)
 
 void Machine::GDBStub::execution_loop()
 {
-	while(is_executing)
-	{
-		listen(server_fd, 5);
+	// Set up socket listening queue
+	listen(server_fd, 5);
 
+	while(is_executing.load(std::memory_order_acquire))
+	{
+		fd_set read_fds;
+		FD_ZERO(&read_fds);
+		FD_SET(server_fd, &read_fds);
+
+		struct timeval timeout;
+		timeout.tv_sec	= 0;
+		timeout.tv_usec = 50000; // 50 milliseconds timeout frame
+
+		int activity = select(server_fd + 1, &read_fds, nullptr, nullptr, &timeout);
+
+		if(activity < 0)
+		{
+			break; // Error occurred on the socket layout
+		}
+
+		if(activity == 0)
+		{
+			continue;
+		}
+
+		// A client is genuinely waiting! accept() will now return instantly without blocking.
 		client_fd = accept(server_fd, nullptr, nullptr);
 
-		// if machine stopped before someone ever connected
-		if(!is_executing)
+		if(!is_executing.load(std::memory_order_acquire))
 		{
 			if(client_fd)
 			{
@@ -424,44 +456,51 @@ void Machine::GDBStub::execution_loop()
 
 		int flag = 1;
 		setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
-		std::cout << "[GDB] Got connection" << std::endl;
+		std::cout << "[GDB] Connected to debugger client." << std::endl;
 
-		char buffer[4096];
-		while(is_executing)
+		char ch;
+		std::string packet_accumulator = "";
+		bool raw_packet_mode		   = false;
+
+		// Client transaction loop
+		while(is_executing.load(std::memory_order_acquire))
 		{
-			std::memset(&buffer, 0, sizeof(buffer));
-			ssize_t received = recv(client_fd, buffer, sizeof(buffer), 0);
+			ssize_t received = recv(client_fd, &ch, 1, 0);
 			if(received <= 0)
 			{
-				break;
+				break; // Client disconnected
 			}
 
-			if(buffer[0] == '$')
-			{
-				send_raw("+", 0);
-				parse_packet(buffer);
-			}
-			// Ctrl+C handle
-			else if(buffer[0] == 3)
+			if(!raw_packet_mode && ch == 3)
 			{
 				send_raw("+", 0);
 				received_sigint.store(true, std::memory_order_release);
 				machine_ctx->state.store(MachineState::Halted, std::memory_order_release);
+				send_packet("S02");
+				continue;
 			}
-			// Ack check
-			else if(buffer[0] == '-' || buffer[0] == '+')
+
+			if(ch == '$')
 			{
-				if(buffer[1] == '$')
+				raw_packet_mode	   = true;
+				packet_accumulator = "$";
+				continue;
+			}
+
+			if(raw_packet_mode)
+			{
+				packet_accumulator += ch;
+				size_t hash_pos = packet_accumulator.find('#');
+				if(hash_pos != std::string::npos && packet_accumulator.size() == hash_pos + 3)
 				{
-					std::string str(buffer);
-					str.erase(0, 1);
 					send_raw("+", 0);
-					parse_packet(str);
+					parse_packet(packet_accumulator);
+					packet_accumulator = "";
+					raw_packet_mode	   = false;
 				}
 			}
 		}
 
-		// close client FD before next connection
 		if(client_fd)
 		{
 			close(client_fd);
@@ -537,7 +576,7 @@ void Machine::GDBStub::parse_packet(const std::string& buffer)
 	{
 		is_executing = false;
 		std::cout << "[GDB] Killed by GDB stub" << std::endl;
-		machine_ctx->state.store(MachineState::Off, std::memory_order_release);
+		machine_ctx->stop();
 		return;
 	}
 

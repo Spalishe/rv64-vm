@@ -135,15 +135,18 @@ class Machine
 	{
 	  public:
 		GDBStub(Machine* parent) : machine_ctx(parent) {}
-		~GDBStub() { stop(); }
+		~GDBStub()
+		{
+			if(worker_thread.joinable())
+			{
+				worker_thread.detach();
+			}
+		}
 
 		void start(uint16_t port);
 		void stop();
 
 		uint32_t send_packet(std::string buffer, uint32_t flags = 0);
-		std::atomic<bool> is_executing{ true };
-		std::atomic<bool> received_sigint{ false };
-		std::vector<uint64_t> breakpoints;
 
 	  private:
 		void execution_loop();
@@ -161,6 +164,12 @@ class Machine
 		uint32_t send_raw(const std::string& buffer, uint32_t flags);
 		std::string unformat_packet(const std::string& buffer);
 		void parse_packet(const std::string& buffer);
+
+		std::atomic<bool> is_executing{ true };
+		std::atomic<bool> received_sigint{ false };
+		std::vector<uint64_t> breakpoints;
+
+		friend class Machine;
 	};
 	GDBStub gdb_server{ this };
 #endif

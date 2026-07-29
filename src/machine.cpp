@@ -433,6 +433,9 @@ void Machine::wait()
 void Machine::stop()
 {
 	state.store(MachineState::Off, std::memory_order_release);
+#ifdef USE_GDBSTUB
+	gdb_server.stop();
+#endif
 	if(!work_thread_running.exchange(false, std::memory_order_acq_rel))
 	{
 		return;
@@ -456,9 +459,6 @@ void Machine::stop()
 		}
 	}
 	work_thread_running = false;
-#ifdef USE_GDBSTUB
-	gdb_server.stop();
-#endif
 }
 
 void Machine::reset()
