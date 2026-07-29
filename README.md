@@ -1,4 +1,4 @@
-# rv64-em
+# rv64-vm
 A software emulator for the RISC-V instruction set architecture (ISA) written in C++. This project aims to provide a functional emulator, capable of running XV6, OpenSBI, U-Boot, and so on.
 The emulator supports RV64GC ISA, privileged ISA and peripheral devices. See the ["Features List" section](https://github.com/Spalishe/rv64-vm#features-list) section for the details of features.
 
@@ -55,8 +55,8 @@ The emulator supports the following features:
 
 ## Build
 ```bash
-git clone https://github.com/Spalishe/rv64-em
-cd rv64-em
+git clone https://github.com/Spalishe/rv64-vm
+cd rv64-vm
 make
 ```
 Output program will be located in corresponding target and architecture folder(f.e. build.linux.x86_64/)
@@ -64,14 +64,14 @@ Output program will be located in corresponding target and architecture folder(f
 ### Library
 You can also compile emulator as lib:
 ```bash
-git clone https://github.com/Spalishe/rv64-em
-cd rv64-em
+git clone https://github.com/Spalishe/rv64-vm
+cd rv64-vm
 make lib
 ```
 And static lib as well:
 ```bash
-git clone https://github.com/Spalishe/rv64-em
-cd rv64-em
+git clone https://github.com/Spalishe/rv64-vm
+cd rv64-vm
 make slib
 ```
 
@@ -91,4 +91,4 @@ sudo apt install make gcc git
 ```
 
 ## License
-This project is licensed under the Apache 2.0 License – see the [LICENSE](https://github.com/Spalishe/rv64-em/blob/main/LICENSE)
+This project is licensed under the Apache 2.0 License – see the [LICENSE](https://github.com/Spalishe/rv64-vm/blob/main/LICENSE)
