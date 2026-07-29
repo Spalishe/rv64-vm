@@ -21,14 +21,14 @@ Copyright 2026 Spalishe
 #include "../../../include/machine.hpp"
 
 I2C::I2C(uint64_t start, Machine& cpu, fdt_node* fdt)
-	: Device(start, 0x20, fdt, cpu.mmap),
-	  plic(cpu.mmio->get<PLIC>().get()), irq_num(plic->acquire_irq()),
+	: Device(start, 0x20, fdt, cpu.get_mmap()),
+	  plic(cpu.get_mmio()->get<PLIC>().get()), irq_num(plic->acquire_irq()),
 	  cpu(cpu)
 {
 	sr.raw = 0x0;
 	cr.raw = 0x0;
 
-	cpu.mmap->add_region(start, size);
+	cpu.get_mmap()->add_region(start, size);
 	if(fdt != NULL)
 	{
 		struct fdt_node* i2c_fdt = fdt_node_create_reg("i2c", start);
@@ -54,7 +54,7 @@ I2C::I2C(uint64_t start, Machine& cpu, fdt_node* fdt)
 
 std::shared_ptr<I2C> I2C::init_auto(Machine& cpu)
 {
-	return std::make_shared<I2C>(0x10030000, cpu, cpu.fdt);
+	return std::make_shared<I2C>(0x10030000, cpu, cpu.get_fdt());
 }
 
 uint64_t I2C::read(uint64_t addr, MemorySize size)

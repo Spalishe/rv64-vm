@@ -32,52 +32,69 @@ enum class MachineState : uint8_t
 	Resetting = 3,
 };
 
-struct Machine
+struct MachineConfig
 {
-	Machine(uint64_t mem_size, uint8_t hart_count);
-	~Machine()
-	{
-		state = MachineState::Off;
-		destroy_harts();
-		destroy_devices();
-		destroy_mmap();
-		if(work_thread_w && !work_thread_joined) work_thread.join();
-		if(fdt)
-			fdt_node_free(fdt);
-		delete idec;
-	}
 	uint64_t memory_size;
-	std::string append;
-	std::string dtb_dump_path;
-	// File, that will be used to automatically load as Block device.
-	FILE* image_file  = nullptr;
-	// File, that will be automatically loaded as Firmware on 0x80000000
-	FILE* bios_file	  = nullptr;
-	// File, that will be automatically loaded as Kernel on 0x80200000
-	FILE* kernel_file = nullptr;
-	// File, that will be automatically loaded as FDT
-	FILE* dtb_file	  = nullptr;
-	// Stream, where all output data from UART will come
-	FILE* uart_out	  = stdout;
-	fdt_node* fdt;
-	MemoryMap* mmap;
-	MMIO* mmio;
-	InstructionDecoder* idec;
+	uint8_t hart_count;
 	uint64_t entry_pc = 0x80000000;
 	uint64_t timebase = 5'000'000ULL;
-	uint8_t harts_count;
-	std::vector<Hart> harts;
-	std::thread work_thread;
-	bool work_thread_w = false;
-	bool work_thread_joined; // manual variable to indicate that thread was joined. You probably want to set it to true if you do work_thread.join();
+	std::string append;
+	std::string dtb_dump_path;
+	bool init_fdt = true;
+};
 
-	std::atomic<MachineState> state = MachineState::Off;
+class Machine
+{
+  public:
+	Machine(const MachineConfig& cfg);
+	~Machine();
+
+	// Disable copy/move mechanics to keep the internal thread safe
+	Machine(const Machine&)			   = delete;
+	Machine& operator=(const Machine&) = delete;
+
+	void start_init()
+	{
+		if(config.init_fdt) init_fdt();
+		init_auto_devices(); // Inits all SoC
+	}
+	void end_init()
+	{
+		write_fdt();
+	}
+
+	void run();
+	void stop();
+	void reset();
+	void wait(); // joins machine thread
+
+	MMIO* get_mmio() { return mmio; }
+	fdt_node* get_fdt() { return fdt; }
+	uint64_t get_timebase() const { return config.timebase; }
+	MemoryMap* get_mmap() { return mmap; }
+
+	MachineState get_state() const { return state.load(); }
+	uint64_t get_memory_size() const { return config.memory_size; }
+	uint8_t get_hart_count() const { return config.hart_count; }
+	Hart& get_hart(size_t index) { return harts.at(index); }
+
+	bool load_image(const std::string& path);
+	bool load_bios(const std::string& path);
+	bool load_kernel(const std::string& path);
+	bool load_dtb(const std::string& path);
+	FILE* get_image();
+	void set_uart_output(FILE* stream);
+	FILE* get_uart_output();
 
 #ifdef USE_GDBSTUB
-	bool gdb			 = false;
-	bool gdb_single_step = false;
+	void enable_gdb(bool enable, uint16_t port);
+	void set_gdb_single_step(bool single_step);
+
+	void listen_gdb(uint16_t port);
+	void handle_gdb_breakpoints();
 #endif
 
+  private:
 	void init_mmap();
 	void init_fdt();
 	void write_fdt();
@@ -87,11 +104,64 @@ struct Machine
 	void destroy_devices();
 	void destroy_mmap();
 	void reset_memory();
-	void run();
-	void reset();
 	void work();
-	void stop();
 
-  private:
-	uint16_t dev_tick_time;
+	MachineConfig config;
+	std::atomic<MachineState> state{ MachineState::Off };
+
+	MemoryMap* mmap			 = nullptr;
+	MMIO* mmio				 = nullptr;
+	InstructionDecoder* idec = nullptr;
+	fdt_node* fdt			 = nullptr;
+
+	std::vector<Hart> harts;
+	uint16_t dev_tick_time = 0;
+
+	FILE* image_file  = nullptr;
+	FILE* bios_file	  = nullptr;
+	FILE* kernel_file = nullptr;
+	FILE* dtb_file	  = nullptr;
+	FILE* uart_out	  = stdout;
+
+	std::thread work_thread;
+	std::atomic<bool> work_thread_running = false;
+
+#ifdef USE_GDBSTUB
+	bool gdb			 = false;
+	bool gdb_single_step = false;
+	uint16_t gdb_port	 = 1512;
+
+	class GDBStub
+	{
+	  public:
+		GDBStub(Machine* parent) : machine_ctx(parent) {}
+		~GDBStub() { stop(); }
+
+		void start(uint16_t port);
+		void stop();
+
+		uint32_t send_packet(std::string buffer, uint32_t flags = 0);
+		std::atomic<bool> is_executing{ true };
+		std::atomic<bool> received_sigint{ false };
+		std::vector<uint64_t> breakpoints;
+
+	  private:
+		void execution_loop();
+
+		Machine* machine_ctx;
+		Hart* active_hart = nullptr;
+
+		uint32_t server_fd = 0;
+		uint32_t client_fd = 0;
+
+		std::thread worker_thread;
+		std::string xml_target_description;
+
+		std::string create_xml();
+		uint32_t send_raw(const std::string& buffer, uint32_t flags);
+		std::string unformat_packet(const std::string& buffer);
+		void parse_packet(const std::string& buffer);
+	};
+	GDBStub gdb_server{ this };
+#endif
 };

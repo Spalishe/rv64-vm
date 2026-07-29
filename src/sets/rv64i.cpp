@@ -1842,10 +1842,10 @@ void InstructionDecoder::init_rv64i()
 	inst_lw->jit_func	 = &execjit_LW;
 	inst_lwu->jit_func	 = &execjit_LWU;
 	inst_ld->jit_func	 = &execjit_LD;
-	inst_sb->jit_func	 = &execjit_SB;
+	/*inst_sb->jit_func	 = &execjit_SB;
 	inst_sh->jit_func	 = &execjit_SH;
 	inst_sw->jit_func	 = &execjit_SW;
-	inst_sd->jit_func	 = &execjit_SD;
+	inst_sd->jit_func	 = &execjit_SD;*/
 	// inst_beq->jit_func	= &execjit_BEQ;
 	// inst_bne->jit_func	= &execjit_BNE;
 	// inst_blt->jit_func	= &execjit_BLT;

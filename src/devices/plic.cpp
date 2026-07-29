@@ -26,13 +26,13 @@ Copyright 2026 Spalishe
 #endif
 
 PLIC::PLIC(uint64_t start, uint64_t size, Machine& cpu, uint32_t max_sources, fdt_node* fdt)
-	: Device(start, size, fdt, cpu.mmap),
-	  num_harts(cpu.harts_count),
-	  num_contexts(cpu.harts_count * 2),
+	: Device(start, size, fdt, cpu.get_mmap()),
+	  num_harts(cpu.get_hart_count()),
+	  num_contexts(cpu.get_hart_count() * 2),
 	  max_sources(max_sources),
 	  cpu(cpu)
 {
-	cpu.mmap->add_region(start, size);
+	cpu.get_mmap()->add_region(start, size);
 
 	pending_words_count = (max_sources + 31) / 32;
 	enable_words_count	= pending_words_count;
@@ -56,7 +56,7 @@ PLIC::PLIC(uint64_t start, uint64_t size, Machine& cpu, uint32_t max_sources, fd
 		struct fdt_node* cpus = fdt_node_find(fdt, "cpus");
 		std::vector<uint32_t> irq_ext;
 
-		for(uint32_t i = 0; i < cpu.harts_count; ++i)
+		for(uint32_t i = 0; i < cpu.get_hart_count(); ++i)
 		{
 			struct fdt_node* cpu_node = fdt_node_find_reg(cpus, "cpu", i);
 			if(!cpu_node) continue;
@@ -100,7 +100,7 @@ PLIC::PLIC(uint64_t start, uint64_t size, Machine& cpu, uint32_t max_sources, fd
 
 std::shared_ptr<PLIC> PLIC::init_auto(Machine& cpu)
 {
-	return std::make_shared<PLIC>(0x0C000000, 0x400000, cpu, 64, cpu.fdt);
+	return std::make_shared<PLIC>(0x0C000000, 0x400000, cpu, 64, cpu.get_fdt());
 }
 
 int PLIC::acquire_irq()
@@ -329,7 +329,7 @@ void PLIC::signal_cpu_interrupt(int hart_id, bool supervisor_mode, bool level)
 	if(hart_id < 0 || hart_id >= 64)
 		return;
 
-	Hart& hart = cpu.harts[hart_id];
+	Hart& hart = cpu.get_hart(hart_id);
 
 	const uint64_t MEIP_BIT = 1ULL << 11;
 	const uint64_t SEIP_BIT = 1ULL << 9;

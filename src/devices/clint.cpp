@@ -23,20 +23,20 @@ Copyright 2026 Spalishe
 #include <thread>
 
 CLINT::CLINT(uint64_t start, uint64_t size, Machine& cpu, fdt_node* fdt)
-	: Device(start, size, fdt, cpu.mmap),
-	  msip(cpu.harts_count, 0),
-	  mtimecmp(cpu.harts_count),
+	: Device(start, size, fdt, cpu.get_mmap()),
+	  msip(cpu.get_hart_count(), 0),
+	  mtimecmp(cpu.get_hart_count()),
 	  cpu(cpu)
 {
-	timer_init(&mtime, cpu.timebase);
-	for(int i = 0; i < cpu.harts_count; i++)
+	timer_init(&mtime, cpu.get_timebase());
+	for(int i = 0; i < cpu.get_hart_count(); i++)
 	{
 		timecmp_init(&mtimecmp[i], &mtime);
 		timecmp_set(&mtimecmp[i], UINT64_MAX);
-		timecmp_init(&cpu.harts[i].stimecmp, &mtime);
-		timecmp_set(&cpu.harts[i].stimecmp, UINT64_MAX);
+		timecmp_init(&cpu.get_hart(i).stimecmp, &mtime);
+		timecmp_set(&cpu.get_hart(i).stimecmp, UINT64_MAX);
 	}
-	cpu.mmap->add_region(start, size);
+	cpu.get_mmap()->add_region(start, size);
 	thr_working.store(true);
 	thr	   = std::thread(&CLINT::thread_func, this);
 	countr = 0;
@@ -44,7 +44,7 @@ CLINT::CLINT(uint64_t start, uint64_t size, Machine& cpu, fdt_node* fdt)
 	{
 		struct fdt_node* cpus		  = fdt_node_find(fdt, "cpus");
 		std::vector<uint32_t> irq_ext = {};
-		for(int i = 0; i < cpu.harts_count; i++)
+		for(int i = 0; i < cpu.get_hart_count(); i++)
 		{
 			struct fdt_node* cpu	 = fdt_node_find_reg(cpus, "cpu", i);
 			struct fdt_node* cpu_irq = fdt_node_find(cpu, "interrupt-controller");
@@ -79,7 +79,7 @@ CLINT::CLINT(uint64_t start, uint64_t size, Machine& cpu, fdt_node* fdt)
 
 std::shared_ptr<CLINT> CLINT::init_auto(Machine& cpu)
 {
-	return std::make_shared<CLINT>(0x02000000, 0x10000, cpu, cpu.fdt);
+	return std::make_shared<CLINT>(0x02000000, 0x10000, cpu, cpu.get_fdt());
 }
 
 void CLINT::tick()
@@ -167,8 +167,9 @@ void CLINT::write_mtimer(uint64_t offset, uint64_t value)
 void CLINT::update_mip()
 {
 	uint64_t now = timer_get(&mtime);
-	for(Hart& hart : cpu.harts)
+	for(int i = 0; i < cpu.get_hart_count(); i++)
 	{
+		Hart& hart			= cpu.get_hart(i);
 		hart.csrs[CSR_TIME] = now;
 		uint32_t hart_id	= hart.id;
 

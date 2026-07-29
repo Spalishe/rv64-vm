@@ -19,8 +19,8 @@ Copyright 2026 Spalishe
 #include "../../../include/devices/plic.hpp"
 #include "../../../include/machine.hpp"
 
-HIDOverI2C::HIDOverI2C(Machine& cpu, fdt_node* fdt, std::vector<uint8_t> report_desc, uint16_t input_report_size) : I2CSlave(cpu.mmio->get<PLIC>().get()->acquire_irq(), HID_I2C_BUFFER_SIZE),
-																													plic(cpu.mmio->get<PLIC>().get()), irq_num(plic->last_irq()),
+HIDOverI2C::HIDOverI2C(Machine& cpu, fdt_node* fdt, std::vector<uint8_t> report_desc, uint16_t input_report_size) : I2CSlave(cpu.get_mmio()->get<PLIC>().get()->acquire_irq(), HID_I2C_BUFFER_SIZE),
+																													plic(cpu.get_mmio()->get<PLIC>().get()), irq_num(plic->last_irq()),
 																													report_desc(report_desc), input_report_size(input_report_size),
 																													cpu(cpu)
 {

@@ -30,7 +30,6 @@ Copyright 2026 Spalishe
 #include "../include/devices/hid/hid_keyboard.hpp"
 #include "../include/devices/i2c/i2c-core.hpp"
 #include "../include/devices/uart.hpp"
-#include "../include/gdbstub.hpp"
 #include "../include/machine.hpp"
 #include "fcntl.h"
 #include "termios.h"
@@ -113,6 +112,55 @@ void cleanup_terminal()
 	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
 }
 
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <random>
+
+// Helper function to test if a specific port can be bound
+bool try_bind_port(int sock, int port)
+{
+	sockaddr_in addr;
+	addr.sin_family		 = AF_INET;
+	addr.sin_addr.s_addr = INADDR_ANY;
+	addr.sin_port		 = htons(port);
+
+	// bind() returns 0 on success
+	return (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+}
+
+int get_random_port()
+{
+	// create the socket
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if(sock < 0) return -1;
+
+	// try the primary choice (1512) first
+	if(try_bind_port(sock, 1512))
+	{
+		close(sock); // Close here if you just wanted the number
+		return 1512;
+	}
+
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_int_distribution<> distr(1513, 65535);
+
+	// Limit attempts to avoid an infinite loop if the network stack is broken
+	for(int attempts = 0; attempts < 100; ++attempts)
+	{
+		int random_port = distr(gen);
+
+		if(try_bind_port(sock, random_port))
+		{
+			close(sock);
+			return random_port;
+		}
+	}
+
+	close(sock);
+	return -1; // Failed to find any available port
+}
+
 int main(int argc, char* argv[])
 {
 	arp::Argparser parser(argc, argv);
@@ -191,32 +239,32 @@ int main(int argc, char* argv[])
 	newt.c_lflag &= ~(ICANON | ISIG | ECHO);
 	tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
-	Machine machine = Machine(memsize, harts);
-	machine.init_mmap();
+	MachineConfig cfg = MachineConfig();
+	cfg.append		  = append_var->val();
+	cfg.dtb_dump_path = dumpdtb_var->val();
+	cfg.hart_count	  = harts;
+	cfg.memory_size	  = memsize;
 
-	// machine.mmap->load_file(0x80000000, bios_var->val());
-	machine.bios_file = fopen(bios_var->val().c_str(), "rb");
+	Machine machine = Machine(cfg);
+
+	machine.load_bios(bios_var->val().c_str());
 
 	if(kernel_var->defined())
-	{
-		// machine.mmap->load_file(0x80200000, kernel_var->val());
-		machine.kernel_file = fopen(kernel_var->val().c_str(), "rb");
-	}
+		machine.load_kernel(kernel_var->val().c_str());
 	if(image_var->defined())
-	{
-		machine.image_file = fopen(image_var->val().c_str(), "r+b");
-	}
+		machine.load_image(image_var->val().c_str());
 
 	if(dtb_var->defined())
-	{
-		machine.dtb_file = fopen(dtb_var->val().c_str(), "rb");
-	}
+		machine.load_dtb(dtb_var->val().c_str());
+
 	else
 	{
-		if(dumpdtb_var->defined()) machine.dtb_dump_path = dumpdtb_var->val();
-		if(append_var->defined()) machine.append = append_var->val();
-		machine.init_fdt();
+		if(dumpdtb_var->defined()) cfg.dtb_dump_path = dumpdtb_var->val();
+		if(append_var->defined()) cfg.append = append_var->val();
 	}
+	machine.start_init();
+
+	// Place for non SoC
 #ifdef USE_FRAMEBUFFER
 	uint64_t fb_w = 0;
 	uint64_t fb_h = 0;
@@ -256,15 +304,11 @@ int main(int argc, char* argv[])
 	std::thread gdbstub;
 	if(gdb_var->defined())
 	{
-		machine.gdb = true;
-		gdbstub		= std::thread(GDB_Create, &machine.harts[0], &machine);
+		machine.enable_gdb(true, get_random_port());
 	}
 #endif
 
-	machine.init_auto_devices();
-	uart = machine.mmio->get<UART>();
-
-	auto i2c = machine.mmio->get<I2C>();
+	uart = machine.get_mmio()->get<UART>();
 
 #ifdef USE_FRAMEBUFFER
 	AppWindow window;
@@ -272,7 +316,8 @@ int main(int argc, char* argv[])
 	VkSurfaceKHR surface;
 	if(fb_w != 0 && fb_h != 0)
 	{
-		auto kb		  = i2c->create_device<HID_Keyboard>(machine, machine.fdt);
+		auto i2c	  = machine.get_mmio()->get<I2C>();
+		auto kb		  = i2c->create_device<HID_Keyboard>(machine, machine.get_fdt());
 		window.kb	  = std::dynamic_pointer_cast<HID_Keyboard>(kb);
 		window.width  = fb_w;
 		window.height = fb_h;
@@ -288,27 +333,20 @@ int main(int argc, char* argv[])
 		}
 		StartEventLoop(window);
 
-		machine.mmio->create_device<Framebuffer>(0x18000000, machine, machine.fdt, fb_w, fb_h, window);
+		machine.get_mmio()->create_device<Framebuffer>(0x18000000, machine, machine.get_fdt(), fb_w, fb_h, window);
 	}
 #endif
 
-	machine.write_fdt();
+	machine.end_init();
+
 	machine.run();
-	if(machine.work_thread_w)
-	{
-		machine.work_thread_joined = true;
-		machine.work_thread.join(); // joining it so our program will not exit right after creating machine
-	}
+	machine.wait();
 
 	termios_running.store(false, std::memory_order_seq_cst);
-	term.join();
-#ifdef USE_GDBSTUB
-	if(gdb_var->defined())
-	{
-		GDB_Stop();
-		gdbstub.join();
-	}
-#endif
+	if(term.joinable())
+		term.join();
+
+	// gdb stub will deconstruct automatically
 
 #ifdef USE_FRAMEBUFFER
 	if(fb_w != 0 && fb_h != 0)

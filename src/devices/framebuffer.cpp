@@ -21,7 +21,7 @@ Copyright 2026 Spalishe
 #include "../../include/machine.hpp"
 
 Framebuffer::Framebuffer(uint64_t start, Machine& cpu, fdt_node* fdt, size_t width, size_t height, AppWindow& window)
-	: Device(start, width * height * 4 + 4, fdt, cpu.mmap),
+	: Device(start, width * height * 4 + 4, fdt, cpu.get_mmap()),
 	  window(window),
 	  cpu(cpu)
 {
@@ -29,7 +29,7 @@ Framebuffer::Framebuffer(uint64_t start, Machine& cpu, fdt_node* fdt, size_t wid
 	buffer			= (uint8_t*)malloc(arr_size);
 	memset(buffer, 0, arr_size);
 
-	cpu.mmap->add_region(start, size);
+	cpu.get_mmap()->add_region(start, size);
 	if(fdt != NULL)
 	{
 		struct fdt_node* fb_fdt = fdt_node_create_reg("framebuffer", start);

@@ -22,7 +22,7 @@ Copyright 2026 Spalishe
 #include <queue>
 
 UART::UART(uint64_t start, uint64_t size, Machine& cpu, fdt_node* fdt, FILE* out)
-	: Device(start, size, fdt, cpu.mmap), plic(cpu.mmio->get<PLIC>().get()), irq_num(plic->acquire_irq()),
+	: Device(start, size, fdt, cpu.get_mmap()), plic(cpu.get_mmio()->get<PLIC>().get()), irq_num(plic->acquire_irq()),
 	  dlab(false),
 	  dll(0),
 	  dlm(0),
@@ -42,7 +42,7 @@ UART::UART(uint64_t start, uint64_t size, Machine& cpu, fdt_node* fdt, FILE* out
 	  overrun_error(0),
 	  out_stream(out)
 {
-	cpu.mmap->add_region(start, size);
+	cpu.get_mmap()->add_region(start, size);
 
 	struct fdt_node* uart_fdt = fdt_node_create_reg("serial", start);
 	fdt_node_add_prop_reg(uart_fdt, "reg", start, 0x100);
@@ -65,7 +65,7 @@ UART::UART(uint64_t start, uint64_t size, Machine& cpu, fdt_node* fdt, FILE* out
 
 std::shared_ptr<UART> UART::init_auto(Machine& cpu, FILE* out)
 {
-	return std::make_shared<UART>(0x10000000, 0x100, cpu, cpu.fdt, out);
+	return std::make_shared<UART>(0x10000000, 0x100, cpu, cpu.get_fdt(), out);
 }
 
 void UART::trigger_irq()

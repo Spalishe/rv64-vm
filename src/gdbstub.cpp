@@ -15,12 +15,11 @@ Copyright 2026 Spalishe
 
 */
 
+#include <unistd.h>
 #ifdef USE_GDBSTUB
 
-#include "../include/gdbstub.hpp"
-#include "../include/machine.hpp"
-// #include "../include/devices/plic.hpp"
 #include "../include/defines/csr.hpp"
+#include "../include/machine.hpp"
 #include <algorithm>
 #include <atomic>
 #include <bit>
@@ -34,36 +33,19 @@ Copyright 2026 Spalishe
 #include <thread>
 #include <vector>
 
-using namespace std;
-#pragma error disable
-
-uint32_t gdb_socket;
-uint32_t gdb_recv;
-sockaddr_in gdb_address;
-bool gdb_isR;
-Hart* gdb_hart;
-Machine* gdb_cpu;
-atomic<bool> gdb_exec	= true;
-atomic<bool> gdb_sigint = false;
-std::vector<uint64_t> gdb_bp;
-
-thread gdb_execth;
-
-string gdb_xml;
-
-static string to_little_endian_hex(uint64_t value)
+static std::string to_little_endian_hex(uint64_t value)
 {
-	ostringstream oss;
+	std::ostringstream oss;
 	for(int i = 0; i < 8; i++)
 	{
 		uint8_t byte = (value >> (i * 8)) & 0xFF;
-		oss << format("{:02x}", byte);
+		oss << std::format("{:02x}", byte);
 	}
 	return oss.str();
 }
 static std::string swapHexEndian(std::string value, int size_bytes)
 {
-	ostringstream oss;
+	std::ostringstream oss;
 	for(int i = size_bytes; i >= 0; i--)
 	{
 		oss << value.substr(i * 2, 2);
@@ -71,79 +53,80 @@ static std::string swapHexEndian(std::string value, int size_bytes)
 	return oss.str();
 }
 
-vector<tuple<string, uint32_t, char, optional<vector<tuple<string, uint8_t, uint8_t>>>>>
+// The giant lookup table is localized to the cpp implementation space
+static const std::vector<std::tuple<std::string, uint32_t, char, std::optional<std::vector<std::tuple<std::string, uint8_t, uint8_t>>>>>
 	xml_data{
-		{ "zero", 0, 'g', nullopt },
-		{ "ra", 1, 'g', nullopt },
-		{ "sp", 2, 'g', nullopt },
-		{ "gp", 3, 'g', nullopt },
-		{ "tp", 4, 'g', nullopt },
-		{ "t0", 5, 'g', nullopt },
-		{ "t1", 6, 'g', nullopt },
-		{ "t2", 7, 'g', nullopt },
-		{ "fp", 8, 'g', nullopt },
-		{ "s1", 9, 'g', nullopt },
-		{ "a0", 10, 'g', nullopt },
-		{ "a1", 11, 'g', nullopt },
-		{ "a2", 12, 'g', nullopt },
-		{ "a3", 13, 'g', nullopt },
-		{ "a4", 14, 'g', nullopt },
-		{ "a5", 15, 'g', nullopt },
-		{ "a6", 16, 'g', nullopt },
-		{ "a7", 17, 'g', nullopt },
-		{ "s2", 18, 'g', nullopt },
-		{ "s3", 19, 'g', nullopt },
-		{ "s4", 20, 'g', nullopt },
-		{ "s5", 21, 'g', nullopt },
-		{ "s6", 22, 'g', nullopt },
-		{ "s7", 23, 'g', nullopt },
-		{ "s8", 24, 'g', nullopt },
-		{ "s9", 25, 'g', nullopt },
-		{ "s10", 26, 'g', nullopt },
-		{ "s11", 27, 'g', nullopt },
-		{ "t3", 28, 'g', nullopt },
-		{ "t4", 29, 'g', nullopt },
-		{ "t5", 30, 'g', nullopt },
-		{ "t6", 31, 'g', nullopt },
-		{ "pc", 32, 'g', nullopt },
+		{ "zero", 0, 'g', std::nullopt },
+		{ "ra", 1, 'g', std::nullopt },
+		{ "sp", 2, 'g', std::nullopt },
+		{ "gp", 3, 'g', std::nullopt },
+		{ "tp", 4, 'g', std::nullopt },
+		{ "t0", 5, 'g', std::nullopt },
+		{ "t1", 6, 'g', std::nullopt },
+		{ "t2", 7, 'g', std::nullopt },
+		{ "fp", 8, 'g', std::nullopt },
+		{ "s1", 9, 'g', std::nullopt },
+		{ "a0", 10, 'g', std::nullopt },
+		{ "a1", 11, 'g', std::nullopt },
+		{ "a2", 12, 'g', std::nullopt },
+		{ "a3", 13, 'g', std::nullopt },
+		{ "a4", 14, 'g', std::nullopt },
+		{ "a5", 15, 'g', std::nullopt },
+		{ "a6", 16, 'g', std::nullopt },
+		{ "a7", 17, 'g', std::nullopt },
+		{ "s2", 18, 'g', std::nullopt },
+		{ "s3", 19, 'g', std::nullopt },
+		{ "s4", 20, 'g', std::nullopt },
+		{ "s5", 21, 'g', std::nullopt },
+		{ "s6", 22, 'g', std::nullopt },
+		{ "s7", 23, 'g', std::nullopt },
+		{ "s8", 24, 'g', std::nullopt },
+		{ "s9", 25, 'g', std::nullopt },
+		{ "s10", 26, 'g', std::nullopt },
+		{ "s11", 27, 'g', std::nullopt },
+		{ "t3", 28, 'g', std::nullopt },
+		{ "t4", 29, 'g', std::nullopt },
+		{ "t5", 30, 'g', std::nullopt },
+		{ "t6", 31, 'g', std::nullopt },
+		{ "pc", 32, 'g', std::nullopt },
 
 #ifdef USE_FPU
-		{ "f0", 33, 'f', nullopt },
-		{ "f1", 34, 'f', nullopt },
-		{ "f2", 35, 'f', nullopt },
-		{ "f3", 36, 'f', nullopt },
-		{ "f4", 37, 'f', nullopt },
-		{ "f5", 38, 'f', nullopt },
-		{ "f6", 39, 'f', nullopt },
-		{ "f7", 40, 'f', nullopt },
-		{ "f8", 41, 'f', nullopt },
-		{ "f9", 42, 'f', nullopt },
-		{ "f10", 43, 'f', nullopt },
-		{ "f11", 44, 'f', nullopt },
-		{ "f12", 45, 'f', nullopt },
-		{ "f13", 46, 'f', nullopt },
-		{ "f14", 47, 'f', nullopt },
-		{ "f15", 48, 'f', nullopt },
-		{ "f16", 49, 'f', nullopt },
-		{ "f17", 50, 'f', nullopt },
-		{ "f18", 51, 'f', nullopt },
-		{ "f19", 52, 'f', nullopt },
-		{ "f20", 53, 'f', nullopt },
-		{ "f21", 54, 'f', nullopt },
-		{ "f22", 55, 'f', nullopt },
-		{ "f23", 56, 'f', nullopt },
-		{ "f24", 57, 'f', nullopt },
-		{ "f25", 58, 'f', nullopt },
-		{ "f26", 59, 'f', nullopt },
-		{ "f27", 60, 'f', nullopt },
-		{ "f28", 61, 'f', nullopt },
-		{ "f29", 62, 'f', nullopt },
-		{ "f30", 63, 'f', nullopt },
-		{ "f31", 64, 'f', nullopt },
+		{ "f0", 33, 'f', std::nullopt },
+		{ "f1", 34, 'f', std::nullopt },
+		{ "f2", 35, 'f', std::nullopt },
+		{ "f3", 36, 'f', std::nullopt },
+		{ "f4", 37, 'f', std::nullopt },
+		{ "f5", 38, 'f', std::nullopt },
+		{ "f6", 39, 'f', std::nullopt },
+		{ "f7", 40, 'f', std::nullopt },
+		{ "f8", 41, 'f', std::nullopt },
+		{ "f9", 42, 'f', std::nullopt },
+		{ "f10", 43, 'f', std::nullopt },
+		{ "f11", 44, 'f', std::nullopt },
+		{ "f12", 45, 'f', std::nullopt },
+		{ "f13", 46, 'f', std::nullopt },
+		{ "f14", 47, 'f', std::nullopt },
+		{ "f15", 48, 'f', std::nullopt },
+		{ "f16", 49, 'f', std::nullopt },
+		{ "f17", 50, 'f', std::nullopt },
+		{ "f18", 51, 'f', std::nullopt },
+		{ "f19", 52, 'f', std::nullopt },
+		{ "f20", 53, 'f', std::nullopt },
+		{ "f21", 54, 'f', std::nullopt },
+		{ "f22", 55, 'f', std::nullopt },
+		{ "f23", 56, 'f', std::nullopt },
+		{ "f24", 57, 'f', std::nullopt },
+		{ "f25", 58, 'f', std::nullopt },
+		{ "f26", 59, 'f', std::nullopt },
+		{ "f27", 60, 'f', std::nullopt },
+		{ "f28", 61, 'f', std::nullopt },
+		{ "f29", 62, 'f', std::nullopt },
+		{ "f30", 63, 'f', std::nullopt },
+		{ "f31", 64, 'f', std::nullopt },
 #endif
 
 		{ "mstatus", CSR_MSTATUS, 'c',
-		  vector<tuple<string, uint8_t, uint8_t>>{
+		  std::vector<std::tuple<std::string, uint8_t, uint8_t>>{
 			  { "SIE", 1, 1 },
 			  { "MIE", 3, 3 },
 			  { "SPIE", 5, 5 },
@@ -161,23 +144,23 @@ vector<tuple<string, uint32_t, char, optional<vector<tuple<string, uint8_t, uint
 			  { "TW", 21, 21 },
 			  { "TSR", 22, 22 },
 		  } },
-		{ "cycle", CSR_CYCLE, 'c', nullopt },
-		{ "time", CSR_TIME, 'c', nullopt },
-		{ "instret", CSR_INSTRET, 'c', nullopt },
-		{ "misa", CSR_MISA, 'c', nullopt },
-		{ "medeleg", CSR_MEDELEG, 'c', nullopt },
-		{ "mideleg", CSR_MIDELEG, 'c', nullopt },
-		{ "mie", CSR_MIE, 'c', nullopt },
-		{ "mip", CSR_MIP, 'c', nullopt },
-		{ "mtvec", CSR_MTVEC, 'c', nullopt },
-		{ "mcounteren", CSR_MCOUNTEREN, 'c', nullopt },
-		{ "mscratch", CSR_MSCRATCH, 'c', nullopt },
-		{ "mhartid", CSR_MHARTID, 'c', nullopt },
-		{ "mepc", CSR_MEPC, 'c', nullopt },
-		{ "mcause", CSR_MCAUSE, 'c', nullopt },
-		{ "mtval", CSR_MTVAL, 'c', nullopt },
+		{ "cycle", CSR_CYCLE, 'c', std::nullopt },
+		{ "time", CSR_TIME, 'c', std::nullopt },
+		{ "instret", CSR_INSTRET, 'c', std::nullopt },
+		{ "misa", CSR_MISA, 'c', std::nullopt },
+		{ "medeleg", CSR_MEDELEG, 'c', std::nullopt },
+		{ "mideleg", CSR_MIDELEG, 'c', std::nullopt },
+		{ "mie", CSR_MIE, 'c', std::nullopt },
+		{ "mip", CSR_MIP, 'c', std::nullopt },
+		{ "mtvec", CSR_MTVEC, 'c', std::nullopt },
+		{ "mcounteren", CSR_MCOUNTEREN, 'c', std::nullopt },
+		{ "mscratch", CSR_MSCRATCH, 'c', std::nullopt },
+		{ "mhartid", CSR_MHARTID, 'c', std::nullopt },
+		{ "mepc", CSR_MEPC, 'c', std::nullopt },
+		{ "mcause", CSR_MCAUSE, 'c', std::nullopt },
+		{ "mtval", CSR_MTVAL, 'c', std::nullopt },
 		{ "sstatus", CSR_SSTATUS, 'c',
-		  vector<tuple<string, uint8_t, uint8_t>>{
+		  std::vector<std::tuple<std::string, uint8_t, uint8_t>>{
 			  { "SIE", 1, 1 },
 			  { "SPIE", 5, 5 },
 			  { "UBE", 6, 6 },
@@ -186,17 +169,17 @@ vector<tuple<string, uint32_t, char, optional<vector<tuple<string, uint8_t, uint
 			  { "FS", 13, 14 },
 			  { "XS", 15, 16 },
 		  } },
-		{ "sedeleg", CSR_SEDELEG, 'c', nullopt },
-		{ "sideleg", CSR_SIDELEG, 'c', nullopt },
-		{ "sie", CSR_SIE, 'c', nullopt },
-		{ "sip", CSR_SIP, 'c', nullopt },
-		{ "stvec", CSR_STVEC, 'c', nullopt },
-		{ "scounteren", CSR_SCOUNTEREN, 'c', nullopt },
-		{ "sscratch", CSR_SSCRATCH, 'c', nullopt },
-		{ "sepc", CSR_SEPC, 'c', nullopt },
-		{ "scause", CSR_SCAUSE, 'c', nullopt },
-		{ "stval", CSR_STVAL, 'c', nullopt },
-		{ "stimecmp", CSR_STIMECMP, 'c', nullopt },
+		{ "sedeleg", CSR_SEDELEG, 'c', std::nullopt },
+		{ "sideleg", CSR_SIDELEG, 'c', std::nullopt },
+		{ "sie", CSR_SIE, 'c', std::nullopt },
+		{ "sip", CSR_SIP, 'c', std::nullopt },
+		{ "stvec", CSR_STVEC, 'c', std::nullopt },
+		{ "scounteren", CSR_SCOUNTEREN, 'c', std::nullopt },
+		{ "sscratch", CSR_SSCRATCH, 'c', std::nullopt },
+		{ "sepc", CSR_SEPC, 'c', std::nullopt },
+		{ "scause", CSR_SCAUSE, 'c', std::nullopt },
+		{ "stval", CSR_STVAL, 'c', std::nullopt },
+		{ "stimecmp", CSR_STIMECMP, 'c', std::nullopt },
 /*{ "satp", CSR_SATP, 'c',
   vector<tuple<string, uint8_t, uint8_t>>{
 	  { "MODE", SATP_MODE_LOW, SATP_MODE_HIGH },
@@ -206,7 +189,7 @@ vector<tuple<string, uint32_t, char, optional<vector<tuple<string, uint8_t, uint
 // mmu
 #ifdef USE_FPU
 		{ "fcsr", CSR_FCSR + 5000, 'c',
-		  vector<tuple<string, uint8_t, uint8_t>>{
+		  std::vector<std::tuple<std::string, uint8_t, uint8_t>>{
 			  { "FRM", 5, 7 },
 			  { "NX", 0, 0 },
 			  { "UF", 1, 1 },
@@ -215,598 +198,676 @@ vector<tuple<string, uint32_t, char, optional<vector<tuple<string, uint8_t, uint
 			  { "NV", 4, 4 },
 		  } },
 #endif
-		{ "priv", 65, 'v', nullopt },
+		{ "priv", 65, 'v', std::nullopt },
 };
 
-string GDB_CreateXML()
+std::string Machine::GDBStub::create_xml()
 {
 	std::ostringstream output;
-	output <<
-		R"(<?xml version="1.0"?>
+	output << R"(<?xml version="1.0"?>
     <!DOCTYPE target SYSTEM "gdb-target.dtd">
     <target version="1.0">
     <architecture>riscv:rv64</architecture>
     <feature name="org.gnu.gdb.riscv.cpu">)"
-		   << endl;
+		   << std::endl;
 
-	for(uint64_t i = 0; i < xml_data.size(); i++)
+	for(size_t i = 0; i < xml_data.size(); i++)
 	{
-		auto cur_reg = xml_data.at(i);
-		if(get<2>(cur_reg) == 'g')
+		const auto& cur_reg = xml_data.at(i);
+		if(std::get<2>(cur_reg) == 'g')
 		{
-			output << format(R"(    <reg name="{}" bitsize="{}" regnum="{}")",
-							 get<0>(cur_reg), 64, get<1>(cur_reg));
-			if(get<3>(cur_reg).has_value())
+			output << std::format(R"(    <reg name="{}" bitsize="{}" regnum="{}")",
+								  std::get<0>(cur_reg), 64, std::get<1>(cur_reg));
+			if(std::get<3>(cur_reg).has_value())
 			{
-				output << ">" << endl;
-				for(auto& dat : *get<3>(cur_reg))
+				output << ">" << std::endl;
+				for(const auto& dat : *std::get<3>(cur_reg))
 				{
-					output << format(R"(      <field name="{}" start="{}" end="{}"/>)",
-									 get<0>(dat), get<1>(dat), get<2>(dat))
-						   << endl;
+					output << std::format(R"(      <field name="{}" start="{}" end="{}"/>)",
+										  std::get<0>(dat), std::get<1>(dat), std::get<2>(dat))
+						   << std::endl;
 				}
-				output << "    </reg>" << endl;
+				output << "    </reg>" << std::endl;
 			}
 			else
 			{
-				output << "/>" << endl;
+				output << "/>" << std::endl;
 			}
 		}
 	}
 #ifdef USE_FPU
-	output << "  </feature>" << endl;
-	output << R"(  <feature name="org.gnu.gdb.riscv.fpu">)" << endl;
-	//<union id="riscv_double">\n    <field name="float" type="ieee_single"/>\n
-	//<field name="double" type="ieee_double"/>\n  </union>
-	output << R"(    <union id="riscv_double">)" << endl;
-	output << R"(      <field name="float" type="ieee_single"/>)" << endl;
-	output << R"(      <field name="double" type="ieee_double"/>)" << endl;
-	output << R"(    </union>)" << endl;
-	for(uint64_t i = 0; i < xml_data.size(); i++)
+	output << "  </feature>" << std::endl;
+	output << R"(  <feature name="org.gnu.gdb.riscv.fpu">)" << std::endl;
+	output << R"(    <union id="riscv_double">)" << std::endl;
+	output << R"(      <field name="float" type="ieee_single"/>)" << std::endl;
+	output << R"(      <field name="double" type="ieee_double"/>)" << std::endl;
+	output << R"(    </union>)" << std::endl;
+	for(size_t i = 0; i < xml_data.size(); i++)
 	{
-		auto cur_reg = xml_data.at(i);
-		if(get<2>(cur_reg) == 'f')
+		const auto& cur_reg = xml_data.at(i);
+		if(std::get<2>(cur_reg) == 'f')
 		{
-			output << format(
-				R"(    <reg name="{}" bitsize="{}" type="riscv_double"/>)",
-				get<0>(cur_reg), 64);
+			output << std::format(R"(    <reg name="{}" bitsize="{}" type="riscv_double"/>)",
+								  std::get<0>(cur_reg), 64)
+				   << std::endl;
 		}
 	}
 #endif
-	output << "  </feature>" << endl;
-	output << R"(  <feature name="org.gnu.gdb.riscv.virtual">)" << endl;
-	for(uint64_t i = 0; i < xml_data.size(); i++)
+	output << "  </feature>" << std::endl;
+	output << R"(  <feature name="org.gnu.gdb.riscv.virtual">)" << std::endl;
+	for(size_t i = 0; i < xml_data.size(); i++)
 	{
-		auto cur_reg = xml_data.at(i);
-		if(get<2>(cur_reg) == 'v')
+		const auto& cur_reg = xml_data.at(i);
+		if(std::get<2>(cur_reg) == 'v')
 		{
-			output << format(R"(    <reg name="{}" bitsize="{}")", get<0>(cur_reg),
-							 64);
-			if(get<3>(cur_reg).has_value())
+			output << std::format(R"(    <reg name="{}" bitsize="{}")", std::get<0>(cur_reg), 64);
+			if(std::get<3>(cur_reg).has_value())
 			{
-				output << ">" << endl;
-				for(auto& dat : *get<3>(cur_reg))
+				output << ">" << std::endl;
+				for(const auto& dat : *std::get<3>(cur_reg))
 				{
-					output << format(R"(      <field name="{}" start="{}" end="{}"/>)",
-									 get<0>(dat), get<1>(dat), get<2>(dat))
-						   << endl;
+					output << std::format(R"(      <field name="{}" start="{}" end="{}"/>)",
+										  std::get<0>(dat), std::get<1>(dat), std::get<2>(dat))
+						   << std::endl;
 				}
-				output << "    </reg>" << endl;
+				output << "    </reg>" << std::endl;
 			}
 			else
 			{
-				output << "/>" << endl;
+				output << "/>" << std::endl;
 			}
 		}
 	}
-	output << "  </feature>" << endl;
-	output << R"(  <feature name="org.gnu.gdb.riscv.csr">)" << endl;
-	for(uint64_t i = 0; i < xml_data.size(); i++)
+	output << "  </feature>" << std::endl;
+	output << R"(  <feature name="org.gnu.gdb.riscv.csr">)" << std::endl;
+	for(size_t i = 0; i < xml_data.size(); i++)
 	{
-		auto cur_reg = xml_data.at(i);
-		if(get<2>(cur_reg) == 'c')
+		const auto& cur_reg = xml_data.at(i);
+		if(std::get<2>(cur_reg) == 'c')
 		{
-			output << format(R"(    <reg name="{}" bitsize="{}" regnum="{}")",
-							 get<0>(cur_reg), 64, get<1>(cur_reg));
-			if(get<3>(cur_reg).has_value())
+			output << std::format(R"(    <reg name="{}" bitsize="{}" regnum="{}")",
+								  std::get<0>(cur_reg), 64, std::get<1>(cur_reg));
+			if(std::get<3>(cur_reg).has_value())
 			{
-				output << ">" << endl;
-				for(auto& dat : *get<3>(cur_reg))
+				output << ">" << std::endl;
+				for(const auto& dat : *std::get<3>(cur_reg))
 				{
-					output << format(R"(      <field name="{}" start="{}" end="{}"/>)",
-									 get<0>(dat), get<1>(dat), get<2>(dat))
-						   << endl;
+					output << std::format(R"(      <field name="{}" start="{}" end="{}"/>)",
+										  std::get<0>(dat), std::get<1>(dat), std::get<2>(dat))
+						   << std::endl;
 				}
-				output << "    </reg>" << endl;
+				output << "    </reg>" << std::endl;
 			}
 			else
 			{
-				output << "/>" << endl;
+				output << "/>" << std::endl;
 			}
 		}
 	}
-	output << "  </feature>" << endl;
-	output << "</target>" << endl;
+	output << "  </feature>" << std::endl;
+	output << "</target>" << std::endl;
 	return output.str();
 }
 
-void GDB_Create(Hart* hart, Machine* cpu)
+void Machine::GDBStub::start(uint16_t port)
 {
-	gdb_socket = socket(AF_INET, SOCK_STREAM, 0);
-	int op	   = 1;
-	setsockopt(gdb_socket, SOL_SOCKET, SO_REUSEADDR, &op, sizeof(op));
-	gdb_hart = hart;
-	gdb_cpu	 = cpu;
+	server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	int op	  = 1;
+	setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &op, sizeof(op));
 
-	sockaddr_in serverAddress;
+	// Automatically target the first CPU core (hart 0) as default debugger context
+	if(!machine_ctx->harts.empty())
+	{
+		active_hart = &machine_ctx->harts[0];
+	}
+
+	sockaddr_in serverAddress{};
 	serverAddress.sin_family	  = AF_INET;
-	serverAddress.sin_port		  = htons(1512);
+	serverAddress.sin_port		  = htons(port);
 	serverAddress.sin_addr.s_addr = INADDR_ANY;
 
-	// binding socket.
-	int t = bind(gdb_socket, (struct sockaddr*)&serverAddress,
-				 sizeof(serverAddress));
-
+	int t = bind(server_fd, (struct sockaddr*)&serverAddress, sizeof(serverAddress));
 	if(t < 0)
 	{
 		perror("[GDB] Bind failed! ");
-		close(gdb_socket);
+		close(server_fd);
+		server_fd = 0;
 		return;
 	}
-	cout << "[GDB] Stub created on port 1512" << endl;
 
-	gdb_isR = true;
-	GDB_Loop();
+	std::cout << "[GDB] Stub created on port " << port << std::endl;
+
+	xml_target_description = create_xml();
+
+	is_executing = true;
+
+	worker_thread = std::thread(&Machine::GDBStub::execution_loop, this);
 }
 
-void GDB_Stop()
+void Machine::GDBStub::stop()
 {
-	gdb_isR = false;
-	cout << "[GDB] Disconnecting client" << endl;
+	if(is_executing)
+	{
+		is_executing = false;
+		std::cout << "[GDB] Disconnecting client" << std::endl;
 
-	shutdown(gdb_socket, SHUT_RDWR);
-	close(gdb_socket);
-	shutdown(gdb_recv, SHUT_RDWR);
-	close(gdb_recv);
+		if(server_fd)
+		{
+			shutdown(server_fd, SHUT_RDWR);
+			close(server_fd);
+			server_fd = 0;
+		}
+		if(client_fd)
+		{
+			shutdown(client_fd, SHUT_RDWR);
+			close(client_fd);
+			client_fd = 0;
+		}
+
+		if(worker_thread.joinable())
+		{
+			worker_thread.join();
+		}
+	}
 }
 
-uint32_t GDB_send(string buffer, uint32_t flags = 0)
+uint32_t Machine::GDBStub::send_raw(const std::string& buffer, uint32_t flags)
 {
 	size_t total = 0;
 	while(total < buffer.size())
 	{
-		ssize_t sent = send(gdb_recv, buffer.c_str() + total, buffer.size() - total, flags);
+		ssize_t sent = send(client_fd, buffer.c_str() + total, buffer.size() - total, flags);
 		if(sent <= 0)
-			return sent; // error or disconnect
+			return 0;
 		total += sent;
 	}
-	return total;
+	return static_cast<uint32_t>(total);
 }
-uint32_t GDB_sendPacket(string buffer, uint32_t flags = 0)
+
+uint32_t Machine::GDBStub::send_packet(std::string buffer, uint32_t flags)
 {
 	uint8_t sum = 0;
 	for(char& ch : buffer)
 	{
 		sum += ch;
 	}
-	buffer		 = format("${:}#{:02x}\0", buffer, sum);
-	size_t total = 0;
-	while(total < buffer.size())
-	{
-		ssize_t sent = send(gdb_recv, buffer.c_str() + total, buffer.size() - total, flags);
-		if(sent <= 0)
-			return sent; // error or disconnect
-		total += sent;
-	}
-	return total;
-}
-string GDB_unformatPacket(string buffer)
-{
-	buffer = buffer.substr(1);
-	return buffer.substr(0, buffer.size() - 3);
+
+	buffer = std::format("${}#{:02x}", buffer, sum);
+
+	return send_raw(buffer, flags);
 }
 
-void GDB_parsePacket(const char* buffer)
+std::string Machine::GDBStub::unformat_packet(const std::string& buffer)
 {
-	if(buffer[0] == '$')
+	if(buffer.size() < 4) return "";
+	return buffer.substr(1, buffer.size() - 4);
+}
+
+void Machine::GDBStub::execution_loop()
+{
+	while(is_executing)
 	{
-		string packet = GDB_unformatPacket(string(buffer));
-		if(packet.starts_with("qSupported:"))
-		{
-			GDB_sendPacket("PacketSize=4096;qXfer:features:read+;vContSupported+;"
-						   "swbreak+;hwbreak+;");
-			return;
-		}
-		if(packet.starts_with("qXfer:features:read:target.xml:"))
-		{
-			if(gdb_xml.size() == 0)
-				gdb_xml = GDB_CreateXML();
+		listen(server_fd, 5);
 
-			string dat		= packet.substr(31);
-			uint64_t startp = stoul(dat.substr(0, dat.find(',')), nullptr, 16);
-			uint64_t endp	= stoul(dat.substr(dat.find(',') + 1), nullptr, 16);
+		client_fd = accept(server_fd, nullptr, nullptr);
 
-			GDB_sendPacket(((startp + endp) >= gdb_xml.size() ? "l" : "m") + gdb_xml.substr(startp, endp));
-			return;
-		}
-		if(packet.starts_with("vCont?"))
+		// if machine stopped before someone ever connected
+		if(!is_executing)
 		{
-			GDB_sendPacket("vCont;s;S;c;C");
-			return;
-		}
-		if(packet.starts_with("vCont;"))
-		{
-			std::string args = packet.substr(6);
-			if(args.size() == 0)
+			if(client_fd)
 			{
-				return;
+				close(client_fd);
+				client_fd = 0;
 			}
-			switch(args.at(0))
+			return;
+		}
+
+		int flag = 1;
+		setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
+		std::cout << "[GDB] Got connection" << std::endl;
+
+		char buffer[4096];
+		while(is_executing)
+		{
+			std::memset(&buffer, 0, sizeof(buffer));
+			ssize_t received = recv(client_fd, buffer, sizeof(buffer), 0);
+			if(received <= 0)
 			{
-				case 'c':
+				break;
+			}
+
+			if(buffer[0] == '$')
+			{
+				send_raw("+", 0);
+				parse_packet(buffer);
+			}
+			// Ctrl+C handle
+			else if(buffer[0] == 3)
+			{
+				send_raw("+", 0);
+				received_sigint.store(true, std::memory_order_release);
+				machine_ctx->state.store(MachineState::Halted, std::memory_order_release);
+			}
+			// Ack check
+			else if(buffer[0] == '-' || buffer[0] == '+')
+			{
+				if(buffer[1] == '$')
 				{
-					gdb_exec   = true;
-					gdb_execth = thread([]()
-					{
-          while (gdb_exec) {
-			  if(!gdb_cpu->gdb_single_step)
-			  {
-				  uint64_t pc = gdb_hart->pc;
-				  auto it	  = find(gdb_bp.begin(), gdb_bp.end(), gdb_hart->pc);
-				  if(it != gdb_bp.end())
-				  {
-					  gdb_exec = false;
-					  break;
-				  }
-				  gdb_cpu->gdb_single_step = true;
-			  }
-		  }
-          GDB_sendPacket(gdb_sigint ? "S02" : "S05");
-          gdb_sigint = false; });
-					gdb_execth.detach();
-
-					break;
-				}
-				case 's':
-					gdb_cpu->gdb_single_step = true;
-					GDB_sendPacket("S05");
-					break;
-				default:
-					GDB_sendPacket("");
-					break;
-			}
-			return;
-		}
-		if(packet.starts_with("k"))
-		{
-			gdb_isR = false;
-			std::cout << "[GDB] Killed by GDB stub" << std::endl;
-			gdb_cpu->state = MachineState::Off;
-			return;
-		}
-		if(packet.starts_with("c"))
-		{
-			gdb_exec   = true;
-			gdb_execth = thread([]()
-			{
-        while (gdb_exec) {
-          if (!gdb_cpu->gdb_single_step) {
-            uint64_t pc = gdb_hart->pc;
-            auto it = find(gdb_bp.begin(), gdb_bp.end(), gdb_hart->pc);
-            if (it != gdb_bp.end()) {
-              gdb_exec = false;
-              break;
-            }
-            gdb_cpu->gdb_single_step = true;
-          }
-        }
-        GDB_sendPacket(gdb_sigint ? "S02" : "S05");
-        gdb_sigint = false; });
-			gdb_execth.detach();
-			return;
-		}
-		if(packet.starts_with("s"))
-		{
-			gdb_cpu->gdb_single_step = true;
-			GDB_sendPacket("S05");
-			return;
-		}
-		if(packet.starts_with("Hg"))
-		{
-			// Switch to thread(actually reset all)
-		}
-		if(packet.starts_with("?"))
-		{
-			// Trap reason
-			GDB_sendPacket(format("S{:02d}", gdb_hart->csrs[CSR_MCAUSE]));
-			return;
-		}
-		if(packet.starts_with("qfThreadInfo"))
-		{
-			GDB_sendPacket("m1");
-			return;
-		}
-		if(packet.starts_with("Hc"))
-		{
-			GDB_sendPacket("OK");
-			return;
-		}
-		if(packet.starts_with("qC"))
-		{
-			GDB_sendPacket(format("QC{:x}", 1));
-			return;
-		}
-		if(packet.starts_with("qAttached"))
-		{
-			GDB_sendPacket("0");
-			return;
-		}
-		if(packet.starts_with("p"))
-		{
-			// xml get
-			uint64_t idx = stoul(packet.substr(1), nullptr, 16);
-			if(idx <= 31)
-			{
-				// gpr
-				GDB_sendPacket(to_little_endian_hex(gdb_hart->GPR[idx]));
-			}
-			else if(idx == 32)
-			{
-				// pc
-				GDB_sendPacket(to_little_endian_hex(gdb_hart->pc));
-			}
-			else if(idx > 32 && idx < 64)
-			{
-				if(idx == 33)
-				{
-					// priv
-					GDB_sendPacket(to_little_endian_hex((uint8_t)gdb_hart->mode));
-				}
-// fpu
-#ifdef USE_FPU
-				GDB_sendPacket(to_little_endian_hex(
-					std::bit_cast<uint64_t>(gdb_hart->FPR[idx - 33])));
-#endif
-			}
-			else if(idx >= 64)
-			{
-				// csr
-				if(idx >= 5000)
-				{
-					GDB_sendPacket(to_little_endian_hex(gdb_hart->csr_read(idx - 5000)));
-				}
-				else
-					GDB_sendPacket(to_little_endian_hex(gdb_hart->csr_read(idx)));
-			}
-			return;
-		}
-		if(packet.starts_with("P"))
-		{
-			// xml get
-			uint64_t idx = stoul(packet.substr(1), nullptr, 16);
-			string data	 = packet.substr(packet.find('=') + 1);
-			uint64_t num = 0;
-			for(uint64_t i = 0; i < 8; i++)
-			{
-				num = num | (stoul(data.substr(i * 2, 2), nullptr, 16) << i);
-			}
-			if(idx <= 31)
-			{
-				// gpr
-				gdb_hart->GPR[idx] = num;
-			}
-			else if(idx == 32)
-			{
-				// pc
-				gdb_hart->pc = num;
-			}
-			else if(idx > 32 && idx < 64)
-			{
-				if(idx == 33)
-				{
-					// priv
-					gdb_hart->mode = (PrivilegeMode)num;
-				}
-#ifdef USE_FPU
-				gdb_hart->FPR[idx - 33] = (double)num;
-#endif
-			}
-			else if(idx >= 64)
-			{
-				// csr
-				gdb_hart->csr_write(idx, num);
-			}
-			GDB_sendPacket("OK");
-			return;
-		}
-		if(packet.starts_with("g"))
-		{
-			// registers
-			string packet;
-			for(int i = 0; i < 32; i++)
-			{
-				packet += to_little_endian_hex(gdb_hart->GPR[i]);
-			}
-			// pc
-			packet += to_little_endian_hex(gdb_hart->pc);
-			GDB_sendPacket(packet);
-			return;
-		}
-		if(packet.starts_with("G"))
-		{
-			// set registers
-			std::string data = packet.substr(1);
-			// Set GPR & PC
-			// GPR
-			uint64_t val	 = 0;
-			for(uint64_t i = 0; i < 32; i++)
-			{
-				val				 = stoull(swapHexEndian(data.substr(i * 16, 16), 8), nullptr, 16);
-				gdb_hart->GPR[i] = val;
-			}
-
-			val = stoull(swapHexEndian(data.substr(32 * 16, 16), 8), nullptr, 16);
-
-			gdb_hart->pc = val;
-			GDB_sendPacket("OK");
-			return;
-		}
-		if(packet.starts_with("M"))
-		{
-			// write mem
-			uint64_t address = stoul(packet.substr(1, packet.find(',')), nullptr, 16);
-			uint64_t size	 = stoul(packet.substr(packet.find(',') + 1,
-												   packet.find(':', packet.find(',') + 1)),
-									 nullptr, 16);
-			string data		 = packet.substr(packet.find(':') + 1);
-
-			for(uint64_t i = 0; i < size; i++)
-			{
-				MemoryReturn out = gdb_hart->mmio->write(*gdb_hart, address + i, MemorySize::Byte,
-														 stoul(data.substr(i * 2, 2), nullptr, 16));
-				if(!out.is_success)
-				{
-					GDB_sendPacket("E01");
-					return;
+					std::string str(buffer);
+					str.erase(0, 1);
+					send_raw("+", 0);
+					parse_packet(str);
 				}
 			}
+		}
 
-			GDB_sendPacket(format("{:x}", size));
-			return;
-		}
-		if(packet.starts_with("m"))
+		// close client FD before next connection
+		if(client_fd)
 		{
-			// read mem
-			uint64_t address = stoul(packet.substr(1, packet.find(',')), nullptr, 16);
-			uint64_t size	 = stoul(packet.substr(packet.find(',') + 1), nullptr, 16);
-
-			string resp;
-
-			for(uint64_t i = 0; i < size; i++)
-			{
-				uint8_t val;
-				MemoryReturn out = gdb_hart->mmio->read(*gdb_hart, address + i, MemorySize::Byte, &val);
-				// if(address == 0x200BFF8) std::cout <<
-				// timer_get(&gdb_hart->aclint->mtime) << std::endl; if(address ==
-				// 0x2004000) std::cout << timecmp_get(&gdb_hart->aclint->mtimecmp[0])
-				// << std::endl;
-				if(!out.is_success)
-				{
-					GDB_sendPacket("E01");
-					return;
-				}
-				resp += format("{:02x}", val);
-			}
-
-			GDB_sendPacket(resp);
-			return;
+			close(client_fd);
+			client_fd = 0;
 		}
-		if(packet.starts_with("Z0"))
-		{
-			string dat	  = packet.substr(packet.find(',') + 1);
-			uint64_t addr = stoul(dat.substr(0, dat.find(',')), nullptr, 16);
-			uint64_t kind = stoul(dat.substr(dat.find(',') + 1), nullptr, 16);
-			// optional<uint64_t> inst = memmap.load_safe(addr,32);
-			// if(!inst.has_value()) {
-			//     GDB_sendPacket("E01");
-			//     return;
-			// }
-			if(find(gdb_bp.begin(), gdb_bp.end(), addr) != gdb_bp.end())
-			{
-				GDB_sendPacket("E01");
-				return;
-			}
-			gdb_bp.push_back(addr);
-			GDB_sendPacket("OK");
-			return;
-		}
-		if(packet.starts_with("z0"))
-		{
-			string dat	  = packet.substr(packet.find(',') + 1);
-			uint64_t addr = stoul(dat.substr(0, dat.find(',')), nullptr, 16);
-			uint64_t kind = stoul(dat.substr(dat.find(',') + 1), nullptr, 16);
-			// optional<uint64_t> inst = memmap.load_safe(addr,32);
-			// if(!inst.has_value()) {
-			//     GDB_sendPacket("E01");
-			//     return;
-			// }
-			if(find(gdb_bp.begin(), gdb_bp.end(), addr) == gdb_bp.end())
-			{
-				GDB_sendPacket("E01");
-				return;
-			}
-			gdb_bp.erase(find(gdb_bp.begin(), gdb_bp.end(), addr));
-			GDB_sendPacket("OK");
-			return;
-		}
-		if(packet.starts_with("X"))
-		{
-		}
-		GDB_sendPacket("");
-	}
-	else
-	{
 	}
 }
 
-void GDB_Loop()
+void Machine::GDBStub::parse_packet(const std::string& buffer)
 {
-	// listening to the assigned socket
-	listen(gdb_socket, 5);
+	if(buffer.empty() || buffer[0] != '$') return;
 
-	// accepting connection request
-	gdb_recv = accept(gdb_socket, nullptr, nullptr);
+	std::string packet = unformat_packet(buffer);
+	if(packet.empty()) return;
 
-	if(!gdb_isR)
+	// Get guest features
+	if(packet.starts_with("qSupported:"))
 	{
-		close(gdb_recv);
+		send_packet("PacketSize=4096;qXfer:features:read+;vContSupported+;swbreak+;hwbreak+;");
 		return;
 	}
 
-	int flag = 1;
-	setsockopt(gdb_recv, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(int));
-	std::cout << "[GDB] Got connection" << std::endl;
-
-	char buffer[4096] = { 0 };
-	while(gdb_isR)
+	// Send target xml
+	if(packet.starts_with("qXfer:features:read:target.xml:"))
 	{
-		memset(&buffer, 0, sizeof(buffer));
-		int received = recv(gdb_recv, buffer, sizeof(buffer), 0);
-		if(received == 0)
+		std::string dat = packet.substr(31);
+		size_t comma	= dat.find(',');
+		if(comma == std::string::npos) return;
+
+		uint64_t startp = std::stoul(dat.substr(0, comma), nullptr, 16);
+		uint64_t endp	= std::stoul(dat.substr(comma + 1), nullptr, 16);
+
+		std::string response_prefix = ((startp + endp) >= xml_target_description.size()) ? "l" : "m";
+		send_packet(response_prefix + xml_target_description.substr(startp, endp));
+		return;
+	}
+
+	// Get all vCont features
+	if(packet.starts_with("vCont?"))
+	{
+		send_packet("vCont;s;S;c;C");
+		return;
+	}
+
+	if(packet.starts_with("vCont;"))
+	{
+		std::string args = packet.substr(6);
+		if(args.empty()) return;
+
+		switch(args[0])
 		{
-			break;
+			case 'c': // Continue
+				received_sigint.store(false, std::memory_order_release);
+				machine_ctx->gdb_single_step = false;
+				machine_ctx->state.store(MachineState::Running, std::memory_order_release);
+				break;
+
+			case 's': // Single step
+				machine_ctx->gdb_single_step = true;
+				machine_ctx->state.store(MachineState::Running, std::memory_order_release);
+				send_packet("S05");
+				break;
+
+			default:
+				send_packet("");
+				break;
 		}
-		if(received < 0)
+		return;
+	}
+
+	// Kill
+	if(packet.starts_with("k"))
+	{
+		is_executing = false;
+		std::cout << "[GDB] Killed by GDB stub" << std::endl;
+		machine_ctx->state.store(MachineState::Off, std::memory_order_release);
+		return;
+	}
+
+	// Continue
+	if(packet.starts_with("c"))
+	{
+		received_sigint.store(false, std::memory_order_release);
+		machine_ctx->gdb_single_step = false;
+		machine_ctx->state.store(MachineState::Running, std::memory_order_release);
+		return;
+	}
+
+	// Single step
+	if(packet.starts_with("s"))
+	{
+		machine_ctx->gdb_single_step = true;
+		machine_ctx->state.store(MachineState::Running, std::memory_order_release);
+		send_packet("S05");
+		return;
+	}
+
+	// Get trap reason
+	if(packet.starts_with("?"))
+	{
+		if(active_hart)
 		{
-			break;
+			send_packet(std::format("S{:02d}", active_hart->csrs[CSR_MCAUSE]));
+		}
+		else
+		{
+			send_packet("S05");
+		}
+		return;
+	}
+
+	if(packet.starts_with("qfThreadInfo"))
+	{
+		send_packet("m1");
+		return;
+	}
+	if(packet.starts_with("Hc"))
+	{
+		send_packet("OK");
+		return;
+	}
+	if(packet.starts_with("qC"))
+	{
+		send_packet(std::format("QC{:x}", 1));
+		return;
+	}
+	if(packet.starts_with("qAttached"))
+	{
+		send_packet("0");
+		return;
+	}
+	if(packet.starts_with("Hg"))
+	{
+		send_packet("OK");
+		return;
+	} // Thread switch stub
+
+	// Read single reg
+	if(packet.starts_with("p"))
+	{
+		if(!active_hart)
+		{
+			send_packet("E01");
+			return;
+		}
+		uint64_t idx = std::stoul(packet.substr(1), nullptr, 16);
+
+		if(idx <= 31)
+		{
+			send_packet(to_little_endian_hex(active_hart->GPR[idx]));
+		}
+		else if(idx == 32)
+		{
+			send_packet(to_little_endian_hex(active_hart->pc));
+		}
+		else if(idx == 33)
+		{
+			send_packet(to_little_endian_hex(static_cast<uint8_t>(active_hart->mode)));
+		}
+		else if(idx > 33 && idx < 64)
+		{
+#ifdef USE_FPU
+			send_packet(to_little_endian_hex(std::bit_cast<uint64_t>(active_hart->FPR[idx - 34])));
+#else
+			send_packet(to_little_endian_hex(0));
+#endif
+		}
+		else if(idx >= 64)
+		{
+			uint64_t csr_idx = (idx >= 5000) ? (idx - 5000) : idx;
+			send_packet(to_little_endian_hex(active_hart->csr_read(csr_idx)));
+		}
+		return;
+	}
+
+	// Write single reg
+	if(packet.starts_with("P"))
+	{
+		if(!active_hart)
+		{
+			send_packet("E01");
+			return;
+		}
+		uint64_t idx  = std::stoul(packet.substr(1), nullptr, 16);
+		size_t eq_pos = packet.find('=');
+		if(eq_pos == std::string::npos)
+		{
+			send_packet("E01");
+			return;
 		}
 
-		if(buffer[0] == '$')
+		std::string data = packet.substr(eq_pos + 1);
+		uint64_t num	 = 0;
+		for(uint64_t i = 0; i < 8 && (i * 2 + 1) < data.size(); i++)
 		{
-			GDB_send("+\0", 0);
-			GDB_parsePacket(buffer);
+			num |= (std::stoul(data.substr(i * 2, 2), nullptr, 16) << (i * 8));
 		}
-		if(buffer[0] == 3)
+
+		if(idx <= 31)
 		{
-			// SIGINT
-			GDB_send("+\0", 0);
-			gdb_sigint = true;
-			gdb_exec   = false;
+			active_hart->GPR[idx] = num;
 		}
-		if(buffer[0] == '-' || buffer[0] == '+')
+		else if(idx == 32)
 		{
-			if(buffer[1] == '$')
+			active_hart->pc = num;
+		}
+		else if(idx == 33)
+		{
+			active_hart->mode = static_cast<PrivilegeMode>(num);
+		}
+		else if(idx > 33 && idx < 64)
+		{
+#ifdef USE_FPU
+			active_hart->FPR[idx - 34] = std::bit_cast<double>(num);
+#endif
+		}
+		else if(idx >= 64)
+		{
+			active_hart->csr_write(idx, num);
+		}
+		send_packet("OK");
+		return;
+	}
+
+	// Read all GPR + PC
+	if(packet.starts_with("g"))
+	{
+		if(!active_hart)
+		{
+			send_packet("E01");
+			return;
+		}
+		std::string reg_packet;
+		for(int i = 0; i < 32; i++)
+		{
+			reg_packet += to_little_endian_hex(active_hart->GPR[i]);
+		}
+		reg_packet += to_little_endian_hex(active_hart->pc);
+		send_packet(reg_packet);
+		return;
+	}
+
+	// Write entire GPR
+	if(packet.starts_with("G"))
+	{
+		if(!active_hart)
+		{
+			send_packet("E01");
+			return;
+		}
+		std::string data = packet.substr(1);
+		if(data.size() < (33 * 16))
+		{
+			send_packet("E01");
+			return;
+		}
+
+		for(uint64_t i = 0; i < 32; i++)
+		{
+			active_hart->GPR[i] = std::stoull(swapHexEndian(data.substr(i * 16, 16), 8), nullptr, 16);
+		}
+		active_hart->pc = std::stoull(swapHexEndian(data.substr(32 * 16, 16), 8), nullptr, 16);
+		send_packet("OK");
+		return;
+	}
+
+	// Guest memory store
+	if(packet.starts_with("M"))
+	{
+		if(!active_hart)
+		{
+			send_packet("E01");
+			return;
+		}
+		size_t comma = packet.find(',');
+		size_t colon = packet.find(':', comma);
+		if(comma == std::string::npos || colon == std::string::npos)
+		{
+			send_packet("E01");
+			return;
+		}
+
+		uint64_t address = std::stoul(packet.substr(1, comma), nullptr, 16);
+		uint64_t size	 = std::stoul(packet.substr(comma + 1, colon - comma - 1), nullptr, 16);
+		std::string data = packet.substr(colon + 1);
+
+		for(uint64_t i = 0; i < size; i++)
+		{
+			uint8_t byte_val = static_cast<uint8_t>(std::stoul(data.substr(i * 2, 2), nullptr, 16));
+			MemoryReturn out = active_hart->mmio->write(*active_hart, address + i, MemorySize::Byte, byte_val);
+			if(!out.is_success)
 			{
-				// new packet right after ack
-				string str = string(buffer);
-				str.erase(0, 1);
-				GDB_send("+\0", 0);
-				GDB_parsePacket(str.c_str());
+				send_packet("E01");
+				return;
 			}
 		}
+		send_packet(std::format("{:x}", size));
+		return;
 	}
-	close(gdb_recv);
-	if(gdb_isR)
-		GDB_Loop();
+
+	// Guest memory read
+	if(packet.starts_with("m"))
+	{
+		if(!active_hart)
+		{
+			send_packet("E01");
+			return;
+		}
+		size_t comma = packet.find(',');
+		if(comma == std::string::npos)
+		{
+			send_packet("E01");
+			return;
+		}
+
+		uint64_t address = std::stoul(packet.substr(1, comma), nullptr, 16);
+		uint64_t size	 = std::stoul(packet.substr(comma + 1), nullptr, 16);
+		std::string resp;
+
+		for(uint64_t i = 0; i < size; i++)
+		{
+			uint8_t val		 = 0;
+			MemoryReturn out = active_hart->mmio->read(*active_hart, address + i, MemorySize::Byte, &val);
+			if(!out.is_success)
+			{
+				send_packet("E01");
+				return;
+			}
+			resp += std::format("{:02x}", val);
+		}
+		send_packet(resp);
+		return;
+	}
+
+	// Add hw breakpoint
+	if(packet.starts_with("Z0"))
+	{
+		size_t first_comma = packet.find(',');
+		if(first_comma == std::string::npos)
+		{
+			send_packet("E01");
+			return;
+		}
+		std::string dat = packet.substr(first_comma + 1);
+
+		uint64_t addr = std::stoul(dat.substr(0, dat.find(',')), nullptr, 16);
+		if(std::find(breakpoints.begin(), breakpoints.end(), addr) != breakpoints.end())
+		{
+			send_packet("E01");
+			return;
+		}
+		breakpoints.push_back(addr);
+		send_packet("OK");
+		return;
+	}
+
+	// Remove hw breakpoint
+	if(packet.starts_with("z0"))
+	{
+		size_t first_comma = packet.find(',');
+		if(first_comma == std::string::npos)
+		{
+			send_packet("E01");
+			return;
+		}
+		std::string dat = packet.substr(first_comma + 1);
+
+		uint64_t addr = std::stoul(dat.substr(0, dat.find(',')), nullptr, 16);
+		auto it		  = std::find(breakpoints.begin(), breakpoints.end(), addr);
+		if(it == breakpoints.end())
+		{
+			send_packet("E01");
+			return;
+		}
+		breakpoints.erase(it);
+		send_packet("OK");
+		return;
+	}
+
+	// unsupported
+	send_packet("");
 }
+
+// Public wrapper so the user can interact with it cleanly
+void Machine::handle_gdb_breakpoints()
+{
+	if(!gdb_server.is_executing) return;
+
+	if(!harts.empty())
+	{
+		uint64_t current_pc = harts[0].pc;
+		auto& bp_vec		= gdb_server.breakpoints;
+
+		if(std::find(bp_vec.begin(), bp_vec.end(), current_pc) != bp_vec.end())
+		{
+			state.store(MachineState::Halted, std::memory_order_release);
+			gdb_server.send_packet(gdb_server.received_sigint.load() ? "S02" : "S05");
+			gdb_server.received_sigint.store(false, std::memory_order_release);
+		}
+	}
+}
+
+void Machine::listen_gdb(uint16_t port)
+{
+	if(!gdb) return;
+	gdb_server.start(port);
+}
+
 #endif

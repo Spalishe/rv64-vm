@@ -19,9 +19,9 @@ Copyright 2026 Spalishe
 #include "../../include/machine.hpp"
 
 SYSCON::SYSCON(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt)
-	: Device(base, size, fdt, cpu.mmap), cpu(cpu)
+	: Device(base, size, fdt, cpu.get_mmap()), cpu(cpu)
 {
-	cpu.mmap->add_region(start, size);
+	cpu.get_mmap()->add_region(start, size);
 	if(fdt != NULL)
 	{
 		struct fdt_node* test_fdt = fdt_node_create_reg("test", base);
@@ -53,7 +53,7 @@ SYSCON::SYSCON(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt)
 
 std::shared_ptr<SYSCON> SYSCON::init_auto(Machine& cpu)
 {
-	return std::make_shared<SYSCON>(0x1000000, 0x1000, cpu, cpu.fdt);
+	return std::make_shared<SYSCON>(0x1000000, 0x1000, cpu, cpu.get_fdt());
 }
 
 uint64_t SYSCON::read(uint64_t addr, MemorySize size)

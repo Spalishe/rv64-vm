@@ -23,9 +23,9 @@ Copyright 2026 Spalishe
 #include <sys/stat.h>
 
 VirtIO_BLK::VirtIO_BLK(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt, FILE* image)
-	: Device(base, size, fdt, cpu.mmap), plic(cpu.mmio->get<PLIC>().get()), irq_num(plic->acquire_irq()), disk(image)
+	: Device(base, size, fdt, cpu.get_mmap()), plic(cpu.get_mmio()->get<PLIC>().get()), irq_num(plic->acquire_irq()), disk(image)
 {
-	cpu.mmap->add_region(base, size);
+	cpu.get_mmap()->add_region(base, size);
 
 	fdt_node* virtio_blk_node = fdt_node_create_reg("virtio_mmio", base);
 	fdt_node_add_prop(virtio_blk_node, "compatible", "virtio,mmio\0", 12);
@@ -41,11 +41,12 @@ VirtIO_BLK::VirtIO_BLK(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt
 	// Device features
 	device_features = VIRTIO_F_VERSION_1;
 
+	FILE* uart_out = cpu.get_uart_output();
 	if(!disk)
 	{
 		// can't open image -> device will return IO errors on ops
-		fprintf(cpu.uart_out, "virtio_blk: image is invalid\n");
-		fflush(cpu.uart_out);
+		fprintf(uart_out, "virtio_blk: image is invalid\n");
+		fflush(uart_out);
 	}
 	else
 	{
@@ -54,8 +55,8 @@ VirtIO_BLK::VirtIO_BLK(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt
 		long sz = ftell(disk);
 		if(sz < 0) sz = 0;
 		capacity_sectors = static_cast<uint64_t>(sz / SECTOR_SIZE);
-		fprintf(cpu.uart_out, "virtio_blk: capacity_sectors: %ld; sz: %ld\n", capacity_sectors, sz);
-		fflush(cpu.uart_out);
+		fprintf(uart_out, "virtio_blk: capacity_sectors: %ld; sz: %ld\n", capacity_sectors, sz);
+		fflush(uart_out);
 	}
 
 	// init queue defaults
@@ -78,7 +79,7 @@ VirtIO_BLK::VirtIO_BLK(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt
 
 std::shared_ptr<VirtIO_BLK> VirtIO_BLK::init_auto(Machine& cpu)
 {
-	return std::make_shared<VirtIO_BLK>(0x10001000, 0x1000, cpu, cpu.fdt, cpu.image_file);
+	return std::make_shared<VirtIO_BLK>(0x10001000, 0x1000, cpu, cpu.get_fdt(), cpu.get_image());
 }
 
 // DRAM memory helpers
