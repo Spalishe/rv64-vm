@@ -34,6 +34,7 @@ Copyright 2026 Spalishe
 #include <thread>
 #include <vector>
 
+using namespace rv64vm::runner;
 static std::string to_little_endian_hex(uint64_t value)
 {
 	std::ostringstream oss;

@@ -122,7 +122,7 @@ struct AppWindow
 	Display* x11Display = nullptr;
 	Window x11Window	= 0;
 	InputState input;
-	std::shared_ptr<HID_Keyboard> kb;
+	std::shared_ptr<rv64vm::dev::HID_Keyboard> kb;
 	int width  = 800;
 	int height = 600;
 

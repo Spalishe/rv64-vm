@@ -18,7 +18,6 @@ Copyright 2026 Spalishe
 #pragma once
 #include "timer_st.hpp"
 #include <cstdint>
-#include <time.h>
 
 typedef struct
 {

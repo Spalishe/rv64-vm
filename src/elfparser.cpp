@@ -19,87 +19,90 @@ Copyright 2026 Spalishe
 #include "../include/memory_map.hpp"
 #include <vector>
 
-ELFParser::ELFParser(MemoryMap* mmap) : mmap(mmap) {
-
-										};
-
-bool ELFParser::parse(char* buffer, size_t size, uint64_t* entry_pc)
+namespace rv64vm::runner
 {
-	uint64_t offset;
+	ELFParser::ELFParser(MemoryMap* mmap) : mmap(mmap) {
 
-	ELF_Header header = read_from_buffer<ELF_Header>(buffer, &offset);
+											};
 
-	uint32_t v32;
-	uint32_t v8;
-	std::memcpy(&v32, header.e_ident.data(), sizeof(uint32_t));
-	if(v32 != ELF_MAGIC)
+	bool ELFParser::parse(char* buffer, size_t size, uint64_t* entry_pc)
 	{
-		printf("[ELF] File is not an elf!");
-		return false;
-	}
-	std::memcpy(&v8, header.e_ident.data() + 4, sizeof(uint8_t));
-	if(v8 == 1)
-	{
-		printf("[ELF] 32-bit applications not supported!");
-		return false;
-	}
+		uint64_t offset;
 
-	if(header.e_machine != ELF_RISCV)
-	{
-		printf("[ELF] ELF Architecture isn't RISC-V");
-		return false;
-	}
+		ELF_Header header = read_from_buffer<ELF_Header>(buffer, &offset);
 
-	if(entry_pc != NULL)
-	{
-		*entry_pc = header.e_entry;
-	}
+		uint32_t v32;
+		uint32_t v8;
+		std::memcpy(&v32, header.e_ident.data(), sizeof(uint32_t));
+		if(v32 != ELF_MAGIC)
+		{
+			printf("[ELF] File is not an elf!");
+			return false;
+		}
+		std::memcpy(&v8, header.e_ident.data() + 4, sizeof(uint8_t));
+		if(v8 == 1)
+		{
+			printf("[ELF] 32-bit applications not supported!");
+			return false;
+		}
 
-	offset = header.e_phoff;
-	std::vector<ELF_ProgramHeader> pheaders;
-	std::vector<ELF_SectionHeader> sheaders;
-	for(int i = 0; i < header.e_phnum; i++)
-	{
-		pheaders.push_back(read_from_buffer<ELF_ProgramHeader>(buffer, &offset));
-	}
-	offset = header.e_shoff;
-	for(int i = 0; i < header.e_shnum; i++)
-	{
-		sheaders.push_back(read_from_buffer<ELF_SectionHeader>(buffer, &offset));
-	}
+		if(header.e_machine != ELF_RISCV)
+		{
+			printf("[ELF] ELF Architecture isn't RISC-V");
+			return false;
+		}
 
-	for(int i = 0; i < header.e_phnum; i++)
-	{
-		auto& ph = pheaders[i];
-		if(ph.p_type != ELF_PT_LOAD)
-			continue;
+		if(entry_pc != NULL)
+		{
+			*entry_pc = header.e_entry;
+		}
 
-		if(ph.p_vaddr < 0x80000000) mmap->add_region(ph.p_vaddr, ph.p_memsz);
-		MemoryRegion* newreg = mmap->find_region(ph.p_vaddr);
+		offset = header.e_phoff;
+		std::vector<ELF_ProgramHeader> pheaders;
+		std::vector<ELF_SectionHeader> sheaders;
+		for(int i = 0; i < header.e_phnum; i++)
+		{
+			pheaders.push_back(read_from_buffer<ELF_ProgramHeader>(buffer, &offset));
+		}
+		offset = header.e_shoff;
+		for(int i = 0; i < header.e_shnum; i++)
+		{
+			sheaders.push_back(read_from_buffer<ELF_SectionHeader>(buffer, &offset));
+		}
 
-		memcpy(newreg->data + (ph.p_paddr - newreg->base_addr), buffer + ph.p_offset, ph.p_filesz);
+		for(int i = 0; i < header.e_phnum; i++)
+		{
+			auto& ph = pheaders[i];
+			if(ph.p_type != ELF_PT_LOAD)
+				continue;
 
-		memset(newreg->data + ph.p_filesz,
-			   0,
-			   ph.p_memsz - ph.p_filesz);
-	}
+			if(ph.p_vaddr < 0x80000000) mmap->add_region(ph.p_vaddr, ph.p_memsz);
+			MemoryRegion* newreg = mmap->find_region(ph.p_vaddr);
 
-	return true;
-}
+			memcpy(newreg->data + (ph.p_paddr - newreg->base_addr), buffer + ph.p_offset, ph.p_filesz);
 
-bool ELFParser::parse(std::string file_path, uint64_t* entry_pc)
-{
-	std::ifstream file(file_path, std::ios::binary | std::ios::ate);
-	if(!file.is_open())
-	{
-		// error
-		printf("[RV64-VM] File loading error! %s\n", std::strerror(errno));
-		return false;
+			memset(newreg->data + ph.p_filesz,
+				   0,
+				   ph.p_memsz - ph.p_filesz);
+		}
+
+		return true;
 	}
 
-	std::streamsize size = file.tellg();
-	file.seekg(0, std::ios::beg);
-	char* buffer = new char[size]{};
-	file.read(buffer, size);
-	return parse(buffer, size, entry_pc);
+	bool ELFParser::parse(std::string file_path, uint64_t* entry_pc)
+	{
+		std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+		if(!file.is_open())
+		{
+			// error
+			printf("[RV64-VM] File loading error! %s\n", std::strerror(errno));
+			return false;
+		}
+
+		std::streamsize size = file.tellg();
+		file.seekg(0, std::ios::beg);
+		char* buffer = new char[size]{};
+		file.read(buffer, size);
+		return parse(buffer, size, entry_pc);
+	}
 }

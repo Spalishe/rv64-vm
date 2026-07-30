@@ -14,6 +14,7 @@ Copyright 2026 Spalishe
    limitations under the License.
 
 */
+#pragma once
 #include <cstdint>
 #include <tuple>
 #include <vector>

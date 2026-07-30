@@ -20,6 +20,7 @@ Copyright 2026 Spalishe
 #include <bitset>
 #include <cstdio>
 
+using namespace rv64vm::runner;
 __attribute__((noinline)) InstructionCache& InstructionDecoder::decode_inst_slow(uint64_t pc, uint32_t inst)
 {
 	size_t idx = (pc >> 2) & (CACHE_SIZE - 1);

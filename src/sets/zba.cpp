@@ -18,6 +18,7 @@ Copyright 2026 Spalishe
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
 
+using namespace rv64vm::runner;
 ExecReturn exec_ADD_UW(Hart& hart, InstructionData& inst)
 {
 	hart.GPR[inst.rd] = hart.GPR[inst.rs2] + (uint32_t)hart.GPR[inst.rs1];

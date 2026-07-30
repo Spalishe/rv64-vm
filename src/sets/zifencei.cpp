@@ -19,6 +19,7 @@ Copyright 2026 Spalishe
 #include "../../include/hart.hpp"
 #include "../../include/rvjit/rvjit.hpp"
 
+using namespace rv64vm::runner;
 ExecReturn exec_FENCE_I(Hart& hart, InstructionData& inst)
 {
 	hart.clear_decode_cache();

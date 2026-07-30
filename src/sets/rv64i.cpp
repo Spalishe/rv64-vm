@@ -19,6 +19,8 @@ Copyright 2026 Spalishe
 #include "../../include/hart.hpp"
 #include <cstddef>
 
+using namespace rv64vm::runner;
+using namespace rv64vm::jit;
 // R-Type
 
 ExecReturn exec_ADDW(Hart& hart, InstructionData& inst)

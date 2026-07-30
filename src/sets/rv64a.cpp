@@ -18,6 +18,7 @@ Copyright 2026 Spalishe
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
 
+using namespace rv64vm::runner;
 MemoryReturn AMO_SC(Hart& hart, uint64_t va, MemorySize size, uint64_t val, void* out_val)
 {
 	if(hart.get_reservation().valid && hart.get_reservation().vaddr == va && hart.get_reservation().size == size)

@@ -153,7 +153,7 @@ struct WaylandWindow
 	int height								 = 0;
 
 	InputState* input;
-	std::shared_ptr<HID_Keyboard> kb;
+	std::shared_ptr<rv64vm::dev::HID_Keyboard> kb;
 };
 namespace
 {
@@ -481,7 +481,7 @@ struct AppWindow
 {
 	WaylandWindow wl;
 	InputState input;
-	std::shared_ptr<HID_Keyboard> kb;
+	std::shared_ptr<rv64vm::dev::HID_Keyboard> kb;
 	int width  = 800;
 	int height = 600;
 };

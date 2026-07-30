@@ -21,23 +21,27 @@ Copyright 2026 Spalishe
 #include "../gui/wayland/wayland.hpp"
 #include "../gui/x11.hpp"
 
+#include "../fwd.hpp"
+
 #include <chrono>
-
-class Framebuffer : public Device
+namespace rv64vm::dev
 {
-  public:
-	Framebuffer(uint64_t base, Machine& cpu, fdt_node* fdt, size_t width, size_t height, AppWindow& window);
-	static std::shared_ptr<Framebuffer> init_auto(Machine& cpu);
-	AppWindow& window;
+	class Framebuffer : public Device
+	{
+	  public:
+		Framebuffer(uint64_t base, runner::Machine& cpu, fdt_node* fdt, size_t width, size_t height, AppWindow& window);
+		static std::shared_ptr<Framebuffer> init_auto(runner::Machine& cpu);
+		AppWindow& window;
 
-  private:
-	uint8_t* buffer;
+	  private:
+		uint8_t* buffer;
 
-	Machine& cpu;
-	uint64_t read(uint64_t addr, MemorySize size);
-	void write(uint64_t addr, MemorySize size, uint64_t val);
-	void tick();
+		runner::Machine& cpu;
+		uint64_t read(uint64_t addr, MemorySize size);
+		void write(uint64_t addr, MemorySize size, uint64_t val);
+		void tick();
 
-	std::chrono::high_resolution_clock::time_point last_frame_time;
-};
+		std::chrono::high_resolution_clock::time_point last_frame_time;
+	};
+}
 #endif

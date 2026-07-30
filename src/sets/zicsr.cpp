@@ -19,6 +19,7 @@ Copyright 2026 Spalishe
 #include "../../include/defines/csr.hpp"
 #include "../../include/hart.hpp"
 
+using namespace rv64vm::runner;
 // ZiCSR
 
 bool compatible_mode(PrivilegeMode csr_level, PrivilegeMode cur_mode)

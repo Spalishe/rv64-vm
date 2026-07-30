@@ -19,6 +19,7 @@ Copyright 2026 Spalishe
 #include "../../include/hart.hpp"
 
 #include <limits>
+using namespace rv64vm::runner;
 
 // R-Type
 

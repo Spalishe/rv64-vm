@@ -16,81 +16,85 @@ Copyright 2026 Spalishe
 */
 
 #pragma once
+#include "../../fwd.hpp"
 #include "../i2c/i2c-core.hpp"
 #include "../i2c/i2c-slave.hpp"
 #include <cstdint>
 #include <queue>
 #include <vector>
 
-#define HID_I2C_BUFFER_SIZE 0x1000
-
-class PLIC;
-struct HIDOverI2C : I2CSlave
+namespace rv64vm::dev
 {
-	HIDOverI2C(Machine& cpu, fdt_node* fdt, std::vector<uint8_t> report_desc, uint16_t input_report_size);
-	~HIDOverI2C()
+	static constexpr uint16_t HID_I2C_BUFFER_SIZE = 0x1000;
+
+	class PLIC;
+	struct HIDOverI2C : I2CSlave
 	{
-		if(input_report != nullptr) delete[] input_report;
-		if(output_report != nullptr) delete[] output_report;
-		if(data_register != nullptr) delete[] data_register;
-		if(command_register != nullptr) delete[] command_register;
-	}
+		HIDOverI2C(runner::Machine& cpu, fdt_node* fdt, std::vector<uint8_t> report_desc, uint16_t input_report_size);
+		~HIDOverI2C()
+		{
+			if(input_report != nullptr) delete[] input_report;
+			if(output_report != nullptr) delete[] output_report;
+			if(data_register != nullptr) delete[] data_register;
+			if(command_register != nullptr) delete[] command_register;
+		}
 
-	PLIC* plic;
-	int irq_num;
-	Machine& cpu;
+		PLIC* plic;
+		int irq_num;
+		runner::Machine& cpu;
 
-	std::vector<uint8_t> report_desc;
-	uint16_t cur_reg;
-	uint16_t io_offset = 0;
-	uint16_t input_report_size;
+		std::vector<uint8_t> report_desc;
+		uint16_t cur_reg;
+		uint16_t io_offset = 0;
+		uint16_t input_report_size;
 
-	void dev_write(uint8_t val);
-	uint8_t dev_read(bool m_ack);
-	void stop_transmit();
-	void start_transmit();
+		void dev_write(uint8_t val);
+		uint8_t dev_read(bool m_ack);
+		void stop_transmit();
+		void start_transmit();
 
-	// Input report
-	std::queue<std::vector<uint8_t>> report_queue;
-	uint8_t* input_report;
-	void hid_input_report_write(const std::vector<uint8_t>& bytes);
+		// Input report
+		std::queue<std::vector<uint8_t>> report_queue;
+		uint8_t* input_report;
+		void hid_input_report_write(const std::vector<uint8_t>& bytes);
 
-	// Output report
-	uint8_t* output_report;
-	virtual void hid_event_output_report_write() {};
+		// Output report
+		uint8_t* output_report;
+		virtual void hid_event_output_report_write() {};
 
-	// Data register
-	uint8_t* data_register;
-	void hid_data_register_write(const std::vector<uint8_t>& bytes);
-	virtual void hid_event_data_register_write() {};
+		// Data register
+		uint8_t* data_register;
+		void hid_data_register_write(const std::vector<uint8_t>& bytes);
+		virtual void hid_event_data_register_write() {};
 
-	// Command register
-	uint8_t* command_register;
-	virtual void hid_event_command_register_write() {};
+		// Command register
+		uint8_t* command_register;
+		virtual void hid_event_command_register_write() {};
 
-	uint8_t hid_descriptor[30] = {
-		0x1e, 0x00,			   // wHIDDescLength (30 байт)
-		0x00, 0x01,			   // bcdVersion (v1.00)
-		0x64, 0x00,			   // wReportDescLength
-		0x02, 0x00,			   // wReportDescRegister (0x0002)
-		0x03, 0x00,			   // wInputRegister (0x0003)
-		0x00, 0x04,			   // wInputLen
-		0x07, 0x00,			   // wOutputRegister
-		0x00, 0x04,			   // wOutputLen
-		0x05, 0x00,			   // wCommandRegister (0x0005)
-		0x06, 0x00,			   // wDataRegister
-		0x34, 0x12,			   // wVendorID (0x1234)
-		0x78, 0x56,			   // wProductID (0x5678)
-		0x01, 0x00,			   // wVersionID
-		0x00, 0x00, 0x00, 0x00 // Reserved
+		uint8_t hid_descriptor[30] = {
+			0x1e, 0x00,			   // wHIDDescLength (30 байт)
+			0x00, 0x01,			   // bcdVersion (v1.00)
+			0x64, 0x00,			   // wReportDescLength
+			0x02, 0x00,			   // wReportDescRegister (0x0002)
+			0x03, 0x00,			   // wInputRegister (0x0003)
+			0x00, 0x04,			   // wInputLen
+			0x07, 0x00,			   // wOutputRegister
+			0x00, 0x04,			   // wOutputLen
+			0x05, 0x00,			   // wCommandRegister (0x0005)
+			0x06, 0x00,			   // wDataRegister
+			0x34, 0x12,			   // wVendorID (0x1234)
+			0x78, 0x56,			   // wProductID (0x5678)
+			0x01, 0x00,			   // wVersionID
+			0x00, 0x00, 0x00, 0x00 // Reserved
+		};
+
+		enum class WriteEvent
+		{
+			NONE	= 0,
+			COMMAND = 1,
+			DATA	= 2,
+			OUTPUT	= 3
+		};
+		WriteEvent last_event = WriteEvent::NONE;
 	};
-
-	enum class WriteEvent
-	{
-		NONE	= 0,
-		COMMAND = 1,
-		DATA	= 2,
-		OUTPUT	= 3
-	};
-	WriteEvent last_event = WriteEvent::NONE;
-};
+}

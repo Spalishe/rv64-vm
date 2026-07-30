@@ -16,47 +16,50 @@ Copyright 2026 Spalishe
 */
 
 #pragma once
+#include "../../fwd.hpp"
 #include "../../utils/hid_report_descriptor.hpp"
 #include "hid-over-i2c.hpp"
-#include <thread>
 
-struct HID_Keyboard : HIDOverI2C
+namespace rv64vm::dev
 {
-  public:
-	void update(uint8_t modifiers, uint8_t key_1, uint8_t key_2, uint8_t key_3, uint8_t key_4, uint8_t key_5, uint8_t key_6, bool rollover);
-	HID_Keyboard(Machine& cpu, fdt_node* fdt);
+	struct HID_Keyboard : HIDOverI2C
+	{
+	  public:
+		void update(uint8_t modifiers, uint8_t key_1, uint8_t key_2, uint8_t key_3, uint8_t key_4, uint8_t key_5, uint8_t key_6, bool rollover);
+		HID_Keyboard(runner::Machine& cpu, fdt_node* fdt);
 
-  private:
-	inline static const std::vector<HIDItem> report_descriptor_items = {
-		{ GLOBAL, USAGE_PAGE_TAG,	  0x01 }, // Generic Desktop Page
-		{ LOCAL,	 USAGE_TAG,			0x06 }, // Keyboard
-		{ MAIN,	COLLECTION_TAG,		0x01 }, // Main collection
+	  private:
+		inline static const std::vector<HIDItem> report_descriptor_items = {
+			{ GLOBAL, USAGE_PAGE_TAG,	  0x01 }, // Generic Desktop Page
+			{ LOCAL,	 USAGE_TAG,			0x06 }, // Keyboard
+			{ MAIN,	COLLECTION_TAG,		0x01 }, // Main collection
 
-		{ GLOBAL, USAGE_PAGE_TAG,	  0x07 },
-		{ LOCAL,	 USAGE_MIN_TAG,		0xE0 },
-		{ LOCAL,	 USAGE_MAX_TAG,		0xE7 },
-		{ GLOBAL, LOGICAL_MIN_TAG,	   0	 },
-		{ GLOBAL, LOGICAL_MAX_TAG,	   1	 },
-		{ GLOBAL, REPORT_SIZE_TAG,	   1	 },
-		{ GLOBAL, REPORT_COUNT_TAG,	8	  },
-		{ MAIN,	INPUT_TAG,		   0x02 },
+			{ GLOBAL, USAGE_PAGE_TAG,	  0x07 },
+			{ LOCAL,	 USAGE_MIN_TAG,		0xE0 },
+			{ LOCAL,	 USAGE_MAX_TAG,		0xE7 },
+			{ GLOBAL, LOGICAL_MIN_TAG,	   0	 },
+			{ GLOBAL, LOGICAL_MAX_TAG,	   1	 },
+			{ GLOBAL, REPORT_SIZE_TAG,	   1	 },
+			{ GLOBAL, REPORT_COUNT_TAG,	8	  },
+			{ MAIN,	INPUT_TAG,		   0x02 },
 
-		{ GLOBAL, REPORT_SIZE_TAG,	   8	 },
-		{ GLOBAL, REPORT_COUNT_TAG,	1	  },
-		{ MAIN,	INPUT_TAG,		   0x01 },
+			{ GLOBAL, REPORT_SIZE_TAG,	   8	 },
+			{ GLOBAL, REPORT_COUNT_TAG,	1	  },
+			{ MAIN,	INPUT_TAG,		   0x01 },
 
-		{ GLOBAL, REPORT_SIZE_TAG,	   8	 },
-		{ GLOBAL, REPORT_COUNT_TAG,	6	  },
-		{ GLOBAL, LOGICAL_MIN_TAG,	   0	 },
-		{ GLOBAL, LOGICAL_MAX_TAG,	   255  },
-		{ LOCAL,	 USAGE_MIN_TAG,		0x00 },
-		{ LOCAL,	 USAGE_MAX_TAG,		255	},
-		{ MAIN,	INPUT_TAG,		   0x00 },
+			{ GLOBAL, REPORT_SIZE_TAG,	   8	 },
+			{ GLOBAL, REPORT_COUNT_TAG,	6	  },
+			{ GLOBAL, LOGICAL_MIN_TAG,	   0	 },
+			{ GLOBAL, LOGICAL_MAX_TAG,	   255  },
+			{ LOCAL,	 USAGE_MIN_TAG,		0x00 },
+			{ LOCAL,	 USAGE_MAX_TAG,		255	},
+			{ MAIN,	INPUT_TAG,		   0x00 },
 
-		{ MAIN,	END_COLLECTION_TAG, 0x0	},
+			{ MAIN,	END_COLLECTION_TAG, 0x0	},
+		};
+
+		void hid_event_output_report_write();
+		void hid_event_data_register_write();
+		void hid_event_command_register_write();
 	};
-
-	void hid_event_output_report_write();
-	void hid_event_data_register_write();
-	void hid_event_command_register_write();
-};
+}

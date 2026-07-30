@@ -23,66 +23,69 @@ Copyright 2026 Spalishe
 #include <cstdint>
 #include <memory>
 #include <vector>
-
-struct Hart;
-struct Machine;
-
-struct MMIO
+namespace rv64vm::runner
 {
-	MMIO(MemoryMap* mmap, uint64_t mem_size);
+	class Hart;
+	class Machine;
 
-	uint64_t memsize;
-	std::vector<std::shared_ptr<Device>> devs;
-
-	// Performs write, returns whether write operation was successful
-	MemoryReturn write(Hart& h, uint64_t vaddr, MemorySize size, uint64_t val);
-	// Preforms read, returns whether read operation was successful
-	MemoryReturn read(Hart& h, uint64_t vaddr, MemorySize size, void* val);
-
-	// Creates new device
-	template <typename T, typename... Args>
-	std::shared_ptr<T> create_device(Args&&... args)
+	class MMIO
 	{
-		auto new_device = std::make_shared<T>(std::forward<Args>(args)...);
-		devs.push_back(new_device);
-		return new_device;
-	}
-	// Creates new device calling it auto function
-	template <typename T>
-	std::shared_ptr<T> create_device_auto(Machine& cpu)
-	{
-		auto new_device = T::init_auto(cpu);
-		devs.push_back(new_device);
-		return new_device;
-	}
+	  public:
+		MMIO(MemoryMap* mmap, uint64_t mem_size);
 
-	// Runs tick() on every created device
-	void tick_all()
-	{
-		for(const auto& dev : devs)
+		uint64_t memsize;
+		std::vector<std::shared_ptr<::rv64vm::dev::Device>> devs;
+
+		// Performs write, returns whether write operation was successful
+		MemoryReturn write(Hart& h, uint64_t vaddr, MemorySize size, uint64_t val);
+		// Preforms read, returns whether read operation was successful
+		MemoryReturn read(Hart& h, uint64_t vaddr, MemorySize size, void* val);
+
+		// Creates new device
+		template <typename T, typename... Args>
+		std::shared_ptr<T> create_device(Args&&... args)
 		{
-			if(dev)
+			auto new_device = std::make_shared<T>(std::forward<Args>(args)...);
+			devs.push_back(new_device);
+			return new_device;
+		}
+		// Creates new device calling it auto function
+		template <typename T>
+		std::shared_ptr<T> create_device_auto(Machine& cpu)
+		{
+			auto new_device = T::init_auto(cpu);
+			devs.push_back(new_device);
+			return new_device;
+		}
+
+		// Runs tick() on every created device
+		void tick_all()
+		{
+			for(const auto& dev : devs)
 			{
-				dev->tick();
+				if(dev)
+				{
+					dev->tick();
+				}
 			}
 		}
-	}
 
-	// Returns device
-	template <typename T>
-	std::shared_ptr<T> get()
-	{
-		for(const auto& dev : devs)
+		// Returns device
+		template <typename T>
+		std::shared_ptr<T> get()
 		{
-			if(auto sel = std::dynamic_pointer_cast<T>(dev))
+			for(const auto& dev : devs)
 			{
-				return sel;
+				if(auto sel = std::dynamic_pointer_cast<T>(dev))
+				{
+					return sel;
+				}
 			}
+			return NULL;
 		}
-		return NULL;
-	}
 
-  private:
-	MemoryMap* mmap;
-	inline uint64_t read_dram_fast(uint64_t vaddr, MemorySize size);
-};
+	  private:
+		MemoryMap* mmap;
+		inline uint64_t read_dram_fast(uint64_t vaddr, MemorySize size);
+	};
+}

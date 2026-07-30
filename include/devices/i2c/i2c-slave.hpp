@@ -17,46 +17,48 @@ Copyright 2026 Spalishe
 
 #pragma once
 #include <cstdint>
-#include <vector>
 
-struct I2CSlave
+namespace rv64vm::dev
 {
-	I2CSlave(uint8_t address, uint16_t buffer_size) : address(address), buffer_size(buffer_size), buffer_ind(0)
+	struct I2CSlave
 	{
-		buffer = new uint8_t[buffer_size];
-	};
-	~I2CSlave()
-	{
-		if(buffer)
+		I2CSlave(uint8_t address, uint16_t buffer_size) : address(address), buffer_size(buffer_size), buffer_ind(0)
 		{
-			delete[] buffer;
+			buffer = new uint8_t[buffer_size];
+		};
+		~I2CSlave()
+		{
+			if(buffer)
+			{
+				delete[] buffer;
+			}
+		};
+		uint8_t address;
+		uint16_t buffer_size;
+		uint16_t buffer_ind;
+		uint8_t* buffer;
+		bool is_transmitting = false;
+
+		virtual void stop_transmit()
+		{
+			buffer_ind		= 0;
+			is_transmitting = false;
+		};
+		virtual uint8_t dev_read(bool m_ack)
+		{
+			uint8_t val = buffer[buffer_ind];
+			if(buffer_ind != (buffer_size - 1) || !m_ack) buffer_ind++;
+			return val;
+		}
+		virtual void dev_write(uint8_t val)
+		{
+			buffer[buffer_ind] = val;
+			if(buffer_ind != (buffer_size)-1) buffer_ind++;
+		}
+		virtual void start_transmit()
+		{
+			buffer_ind		= 0;
+			is_transmitting = true;
 		}
 	};
-	uint8_t address;
-	uint16_t buffer_size;
-	uint16_t buffer_ind;
-	uint8_t* buffer;
-	bool is_transmitting = false;
-
-	virtual void stop_transmit()
-	{
-		buffer_ind		= 0;
-		is_transmitting = false;
-	};
-	virtual uint8_t dev_read(bool m_ack)
-	{
-		uint8_t val = buffer[buffer_ind];
-		if(buffer_ind != (buffer_size - 1) || !m_ack) buffer_ind++;
-		return val;
-	}
-	virtual void dev_write(uint8_t val)
-	{
-		buffer[buffer_ind] = val;
-		if(buffer_ind != (buffer_size)-1) buffer_ind++;
-	}
-	virtual void start_transmit()
-	{
-		buffer_ind		= 0;
-		is_transmitting = true;
-	}
-};
+}

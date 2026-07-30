@@ -21,16 +21,8 @@ Copyright 2026 Spalishe
 #include <cfenv>
 #include <cmath>
 
-/*
- *   FOR FUTURE:
- *       In RV64D run sequence of each instruction must be changed:
- *           Firstly runs rm_func(without val)
- *           Then FLOAT_START
- *           then operation(without any f32_in)
- *           then FLOAT_END
- *           and finally write without any f32_out
- *
- */
+using namespace rv64vm::runner;
+
 inline double rm_func(double val, uint8_t rm, Hart& hart, bool& is_error)
 {
 	uint8_t cmp = 0;

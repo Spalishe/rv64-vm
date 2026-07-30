@@ -21,6 +21,8 @@ Copyright 2026 Spalishe
 #include <cfenv>
 #include <cmath>
 
+using namespace rv64vm::runner;
+
 inline double rm_func(double val, uint8_t rm, Hart& hart, bool& is_error)
 {
 	uint8_t cmp = 0;

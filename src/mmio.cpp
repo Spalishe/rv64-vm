@@ -18,98 +18,101 @@ Copyright 2026 Spalishe
 #include "../include/mmio.hpp"
 #include "../include/hart.hpp"
 
-MMIO::MMIO(MemoryMap* mmap, uint64_t mem_size) : mmap(mmap), memsize(mem_size) {};
-
-MemoryReturn MMIO::write(Hart& h, uint64_t vaddr, MemorySize size, uint64_t val)
+namespace rv64vm::runner
 {
-	uint64_t end = 0x80000000ULL + memsize;
-	if(vaddr >= 0x80000000ULL && (vaddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
+	MMIO::MMIO(MemoryMap* mmap, uint64_t mem_size) : mmap(mmap), memsize(mem_size) {};
+
+	MemoryReturn MMIO::write(Hart& h, uint64_t vaddr, MemorySize size, uint64_t val)
 	{
-		// DRAM
-		h.amo_check_reservation(vaddr);
-		mmap->store(vaddr, (int)size * 8, val);
-#ifdef USE_JIT
-		h.get_jctx()->page_verion_bitmap[(vaddr - 0x80000000) >> 12]++;
-#endif
-		return { true, 0, 0 };
-	}
-	// Looking up for devices in this range
-	for(const auto& dev : devs)
-	{
-		if(vaddr >= dev->start && vaddr < (dev->start + dev->size - (int)size))
+		uint64_t end = 0x80000000ULL + memsize;
+		if(vaddr >= 0x80000000ULL && (vaddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
 		{
-			// found a device
-			// mmap->store(vaddr, (int)size * 8, val); // unnecessary
+			// DRAM
 			h.amo_check_reservation(vaddr);
-			dev->write(vaddr, size, val);
+			mmap->store(vaddr, (int)size * 8, val);
+#ifdef USE_JIT
+			h.get_jctx()->page_verion_bitmap[(vaddr - 0x80000000) >> 12]++;
+#endif
 			return { true, 0, 0 };
 		}
-	}
-
-	// We hit none of the existing regions
-	// h.trap(EXC_STORE_ACCESS_FAULT, vaddr, false);
-	return { false, EXC_STORE_ACCESS_FAULT, vaddr };
-}
-inline uint64_t MMIO::read_dram_fast(uint64_t vaddr, MemorySize size)
-{
-	unsigned char* ptr = mmap->ram_direct->data + (vaddr - 0x80000000ULL);
-	switch(size)
-	{
-		case MemorySize::Byte:
-			return *(uint8_t*)ptr;
-		case MemorySize::Short:
-			return *(uint16_t*)ptr;
-		case MemorySize::Int:
-			return *(uint32_t*)ptr;
-		case MemorySize::Long:
-			return *(uint64_t*)ptr;
-	}
-	return 0;
-}
-MemoryReturn MMIO::read(Hart& h, uint64_t vaddr, MemorySize size, void* val)
-{
-	uint64_t out;
-
-	uint64_t end = 0x80000000ULL + memsize;
-	if(vaddr >= 0x80000000ULL && (vaddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
-	{
-		// DRAM
-		// out = mmap->load(vaddr, (int)size * 8);
-		out = read_dram_fast(vaddr, size);
-		goto success;
-	}
-	// Looking up for devices in this range
-	for(const auto& dev : devs)
-	{
-		if(vaddr >= dev->start && vaddr < (dev->start + dev->size - (int)size + 1))
+		// Looking up for devices in this range
+		for(const auto& dev : devs)
 		{
-			// found a device
-			// out = mmap->load(vaddr, (int)size * 8); // unnecessary
-			out = dev->read(vaddr, size);
+			if(vaddr >= dev->start && vaddr < (dev->start + dev->size - (int)size))
+			{
+				// found a device
+				// mmap->store(vaddr, (int)size * 8, val); // unnecessary
+				h.amo_check_reservation(vaddr);
+				dev->write(vaddr, size, val);
+				return { true, 0, 0 };
+			}
+		}
+
+		// We hit none of the existing regions
+		// h.trap(EXC_STORE_ACCESS_FAULT, vaddr, false);
+		return { false, EXC_STORE_ACCESS_FAULT, vaddr };
+	}
+	inline uint64_t MMIO::read_dram_fast(uint64_t vaddr, MemorySize size)
+	{
+		unsigned char* ptr = mmap->ram_direct->data + (vaddr - 0x80000000ULL);
+		switch(size)
+		{
+			case MemorySize::Byte:
+				return *(uint8_t*)ptr;
+			case MemorySize::Short:
+				return *(uint16_t*)ptr;
+			case MemorySize::Int:
+				return *(uint32_t*)ptr;
+			case MemorySize::Long:
+				return *(uint64_t*)ptr;
+		}
+		return 0;
+	}
+	MemoryReturn MMIO::read(Hart& h, uint64_t vaddr, MemorySize size, void* val)
+	{
+		uint64_t out;
+
+		uint64_t end = 0x80000000ULL + memsize;
+		if(vaddr >= 0x80000000ULL && (vaddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
+		{
+			// DRAM
+			// out = mmap->load(vaddr, (int)size * 8);
+			out = read_dram_fast(vaddr, size);
 			goto success;
 		}
-	}
+		// Looking up for devices in this range
+		for(const auto& dev : devs)
+		{
+			if(vaddr >= dev->start && vaddr < (dev->start + dev->size - (int)size + 1))
+			{
+				// found a device
+				// out = mmap->load(vaddr, (int)size * 8); // unnecessary
+				out = dev->read(vaddr, size);
+				goto success;
+			}
+		}
 
-	// We hit none of the existing regions
-	// h.trap(EXC_LOAD_ACCESS_FAULT, vaddr, false);
-	return { false, EXC_LOAD_ACCESS_FAULT, vaddr };
+		// We hit none of the existing regions
+		// h.trap(EXC_LOAD_ACCESS_FAULT, vaddr, false);
+		return { false, EXC_LOAD_ACCESS_FAULT, vaddr };
 
-success:
-	// write out to val
-	switch(size)
-	{
-		case MemorySize::Byte:
-			*(uint8_t*)val = out;
-			break;
-		case MemorySize::Short:
-			*(uint16_t*)val = out;
-			break;
-		case MemorySize::Int:
-			*(uint32_t*)val = out;
-			break;
-		case MemorySize::Long:
-			*(uint64_t*)val = out;
-			break;
+	success:
+		// write out to val
+		switch(size)
+		{
+			case MemorySize::Byte:
+				*(uint8_t*)val = out;
+				break;
+			case MemorySize::Short:
+				*(uint16_t*)val = out;
+				break;
+			case MemorySize::Int:
+				*(uint32_t*)val = out;
+				break;
+			case MemorySize::Long:
+				*(uint64_t*)val = out;
+				break;
+		}
+		return { true, 0, 0 };
 	}
-	return { true, 0, 0 };
 }

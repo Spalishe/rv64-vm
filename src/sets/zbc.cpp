@@ -18,6 +18,7 @@ Copyright 2026 Spalishe
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
 
+using namespace rv64vm::runner;
 ExecReturn exec_CLMUL(Hart& hart, InstructionData& inst)
 {
 	uint64_t rs1 = hart.GPR[inst.rs1];

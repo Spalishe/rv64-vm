@@ -13,7 +13,10 @@
    limitations under the License.
 
 */
+namespace rv64vm::jit
+{
 #define RVJIT_MIN_INSTRUCTIONS 2
 #define RVJIT_MAX_INSTRUCTIONS 128
 #define RVJIT_FUNC_SIZE		   0x1000 // DONT CHANGE IT IF YOU DONT KNOW WHAT YOU'RE DOING! If emitted function will overflow arena's buffer, it will be your fault
 #define RVJIT_ARENA_PAGES	   0x400  // Linux default page size is 4096, then 1024 * 4096 = 4194304 bytes, 4 MB
+}

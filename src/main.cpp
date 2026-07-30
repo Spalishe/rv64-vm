@@ -26,11 +26,8 @@ Copyright 2026 Spalishe
 #include "../include/gui/wayland/wayland.hpp"
 #include "../include/gui/x11.hpp"
 
-#include "../include/devices/framebuffer.hpp"
-#include "../include/devices/hid/hid_keyboard.hpp"
-#include "../include/devices/i2c/i2c-core.hpp"
-#include "../include/devices/uart.hpp"
-#include "../include/machine.hpp"
+#include "../include/rv64-vm.hpp"
+
 #include "fcntl.h"
 #include "termios.h"
 #include <thread>
@@ -69,9 +66,9 @@ termios oldt;
 std::atomic<bool> termios_running = false;
 std::vector<char> combo_sequence  = { 3, 24 }; // Ctrl+C (0x03) -> Ctrl+X (0x18)
 std::vector<char> buffer;
-std::shared_ptr<UART> uart;
+std::shared_ptr<rv64vm::dev::UART> uart;
 
-Machine* mach;
+rv64vm::runner::Machine* mach;
 // Thread function for overriding default stdin control keys
 void termios_loop()
 {
@@ -239,13 +236,13 @@ int main(int argc, char* argv[])
 	newt.c_lflag &= ~(ICANON | ISIG | ECHO);
 	tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
-	MachineConfig cfg = MachineConfig();
-	cfg.append		  = append_var->val();
-	cfg.dtb_dump_path = dumpdtb_var->val();
-	cfg.hart_count	  = harts;
-	cfg.memory_size	  = memsize;
+	rv64vm::runner::MachineConfig cfg = rv64vm::runner::MachineConfig();
+	cfg.append						  = append_var->val();
+	cfg.dtb_dump_path				  = dumpdtb_var->val();
+	cfg.hart_count					  = harts;
+	cfg.memory_size					  = memsize;
 
-	Machine machine = Machine(cfg);
+	rv64vm::runner::Machine machine = rv64vm::runner::Machine(cfg);
 
 	machine.load_bios(bios_var->val().c_str());
 
@@ -308,7 +305,7 @@ int main(int argc, char* argv[])
 	}
 #endif
 
-	uart = machine.get_mmio()->get<UART>();
+	uart = machine.get_mmio()->get<rv64vm::dev::UART>();
 
 #ifdef USE_FRAMEBUFFER
 	AppWindow window;
@@ -316,9 +313,9 @@ int main(int argc, char* argv[])
 	VkSurfaceKHR surface;
 	if(fb_w != 0 && fb_h != 0)
 	{
-		auto i2c	  = machine.get_mmio()->get<I2C>();
-		auto kb		  = i2c->create_device<HID_Keyboard>(machine, machine.get_fdt());
-		window.kb	  = std::dynamic_pointer_cast<HID_Keyboard>(kb);
+		auto i2c	  = machine.get_mmio()->get<rv64vm::dev::I2C>();
+		auto kb		  = i2c->create_device<rv64vm::dev::HID_Keyboard>(machine, machine.get_fdt());
+		window.kb	  = std::dynamic_pointer_cast<rv64vm::dev::HID_Keyboard>(kb);
 		window.width  = fb_w;
 		window.height = fb_h;
 		if(!InitializeNativeWindow(window, "rv64-vm"))
@@ -333,7 +330,7 @@ int main(int argc, char* argv[])
 		}
 		StartEventLoop(window);
 
-		machine.get_mmio()->create_device<Framebuffer>(0x18000000, machine, machine.get_fdt(), fb_w, fb_h, window);
+		machine.get_mmio()->create_device<rv64vm::dev::Framebuffer>(0x18000000, machine, machine.get_fdt(), fb_w, fb_h, window);
 	}
 #endif
 

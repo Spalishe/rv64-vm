@@ -22,40 +22,44 @@ Copyright 2026 Spalishe
 #include <atomic>
 #include <thread>
 
+#include "../fwd.hpp"
+
 #define CLINT_MSWI_SIZE	  0x4000
 #define CLINT_MTIMER_SIZE 0x8000
-
-class CLINT : public Device
+namespace rv64vm::dev
 {
-  public:
-	CLINT(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt);
-	~CLINT()
+	class CLINT : public Device
 	{
-		thr_working.store(false);
-		if(thr.joinable()) thr.join();
-	}
+	  public:
+		CLINT(uint64_t base, uint64_t size, runner::Machine& cpu, fdt_node* fdt);
+		~CLINT()
+		{
+			thr_working.store(false);
+			if(thr.joinable()) thr.join();
+		}
 
-	static std::shared_ptr<CLINT> init_auto(Machine& cpu);
+		static std::shared_ptr<CLINT> init_auto(runner::Machine& cpu);
 
-  private:
-	// Memory-mapped registers
-	std::vector<uint32_t> msip;		  // one per HART, 32-bit
-	std::vector<timecmp_st> mtimecmp; // one per HART, 64-bit
-	timer_st mtime;					  // global timer
-	std::thread thr;
-	std::atomic<bool> thr_working;
-	uint64_t countr;
+	  private:
+		// Memory-mapped registers
+		std::vector<uint32_t> msip;		  // one per HART, 32-bit
+		std::vector<timecmp_st> mtimecmp; // one per HART, 64-bit
+		timer_st mtime;					  // global timer
+		std::thread thr;
+		std::atomic<bool> thr_working;
+		uint64_t countr;
 
-	Machine& cpu;
+		::rv64vm::runner::Machine& cpu;
 
-	uint64_t read(uint64_t addr, MemorySize size);
-	void write(uint64_t addr, MemorySize size, uint64_t val);
-	void tick();
+		uint64_t read(uint64_t addr, MemorySize size);
+		void write(uint64_t addr, MemorySize size, uint64_t val);
+		void tick();
 
-	uint64_t read_mswi(uint64_t offset);
-	uint64_t read_mtimer(uint64_t offset);
-	void write_mswi(uint64_t offset, uint64_t value);
-	void write_mtimer(uint64_t offset, uint64_t value);
-	void update_mip();
-	void thread_func();
-};
+		uint64_t read_mswi(uint64_t offset);
+		uint64_t read_mtimer(uint64_t offset);
+		void write_mswi(uint64_t offset, uint64_t value);
+		void write_mtimer(uint64_t offset, uint64_t value);
+		void update_mip();
+		void thread_func();
+	};
+}

@@ -20,26 +20,29 @@ Copyright 2026 Spalishe
 #include "memory_map.hpp"
 #include <cstdint>
 
-struct Machine;
-
-struct Device : std::enable_shared_from_this<Device>
+namespace rv64vm::dev
 {
-	Device(uint64_t start, uint64_t size, fdt_node* fdt, MemoryMap* mmap) : start(start), size(size), end(start + size), mmap(mmap) {
+	struct Machine;
 
-																			};
-	MemoryMap* mmap;
-	uint64_t start;
-	uint64_t size;
-	uint64_t end;
-
-	virtual uint64_t read(uint64_t addr, MemorySize size) { return 0; }
-	virtual void write(uint64_t addr, MemorySize size, uint64_t val) {}
-	virtual void tick() {}
-
-	// Returns device
-	template <typename T>
-	std::shared_ptr<T> get()
+	struct Device : std::enable_shared_from_this<Device>
 	{
-		return std::dynamic_pointer_cast<T>(shared_from_this());
-	}
-};
+		Device(uint64_t start, uint64_t size, fdt_node* fdt, rv64vm::runner::MemoryMap* mmap) : start(start), size(size), end(start + size), mmap(mmap) {
+
+																								};
+		rv64vm::runner::MemoryMap* mmap;
+		uint64_t start;
+		uint64_t size;
+		uint64_t end;
+
+		virtual uint64_t read(uint64_t addr, MemorySize size) { return 0; }
+		virtual void write(uint64_t addr, MemorySize size, uint64_t val) {}
+		virtual void tick() {}
+
+		// Returns device
+		template <typename T>
+		std::shared_ptr<T> get()
+		{
+			return std::dynamic_pointer_cast<T>(shared_from_this());
+		}
+	};
+}

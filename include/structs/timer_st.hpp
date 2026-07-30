@@ -18,7 +18,6 @@ Copyright 2026 Spalishe
 #pragma once
 #include <chrono>
 #include <cstdint>
-#include <time.h>
 
 typedef struct
 {

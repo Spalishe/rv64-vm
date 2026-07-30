@@ -15,7 +15,7 @@ Copyright 2026 Spalishe
 
 */
 #pragma once
-#include <iostream>
+#include <iostream> // IWYU pragma: export
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.h>
