@@ -4,12 +4,13 @@
 i.e. it removes all files which dont have any documentation(pass 1), 
 and then removes all objects and classes which dont have any documentation(pass 2)"""
 
+# This script was successfully sloperated.
+
 import os
 import re
 from lxml import etree
 
 XML_OUTPUT_DIR = "./xml"
-MARKDOWN_OUTPUT_DIR = "./docs/wiki"
 
 def has_doc(elem):
     # Check if briefdescription or detaileddescription has content.

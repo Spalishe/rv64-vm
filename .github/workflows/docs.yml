@@ -1,0 +1,68 @@
+name: Build and Deploy API Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'include/**'
+      - 'src/**'
+      - 'Doxyfile'
+      - '**.py'
+
+jobs:
+  generate-and-push-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Moxygen Locally
+        run: npm install moxygen
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Python Dependencies
+        run: pip install lxml
+
+      - name: Step 1 - Generate Raw XML via Doxygen
+        run: doxygen Doxyfile
+
+      - name: Step 2 - Clean Undocumented XML Structures
+        run: python3 docs/gen/gen.py
+
+      - name: Step 3 - Convert Clean XML to Markdown via Moxygen
+        run: |
+          mkdir -p docs/api
+          npx moxygen --anchors --classes --output docs/api/%s.md ./xml
+
+      - name: Step 4 - Post-Process Markdown and Generate Index
+        run: python3 docs/gen/pp_md.py
+
+      - name: Step 5 - Commit and Push Changes to Repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@://github.com"
+          
+          git add docs/API-Reference.md docs/api/*.md
+          
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "docs: auto-update API-Reference tree and modular classes"
+            git push
+          else
+            echo "No documentation changes detected. Skipping push."
+          fi
+
