@@ -45,7 +45,7 @@ def post_process_markdown():
             class_part = name_without_ext
             new_file_name = file_name
 
-        # FIXED: Extract all methods and functions using '### ' signature
+        # Extract all methods and functions using '### ' signature
         members = re.findall(r'^###\s+(.*)', content, re.MULTILINE)
         clean_members = []
         for member in members:
@@ -84,14 +84,14 @@ def post_process_markdown():
             "content": content
         })
 
-    # Step 2: Write clean files and remove old long-named ones
+    # Write clean files and remove old long-named ones
     for file_data in processed_files:
         with open(file_data["new_path"], "w", encoding="utf-8") as f:
             f.write(file_data["content"])
         if file_data["old_path"] != file_data["new_path"]:
             os.remove(file_data["old_path"])
 
-    # Step 3: Generate the consolidated API-Reference.md file
+    # Generate the consolidated API-Reference.md file
     os.makedirs(os.path.dirname(INDEX_FILE_PATH), exist_ok=True)
     with open(INDEX_FILE_PATH, "w", encoding="utf-8") as f:
         f.write("# rv64vm API Reference\n")
@@ -102,12 +102,10 @@ def post_process_markdown():
             for clazz in sorted(toc_structure[ns].keys()):
                 f.write(f"* **[{clazz}](api/{clazz}.md)**\n")
                 for member in toc_structure[ns][clazz]:
-                    # Create GitHub compatible anchor for '###' headers:
-                    # converts '~Machine' into 'machine', 'init_auto()' into 'init_auto'
                     anchor = member.lower().strip()
                     anchor = anchor.replace("~", "").replace("::", "")
                     anchor = re.sub(r'[^a-z0-9_-]', '', anchor.replace(" ", "-"))
-                    
+
                     f.write(f"  * [{member}](api/{clazz}.md#{anchor})\n")
             f.write("\n")
 
