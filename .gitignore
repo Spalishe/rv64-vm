@@ -16,5 +16,4 @@ xml
 ./xml
 ./xml/*
 docs/wiki
-docs/api
-docs/API-Reference.md
+
