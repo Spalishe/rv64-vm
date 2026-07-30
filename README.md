@@ -78,7 +78,7 @@ cd rv64-vm
 make slib
 ```
 
-See [Getting Started with libraries](https://github.com/Spalishe/rv64-vm/blob/main/docs/Library.md)
+See [Getting Started with libraries](https://github.com/Spalishe/rv64-vm/blob/main/docs/Getting-Started-Library.md)
 
 ## Dependencies
 You can install all required dependencies using:

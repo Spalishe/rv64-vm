@@ -17,12 +17,9 @@ Copyright 2026 Spalishe
 
 #pragma once
 
+#include "../fwd.hpp"
 #include "../mmio.hpp"
 #include <queue>
-namespace rv64vm::runner
-{
-	class Machine;
-}
 #define IIR_NO_INT		 0x01
 #define IIR_THR_EMPTY	 0x02
 #define IIR_RX_AVAILABLE 0x04

@@ -12,3 +12,7 @@
 perf.data
 perf.data.old
 dtb.dtb
+xml
+./xml
+./xml/*
+docs/wiki

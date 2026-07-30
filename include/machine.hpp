@@ -44,10 +44,25 @@ namespace rv64vm::runner
 		bool init_fdt = true;
 	};
 
+	/**
+	 * @ingroup RV64VM-API
+	 * @brief RV64-VM Main machine class.
+	 * @details This class implements RISC-V emulator machine.
+	 */
 	class Machine
 	{
 	  public:
+		/**
+		 * @brief Machine constructor
+		 * @details Creates RISC-V machine
+		 * @param cfg Machine configuration
+		 */
 		Machine(const MachineConfig& cfg);
+		/**
+		 * @brief Machine destructor
+		 * @details Destroys RISC-V machine
+		 * @note It is recommended to stop machine before destroy it.
+		 */
 		~Machine();
 
 		// Disable copy/move mechanics to keep the internal thread safe

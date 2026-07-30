@@ -2,6 +2,11 @@
 
 #include <cstdint>
 
+/**
+ * @defgroup RV64VM-API Emulator API
+ * @brief Entire documentation for RV64-VM
+ */
+
 // -- Main rv64-vm namespace --
 namespace rv64vm
 {

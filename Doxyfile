@@ -1,0 +1,22 @@
+PROJECT_NAME           = "rv64vm API"
+INPUT                  = include/
+FILE_PATTERNS          = *.h *.hpp *.hh *.c *.cpp *.cc
+RECURSIVE              = YES
+
+GENERATE_XML           = YES
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+
+EXTRACT_LOCAL_CLASSES  = NO
+EXTRACT_LOCAL_METHODS  = NO
+HIDE_UNDOC_CLASSES = YES
+HIDE_UNDOC_MEMBERS = YES
+SHOW_USED_FILES        = NO
+
+WARNINGS = YES
+WARN_IF_UNDOCUMENTED   = YES
+EXCLUDE                = src/xdg-shell-protocol.cpp \
+                         include/gui/wayland/xdg-shell-client-protocol.h
