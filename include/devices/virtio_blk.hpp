@@ -137,15 +137,16 @@ struct VirtQueueState
 	bool ready				= false;
 };
 
-struct VirtIO_BLK : public Device
+class VirtIO_BLK : public Device
 {
+  public:
 	VirtIO_BLK(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt, FILE* image);
 
-	uint64_t read(uint64_t addr, MemorySize size);
-	void write(uint64_t addr, MemorySize size, uint64_t val);
 	static std::shared_ptr<VirtIO_BLK> init_auto(Machine& cpu);
 
   private:
+	uint64_t read(uint64_t addr, MemorySize size);
+	void write(uint64_t addr, MemorySize size, uint64_t val);
 	void copy_from_dram(uint64_t gpa, void* dst, uint64_t len);
 	void copy_to_dram(uint64_t gpa, const void* src, uint64_t len);
 

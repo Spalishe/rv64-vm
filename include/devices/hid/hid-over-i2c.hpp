@@ -24,7 +24,7 @@ Copyright 2026 Spalishe
 
 #define HID_I2C_BUFFER_SIZE 0x1000
 
-struct PLIC;
+class PLIC;
 struct HIDOverI2C : I2CSlave
 {
 	HIDOverI2C(Machine& cpu, fdt_node* fdt, std::vector<uint8_t> report_desc, uint16_t input_report_size);
@@ -35,6 +35,7 @@ struct HIDOverI2C : I2CSlave
 		if(data_register != nullptr) delete[] data_register;
 		if(command_register != nullptr) delete[] command_register;
 	}
+
 	PLIC* plic;
 	int irq_num;
 	Machine& cpu;
@@ -84,7 +85,6 @@ struct HIDOverI2C : I2CSlave
 		0x00, 0x00, 0x00, 0x00 // Reserved
 	};
 
-  private:
 	enum class WriteEvent
 	{
 		NONE	= 0,

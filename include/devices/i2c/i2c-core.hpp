@@ -61,12 +61,25 @@ union i2c_sr
 	uint8_t raw;
 };
 
-struct PLIC;
+class PLIC;
 struct I2CSlave;
-struct I2C : public Device
+class I2C : public Device
 {
+  public:
 	I2C(uint64_t base, Machine& cpu, fdt_node* fdt);
+	static std::shared_ptr<I2C> init_auto(Machine& cpu);
 
+	std::vector<std::shared_ptr<I2CSlave>> slaves;
+
+	template <typename T, typename... Args>
+	std::shared_ptr<I2CSlave> create_device(Args&&... args)
+	{
+		auto new_device = std::make_shared<T>(std::forward<Args>(args)...);
+		slaves.push_back(new_device);
+		return new_device;
+	}
+
+  private:
 	Machine& cpu;
 	PLIC* plic;
 	int irq_num;
@@ -85,8 +98,6 @@ struct I2C : public Device
 	bool is_read_operation				  = false;
 	bool int_line						  = false;
 
-	std::vector<std::shared_ptr<I2CSlave>> slaves;
-
 	void raise_interrupt();
 	void lower_interrupt();
 	void handle_device_write(uint8_t data);
@@ -96,19 +107,8 @@ struct I2C : public Device
 
 	bool op_active = false;
 
-	template <typename T, typename... Args>
-	std::shared_ptr<I2CSlave> create_device(Args&&... args)
-	{
-		auto new_device = std::make_shared<T>(std::forward<Args>(args)...);
-		slaves.push_back(new_device);
-		return new_device;
-	}
-
 	uint64_t read(uint64_t addr, MemorySize size);
 	void write(uint64_t addr, MemorySize size, uint64_t val);
-	static std::shared_ptr<I2C> init_auto(Machine& cpu);
-
-  private:
 	const int _run_delay = 100;
 	int _delay			 = 0;
 };

@@ -18,12 +18,14 @@ Copyright 2026 Spalishe
 #pragma once
 #include "../device.hpp"
 
-struct SYSCON : public Device
+class SYSCON : public Device
 {
+  public:
 	SYSCON(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt);
+	static std::shared_ptr<SYSCON> init_auto(Machine& cpu);
 
+  private:
 	Machine& cpu;
 	uint64_t read(uint64_t addr, MemorySize size);
 	void write(uint64_t addr, MemorySize size, uint64_t val);
-	static std::shared_ptr<SYSCON> init_auto(Machine& cpu);
 };

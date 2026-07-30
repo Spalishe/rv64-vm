@@ -23,19 +23,21 @@ Copyright 2026 Spalishe
 
 #include <chrono>
 
-struct Framebuffer : public Device
+class Framebuffer : public Device
 {
+  public:
 	Framebuffer(uint64_t base, Machine& cpu, fdt_node* fdt, size_t width, size_t height, AppWindow& window);
+	static std::shared_ptr<Framebuffer> init_auto(Machine& cpu);
+	AppWindow& window;
+
+  private:
 	uint8_t* buffer;
 
 	Machine& cpu;
-	AppWindow& window;
 	uint64_t read(uint64_t addr, MemorySize size);
 	void write(uint64_t addr, MemorySize size, uint64_t val);
 	void tick();
-	static std::shared_ptr<Framebuffer> init_auto(Machine& cpu);
 
-  private:
 	std::chrono::high_resolution_clock::time_point last_frame_time;
 };
 #endif

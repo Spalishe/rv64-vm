@@ -25,8 +25,9 @@ Copyright 2026 Spalishe
 #define CLINT_MSWI_SIZE	  0x4000
 #define CLINT_MTIMER_SIZE 0x8000
 
-struct CLINT : public Device
+class CLINT : public Device
 {
+  public:
 	CLINT(uint64_t base, uint64_t size, Machine& cpu, fdt_node* fdt);
 	~CLINT()
 	{
@@ -34,6 +35,9 @@ struct CLINT : public Device
 		if(thr.joinable()) thr.join();
 	}
 
+	static std::shared_ptr<CLINT> init_auto(Machine& cpu);
+
+  private:
 	// Memory-mapped registers
 	std::vector<uint32_t> msip;		  // one per HART, 32-bit
 	std::vector<timecmp_st> mtimecmp; // one per HART, 64-bit
@@ -47,7 +51,6 @@ struct CLINT : public Device
 	uint64_t read(uint64_t addr, MemorySize size);
 	void write(uint64_t addr, MemorySize size, uint64_t val);
 	void tick();
-	static std::shared_ptr<CLINT> init_auto(Machine& cpu);
 
 	uint64_t read_mswi(uint64_t offset);
 	uint64_t read_mtimer(uint64_t offset);
