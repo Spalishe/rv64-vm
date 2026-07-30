@@ -634,7 +634,7 @@ ExecReturn exec_FLD(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	uint64_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Long, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Long, &val);
 
 	if(success.is_success)
 	{
@@ -654,7 +654,7 @@ ExecReturn exec_FSD(Hart& hart, InstructionData& inst)
 	uint64_t addr	 = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	double f_val	 = hart.FPR[inst.rs2];
 	uint64_t val	 = std::bit_cast<uint64_t>(f_val);
-	MemoryReturn out = hart.mmio->write(hart, addr, MemorySize::Long, val);
+	MemoryReturn out = hart.get_mmio()->write(hart, addr, MemorySize::Long, val);
 	return {
 		out.is_success,
 		false,

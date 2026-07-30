@@ -21,13 +21,7 @@ Copyright 2026 Spalishe
 
 ExecReturn exec_FENCE_I(Hart& hart, InstructionData& inst)
 {
-	for(int i = 0; i < CACHE_SIZE; i++)
-	{
-		// if (hart->instr_cache[i] == NULL) continue;
-		hart.idec->cache[i].ways[0].valid = false;
-		hart.idec->cache[i].ways[1].valid = false;
-		hart.idec->cache[i].victim		  = 0;
-	}
+	hart.clear_decode_cache();
 #ifdef USE_JIT
 	// FIXED: This block is not more in use, now blocks remove themself automatically
 	/*memset(hart.jctx->jits, 0, sizeof(hart.jctx->jits));

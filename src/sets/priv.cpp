@@ -22,7 +22,7 @@ Copyright 2026 Spalishe
 
 ExecReturn exec_MRET(Hart& hart, InstructionData& inst)
 {
-	hart.pc = hart.csrs[CSR_MEPC];
+	hart.pc = hart.csr_read(CSR_MEPC);
 	switch(hart.status.fields.MPP)
 	{
 		case 0b00:
@@ -50,7 +50,7 @@ ExecReturn exec_SRET(Hart& hart, InstructionData& inst)
 	{
 		return { false, false, 0, EXC_ILLEGAL_INSTRUCTION, inst.inst };
 	}
-	hart.pc = hart.csrs[CSR_SEPC];
+	hart.pc = hart.csr_read(CSR_SEPC);
 	switch(hart.status.fields.SPP)
 	{
 		case 0b0:

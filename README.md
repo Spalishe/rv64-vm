@@ -1,4 +1,7 @@
 # rv64-vm
+
+# NOTE: As for now, JIT is being actively reworked, and so it slow af. Consider compiling with USE_JIT=0
+
 A software emulator for the RISC-V instruction set architecture (ISA) written in C++. This project aims to provide a functional emulator, capable of running XV6, OpenSBI, U-Boot, and so on.
 The emulator supports RV64GC ISA, privileged ISA and peripheral devices. See the ["Features List" section](https://github.com/Spalishe/rv64-vm#features-list) section for the details of features.
 

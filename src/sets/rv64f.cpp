@@ -623,7 +623,7 @@ ExecReturn exec_FLW(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	uint32_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Int, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Int, &val);
 
 	if(success.is_success)
 	{
@@ -643,7 +643,7 @@ ExecReturn exec_FSW(Hart& hart, InstructionData& inst)
 	uint64_t addr	 = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	float f_val		 = f32_in(hart.FPR[inst.rs2]);
 	uint32_t val	 = std::bit_cast<uint32_t>(f_val);
-	MemoryReturn out = hart.mmio->write(hart, addr, MemorySize::Int, val);
+	MemoryReturn out = hart.get_mmio()->write(hart, addr, MemorySize::Int, val);
 	return {
 		out.is_success,
 		false,

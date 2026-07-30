@@ -29,7 +29,7 @@ MemoryReturn MMIO::write(Hart& h, uint64_t vaddr, MemorySize size, uint64_t val)
 		h.amo_check_reservation(vaddr);
 		mmap->store(vaddr, (int)size * 8, val);
 #ifdef USE_JIT
-		h.jctx->page_verion_bitmap[(vaddr - 0x80000000) >> 12]++;
+		h.get_jctx()->page_verion_bitmap[(vaddr - 0x80000000) >> 12]++;
 #endif
 		return { true, 0, 0 };
 	}

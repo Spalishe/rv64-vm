@@ -30,7 +30,7 @@ ExecReturn exec_C_LW(Hart& hart, InstructionData& inst)
 	uint8_t rs1 = d_c_rs1(inst.inst);
 
 	int32_t val;
-	MemoryReturn success = hart.mmio->read(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Int, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Int, &val);
 	if(success.is_success)
 	{
 		hart.GPR[8 + rd] = (uint64_t)val;
@@ -49,7 +49,7 @@ ExecReturn exec_C_LD(Hart& hart, InstructionData& inst)
 	uint8_t rs1 = d_c_rs1(inst.inst);
 
 	int64_t val;
-	MemoryReturn success = hart.mmio->read(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Long, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Long, &val);
 	if(success.is_success)
 	{
 		hart.GPR[8 + rd] = val;
@@ -69,7 +69,7 @@ ExecReturn exec_C_FLD(Hart& hart, InstructionData& inst)
 	uint8_t rs1 = d_c_rs1(inst.inst);
 
 	int64_t val;
-	MemoryReturn success = hart.mmio->read(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Long, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Long, &val);
 	if(success.is_success)
 	{
 		hart.FPR[8 + rd] = std::bit_cast<double>(val);
@@ -88,7 +88,7 @@ ExecReturn exec_C_SW(Hart& hart, InstructionData& inst)
 	uint8_t rs2 = d_c_rd(inst.inst);
 	uint8_t rs1 = d_c_rs1(inst.inst);
 
-	MemoryReturn success = hart.mmio->write(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Int, hart.GPR[8 + rs2]);
+	MemoryReturn success = hart.get_mmio()->write(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Int, hart.GPR[8 + rs2]);
 	return {
 		success.is_success,
 		false,
@@ -102,7 +102,7 @@ ExecReturn exec_C_SD(Hart& hart, InstructionData& inst)
 	uint8_t rs2 = d_c_rd(inst.inst);
 	uint8_t rs1 = d_c_rs1(inst.inst);
 
-	MemoryReturn success = hart.mmio->write(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Long, hart.GPR[8 + rs2]);
+	MemoryReturn success = hart.get_mmio()->write(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Long, hart.GPR[8 + rs2]);
 	return {
 		success.is_success,
 		false,
@@ -117,7 +117,7 @@ ExecReturn exec_C_FSD(Hart& hart, InstructionData& inst)
 	uint8_t rs2 = d_c_rd(inst.inst);
 	uint8_t rs1 = d_c_rs1(inst.inst);
 
-	MemoryReturn success = hart.mmio->write(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Long, std::bit_cast<uint64_t>(hart.FPR[8 + rs2]));
+	MemoryReturn success = hart.get_mmio()->write(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Long, std::bit_cast<uint64_t>(hart.FPR[8 + rs2]));
 	return {
 		success.is_success,
 		false,
@@ -236,7 +236,7 @@ ExecReturn exec_C_SLLI(Hart& hart, InstructionData& inst)
 ExecReturn exec_C_LWSP(Hart& hart, InstructionData& inst)
 {
 	int32_t val;
-	MemoryReturn success = hart.mmio->read(hart, hart.GPR[2] + inst.imm, MemorySize::Int, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, hart.GPR[2] + inst.imm, MemorySize::Int, &val);
 	if(success.is_success)
 	{
 		hart.GPR[inst.rd] = (uint64_t)val;
@@ -252,7 +252,7 @@ ExecReturn exec_C_LWSP(Hart& hart, InstructionData& inst)
 ExecReturn exec_C_LDSP(Hart& hart, InstructionData& inst)
 {
 	int64_t val;
-	MemoryReturn success = hart.mmio->read(hart, hart.GPR[2] + inst.imm, MemorySize::Long, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, hart.GPR[2] + inst.imm, MemorySize::Long, &val);
 	if(success.is_success)
 	{
 		hart.GPR[inst.rd] = (uint64_t)val;
@@ -269,7 +269,7 @@ ExecReturn exec_C_LDSP(Hart& hart, InstructionData& inst)
 ExecReturn exec_C_FLDSP(Hart& hart, InstructionData& inst)
 {
 	int64_t val;
-	MemoryReturn success = hart.mmio->read(hart, hart.GPR[2] + inst.imm, MemorySize::Long, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, hart.GPR[2] + inst.imm, MemorySize::Long, &val);
 	if(success.is_success)
 	{
 		hart.FPR[inst.rd] = std::bit_cast<double>((uint64_t)val);
@@ -314,7 +314,7 @@ ExecReturn exec_C_SWSP(Hart& hart, InstructionData& inst)
 {
 	uint8_t rs2 = d_c_rs2(inst.inst);
 
-	MemoryReturn success = hart.mmio->write(hart, hart.GPR[2] + inst.imm, MemorySize::Int, hart.GPR[rs2]);
+	MemoryReturn success = hart.get_mmio()->write(hart, hart.GPR[2] + inst.imm, MemorySize::Int, hart.GPR[rs2]);
 	return {
 		success.is_success,
 		false,
@@ -327,7 +327,7 @@ ExecReturn exec_C_SDSP(Hart& hart, InstructionData& inst)
 {
 	uint8_t rs2 = d_c_rs2(inst.inst);
 
-	MemoryReturn success = hart.mmio->write(hart, hart.GPR[2] + inst.imm, MemorySize::Long, hart.GPR[rs2]);
+	MemoryReturn success = hart.get_mmio()->write(hart, hart.GPR[2] + inst.imm, MemorySize::Long, hart.GPR[rs2]);
 	return {
 		success.is_success,
 		false,
@@ -341,7 +341,7 @@ ExecReturn exec_C_FSDSP(Hart& hart, InstructionData& inst)
 {
 	uint8_t rs2 = d_c_rs2(inst.inst);
 
-	MemoryReturn success = hart.mmio->write(hart, hart.GPR[2] + inst.imm, MemorySize::Long, std::bit_cast<uint64_t>(hart.FPR[rs2]));
+	MemoryReturn success = hart.get_mmio()->write(hart, hart.GPR[2] + inst.imm, MemorySize::Long, std::bit_cast<uint64_t>(hart.FPR[rs2]));
 	return {
 		success.is_success,
 		false,

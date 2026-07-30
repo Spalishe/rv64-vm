@@ -73,7 +73,7 @@ ExecReturn exec_LD(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	uint64_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Long, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Long, &val);
 
 	if(success.is_success)
 	{
@@ -92,7 +92,7 @@ ExecReturn exec_LWU(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	uint32_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Int, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Int, &val);
 
 	if(success.is_success)
 	{
@@ -111,7 +111,7 @@ ExecReturn exec_LWU(Hart& hart, InstructionData& inst)
 ExecReturn exec_SD(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr	 = hart.GPR[inst.rs1] + (int64_t)inst.imm;
-	MemoryReturn out = hart.mmio->write(hart, addr, MemorySize::Long, hart.GPR[inst.rs2]);
+	MemoryReturn out = hart.get_mmio()->write(hart, addr, MemorySize::Long, hart.GPR[inst.rs2]);
 	return {
 		out.is_success,
 		false,
@@ -226,7 +226,7 @@ ExecReturn exec_LB(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	int8_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Byte, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Byte, &val);
 	if(success.is_success)
 	{
 		hart.GPR[inst.rd] = (uint64_t)val;
@@ -243,7 +243,7 @@ ExecReturn exec_LH(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	int16_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Short, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Short, &val);
 	if(success.is_success)
 	{
 		hart.GPR[inst.rd] = (uint64_t)val;
@@ -260,7 +260,7 @@ ExecReturn exec_LW(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	int32_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Int, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Int, &val);
 	if(success.is_success)
 	{
 		hart.GPR[inst.rd] = (uint64_t)val;
@@ -277,7 +277,7 @@ ExecReturn exec_LBU(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	uint8_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Byte, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Byte, &val);
 	if(success.is_success)
 	{
 		hart.GPR[inst.rd] = (uint64_t)(uint8_t)val;
@@ -294,7 +294,7 @@ ExecReturn exec_LHU(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr = hart.GPR[inst.rs1] + (int64_t)inst.imm;
 	uint16_t val;
-	MemoryReturn success = hart.mmio->read(hart, addr, MemorySize::Short, &val);
+	MemoryReturn success = hart.get_mmio()->read(hart, addr, MemorySize::Short, &val);
 
 	if(success.is_success)
 	{
@@ -313,7 +313,7 @@ ExecReturn exec_LHU(Hart& hart, InstructionData& inst)
 ExecReturn exec_SB(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr	 = hart.GPR[inst.rs1] + (int64_t)inst.imm;
-	MemoryReturn out = hart.mmio->write(hart, addr, MemorySize::Byte, hart.GPR[inst.rs2]);
+	MemoryReturn out = hart.get_mmio()->write(hart, addr, MemorySize::Byte, hart.GPR[inst.rs2]);
 	return {
 		out.is_success,
 		false,
@@ -325,7 +325,7 @@ ExecReturn exec_SB(Hart& hart, InstructionData& inst)
 ExecReturn exec_SH(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr	 = hart.GPR[inst.rs1] + (int64_t)inst.imm;
-	MemoryReturn out = hart.mmio->write(hart, addr, MemorySize::Short, hart.GPR[inst.rs2]);
+	MemoryReturn out = hart.get_mmio()->write(hart, addr, MemorySize::Short, hart.GPR[inst.rs2]);
 	return {
 		out.is_success,
 		false,
@@ -337,7 +337,7 @@ ExecReturn exec_SH(Hart& hart, InstructionData& inst)
 ExecReturn exec_SW(Hart& hart, InstructionData& inst)
 {
 	uint64_t addr	 = hart.GPR[inst.rs1] + (int64_t)inst.imm;
-	MemoryReturn out = hart.mmio->write(hart, addr, MemorySize::Int, hart.GPR[inst.rs2]);
+	MemoryReturn out = hart.get_mmio()->write(hart, addr, MemorySize::Int, hart.GPR[inst.rs2]);
 	return {
 		out.is_success,
 		false,
@@ -1090,7 +1090,7 @@ uint64_t jit_slow_lb(Hart* h, uint64_t addr)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Byte + 1))
 		{
@@ -1105,7 +1105,7 @@ uint64_t jit_slow_lbu(Hart* h, uint64_t addr)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Byte + 1))
 		{
@@ -1120,7 +1120,7 @@ uint64_t jit_slow_lh(Hart* h, uint64_t addr)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Short + 1))
 		{
@@ -1135,7 +1135,7 @@ uint64_t jit_slow_lhu(Hart* h, uint64_t addr)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Short + 1))
 		{
@@ -1150,7 +1150,7 @@ uint64_t jit_slow_lw(Hart* h, uint64_t addr)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Int + 1))
 		{
@@ -1165,7 +1165,7 @@ uint64_t jit_slow_lwu(Hart* h, uint64_t addr)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Int + 1))
 		{
@@ -1180,7 +1180,7 @@ uint64_t jit_slow_ld(Hart* h, uint64_t addr)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Long + 1))
 		{
@@ -1295,7 +1295,7 @@ void jit_slow_sb(Hart* h, uint64_t addr, uint64_t val)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Byte + 1))
 		{
@@ -1310,7 +1310,7 @@ void jit_slow_sh(Hart* h, uint64_t addr, uint64_t val)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Short + 1))
 		{
@@ -1325,7 +1325,7 @@ void jit_slow_sw(Hart* h, uint64_t addr, uint64_t val)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Int + 1))
 		{
@@ -1340,7 +1340,7 @@ void jit_slow_sd(Hart* h, uint64_t addr, uint64_t val)
 {
 	// We only know about phys addr
 	addr += 0x80000000;
-	for(const auto& dev : h->mmio->devs)
+	for(const auto& dev : h->get_mmio()->devs)
 	{
 		if(addr >= dev->start && addr < (dev->start + dev->size - (int)MemorySize::Long + 1))
 		{

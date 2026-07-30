@@ -169,9 +169,9 @@ void CLINT::update_mip()
 	uint64_t now = timer_get(&mtime);
 	for(int i = 0; i < cpu.get_hart_count(); i++)
 	{
-		Hart& hart			= cpu.get_hart(i);
-		hart.csrs[CSR_TIME] = now;
-		uint32_t hart_id	= hart.id;
+		Hart& hart = cpu.get_hart(i);
+		hart.csr_write(CSR_TIME, now);
+		uint32_t hart_id = hart.id;
 
 		if(msip[hart_id] & 1)
 			hart.ip.fields.MSIP = 1;

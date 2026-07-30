@@ -26,14 +26,14 @@ ExecReturn exec_cbo_zero(Hart& hart, InstructionData& inst)
 	if(addr >= 0x80000000)
 	{
 		// Effectively zero the memory
-		memset(hart.mmap->ram_direct->data + (addr - 0x80000000), 0, 64);
+		memset(hart.get_mmap()->ram_direct->data + (addr - 0x80000000), 0, 64);
 	}
 	else
 	{
 		// Fallback for devices
 		for(size_t i = 0; i < 64; ++i)
 		{
-			hart.mmio->write(hart, addr + i, MemorySize::Byte, 0);
+			hart.get_mmio()->write(hart, addr + i, MemorySize::Byte, 0);
 		}
 	}
 	return { true, false, 4, 0, 0 };
