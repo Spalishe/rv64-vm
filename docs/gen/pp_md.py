@@ -94,8 +94,8 @@ def post_process_markdown():
     # Generate the consolidated API-Reference.md file
     os.makedirs(os.path.dirname(INDEX_FILE_PATH), exist_ok=True)
     with open(INDEX_FILE_PATH, "w", encoding="utf-8") as f:
-        f.write("# rv64vm API Reference\n")
-        f.write("Welcome to the automatically generated API documentation.\n\n")
+        f.write("# rv64-vm API Reference\n")
+        f.write("This document contains all Exported API functions.\n\n")
 
         for ns in sorted(toc_structure.keys()):
             f.write(f"## Namespace `{ns}`\n\n")

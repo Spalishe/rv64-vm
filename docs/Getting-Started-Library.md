@@ -5,3 +5,7 @@
 ### Quick Start Example
 
 WIP
+
+### API
+
+Consider looking to [API Reference](API-Reference.md)
