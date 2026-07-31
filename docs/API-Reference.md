@@ -27,6 +27,7 @@ This document contains all Exported API functions.
   * [get_image](api/Machine.md#get_image)
   * [set_uart_output](api/Machine.md#set_uart_output)
   * [get_uart_output](api/Machine.md#get_uart_output)
+* **[MachineConfig](api/MachineConfig.md)**
 * **[MemoryMap](api/MemoryMap.md)**
   * [MemoryMap](api/MemoryMap.md#memorymap)
   * [~MemoryMap](api/MemoryMap.md#memorymap)
