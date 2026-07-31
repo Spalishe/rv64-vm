@@ -94,7 +94,7 @@ Defined in include/memory_map.hpp:118
 
 Returns all created regions.
 
-**See also**: [MemoryRegion](rv64vm-runner-MemoryMap-MemoryRegion.md#memoryregion)
+**See also**: [MemoryRegion](MemoryRegion.md#memoryregion)
 
 #### Returns
 Memory regions
@@ -115,7 +115,7 @@ Defined in include/memory_map.hpp:124
 
 Returns pointer to 0x80000000 guest ram region.
 
-**See also**: [MemoryRegion](rv64vm-runner-MemoryMap-MemoryRegion.md#memoryregion)
+**See also**: [MemoryRegion](MemoryRegion.md#memoryregion)
 
 #### Returns
 Direct pointer to region
@@ -267,7 +267,7 @@ Finds region by specidied guest address.
 #### Returns
 Memory region 
 
-**See also**: [MemoryRegion](rv64vm-runner-MemoryMap-MemoryRegion.md#memoryregion)
+**See also**: [MemoryRegion](MemoryRegion.md#memoryregion)
 
 #### Parameters
 

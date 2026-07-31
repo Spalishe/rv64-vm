@@ -10,7 +10,7 @@ struct MachineConfig
 
 Defined in include/machine.hpp:44
 
-[Machine](rv64vm-runner-Machine.md#machine) configuration.
+[Machine](Machine.md#machine) configuration.
 
 ## List of all members
 

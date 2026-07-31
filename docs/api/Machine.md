@@ -57,7 +57,7 @@ This class implements RISC-V emulator machine.
 | `MMIO *` | [`get_mmio`](#get_mmio) `inline` | Returns MMIO pointer. |
 | `fdt_node *` | [`get_fdt`](#get_fdt) `inline` | Returns FDT pointer. |
 | `uint64_t` | [`get_timebase`](#get_timebase) `const` `inline` | Returns config specified timer timebase (Hz/S) |
-| `MemoryMap *` | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](rv64vm-runner-MemoryMap.md#memorymap) pointer. |
+| `MemoryMap *` | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
 | `MachineState` | [`get_state`](#get_state) `const` `inline` | Returns [Machine](#machine) internal state. |
 | `uint64_t` | [`get_memory_size`](#get_memory_size) `const` `inline` | Returns config specified RAM size. |
 | `uint8_t` | [`get_hart_count`](#get_hart_count) `const` `inline` | Returns config specified Hart count. |
@@ -90,7 +90,7 @@ Creates RISC-V machine
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `cfg` | `const [MachineConfig](rv64vm-runner-MachineConfig.md#machineconfig) &` | [Machine](#machine) configuration |
+| `cfg` | `const [MachineConfig](MachineConfig.md#machineconfig) &` | [Machine](#machine) configuration |
 
 ---
 
@@ -287,12 +287,12 @@ inline MemoryMap * get_mmap()
 
 Defined in include/machine.hpp:143
 
-Returns [MemoryMap](rv64vm-runner-MemoryMap.md#memorymap) pointer.
+Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
-**See also**: [MemoryMap](rv64vm-runner-MemoryMap.md#memorymap)
+**See also**: [MemoryMap](MemoryMap.md#memorymap)
 
 #### Returns
-[MemoryMap](rv64vm-runner-MemoryMap.md#memorymap) pointer
+[MemoryMap](MemoryMap.md#memorymap) pointer
 
 ---
 
