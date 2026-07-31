@@ -146,10 +146,23 @@ def post_process_markdown():
             "content": content
         })
 
+    replacements = {}
+    for file_data in processed_files:
+        old_fn = os.path.basename(file_data["old_path"])
+        new_fn = os.path.basename(file_data["new_path"])
+        replacements[old_fn] = new_fn
+
     # Write clean files and remove old long-named ones
     for file_data in processed_files:
+        # Change all references in content
+        content = file_data["content"]
+
+        for old_fn, new_fn in replacements.items():
+            if old_fn in content:
+                content = content.replace(old_fn, new_fn)
+
         with open(file_data["new_path"], "w", encoding="utf-8") as f:
-            f.write(file_data["content"])
+            f.write(content)
         if file_data["old_path"] != file_data["new_path"]:
             os.remove(file_data["old_path"])
 
