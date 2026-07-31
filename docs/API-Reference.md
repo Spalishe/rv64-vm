@@ -1,5 +1,5 @@
-# rv64vm API Reference
-Welcome to the automatically generated API documentation.
+# rv64-vm API Reference
+This document contains all Exported API functions.
 
 ## Namespace `rv64vm::runner`
 
