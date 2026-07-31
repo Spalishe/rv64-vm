@@ -16,7 +16,7 @@ Copyright 2026 Spalishe
 */
 #pragma once
 #include "defines/traps.hpp"
-#include "libfdt.hpp"
+#include "libfdt.h"
 #include "memory_map.hpp"
 #include <cstdint>
 

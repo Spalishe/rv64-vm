@@ -44,8 +44,8 @@ namespace rv64vm::runner
 #ifdef USE_JIT
 		hctx.regs	 = GPR;
 		hctx.mmio	 = mmio;
-		hctx.ram	 = mmap->ram_direct->ptr(0x80000000);
-		hctx.memsize = mmap->ram_direct->size;
+		hctx.ram	 = mmap->get_ram_direct()->ptr(0x80000000);
+		hctx.memsize = mmap->get_ram_direct()->size;
 #endif
 	}
 

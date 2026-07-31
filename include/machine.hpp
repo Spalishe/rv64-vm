@@ -17,7 +17,7 @@ Copyright 2026 Spalishe
 
 #pragma once
 #include "hart.hpp"
-#include "libfdt.hpp"
+#include "libfdt.h"
 #include "memory_map.hpp"
 #include "mmio.hpp"
 #include <thread>
@@ -69,44 +69,163 @@ namespace rv64vm::runner
 		Machine(const Machine&)			   = delete;
 		Machine& operator=(const Machine&) = delete;
 
+		/**
+		 * @brief Device initialization start
+		 * @details Creates FDT Base for all devices
+		 *			In this block you supposed to create all devices you want, or load DTB from file.
+		 */
 		void start_init()
 		{
 			if(config.init_fdt) init_fdt();
 			init_auto_devices(); // Inits all SoC
 		}
+		/**
+		 * @brief Device initialization end
+		 * @details Writes FDT to memory.
+		 *			This function must be called after you created all devices you wanted.
+		 */
 		void end_init()
 		{
 			write_fdt();
 		}
 
+		/**
+		 * @brief Runs machine
+		 * @details Starts all Hart's execution loop.
+		 */
 		void run();
+		/**
+		 * @brief Stops machine
+		 * @details Sends a signal to machine so it could stop and destroy all harts safely.
+		 * @note In that moment it joins work thread.
+		 */
 		void stop();
+		/**
+		 * @brief Resets machines
+		 * @details Sends a signal to machine so it could safely recreate all HART's.
+		 * @warning Untested, but it is not recommended to first-time start machine with this function.
+		 */
 		void reset();
-		void wait(); // joins machine thread
+		/**
+		 * @brief Joins machine work thread
+		 */
+		void wait();
 
+		/**
+		 * @brief Returns MMIO pointer
+		 * @see MMIO
+		 * @return MMIO Pointer
+		 */
 		MMIO* get_mmio() { return mmio; }
+		/**
+		 * @brief Returns FDT pointer
+		 * @see libfdt.h
+		 * @return FDT pointer
+		 */
 		fdt_node* get_fdt() { return fdt; }
+		/**
+		 * @brief Returns config specified timer timebase (Hz/S)
+		 * @return Timebase number
+		 */
 		uint64_t get_timebase() const { return config.timebase; }
+		/**
+		 * @brief Returns MemoryMap pointer
+		 * @see MemoryMap
+		 * @return MemoryMap pointer
+		 */
 		MemoryMap* get_mmap() { return mmap; }
 
+		/**
+		 * @brief Returns Machine internal state
+		 * @see MachineState
+		 * @return Machine State enum
+		 */
 		MachineState get_state() const { return state.load(); }
+		/**
+		 * @brief Returns config specified RAM size
+		 * @return Memory Size (bytes)
+		 */
 		uint64_t get_memory_size() const { return config.memory_size; }
+		/**
+		 * @brief Returns config specified Hart count
+		 * @see HART
+		 * @return HART count
+		 */
 		uint8_t get_hart_count() const { return config.hart_count; }
+		/**
+		 * @brief Returns specified Hart by index
+		 * @see Hart
+		 * @param index HART index (not ID!)
+		 * @return Hart object
+		 */
 		Hart& get_hart(size_t index) { return harts.at(index); }
 
+		/**
+		 * @brief Loads Image file
+		 * @param path Image path
+		 * @return Success bool
+		 */
 		bool load_image(const std::string& path);
+		/**
+		 * @brief Loads Firmware file
+		 * @param path Firmware path
+		 * @return Success bool
+		 */
 		bool load_bios(const std::string& path);
+		/**
+		 * @brief Loads Kernel file
+		 * @param path Kernel path
+		 * @return Success bool
+		 */
 		bool load_kernel(const std::string& path);
+		/**
+		 * @brief Loads DTB file
+		 * @details Loads custom FDT from DTB to memory.
+		 * @note Make sure to set init_fdt in config to false before init!
+		 * @param path DTB path
+		 * @return Success bool
+		 */
 		bool load_dtb(const std::string& path);
+		/**
+		 * @brief Returns FILE pointer to loaded Image file
+		 * @return FILE pointer
+		 */
 		FILE* get_image();
+		/**
+		 * @brief Sets UART output stream
+		 * @param stream Output stream
+		 */
 		void set_uart_output(FILE* stream);
+		/**
+		 * @brief Returns UART output stream
+		 * @return Output stream
+		 */
 		FILE* get_uart_output();
 
 #ifdef USE_GDBSTUB
+		/**
+		 * @brief Enables GDB in machine.
+		 * @param enable State
+		 * @param port GDB Server Port
+		 */
 		void enable_gdb(bool enable, uint16_t port);
+		/**
+		 * @brief Sets GDB single step var
+		 * @internal
+		 * @param single_step State
+		 */
 		void set_gdb_single_step(bool single_step);
 
+		/**
+		 * @brief Starts GDB server
+		 * @internal
+		 * @param port GDB Server Port
+		 */
 		void listen_gdb(uint16_t port);
+		/**
+		 * @brief Tick checker function for all set breakpoints.
+		 * @internal
+		 */
 		void handle_gdb_breakpoints();
 #endif
 

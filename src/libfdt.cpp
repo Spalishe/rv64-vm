@@ -15,7 +15,7 @@ Copyright 2026 Spalishe
 
 */
 
-#include "../include/libfdt.hpp"
+#include "../include/libfdt.h"
 #include <cassert>
 #include <cstring>
 

@@ -17,7 +17,7 @@ Copyright 2026 Spalishe
 #include <stdexcept>
 #ifdef USE_FRAMEBUFFER
 #include "../../include/devices/framebuffer.hpp"
-#include "../../include/libfdt.hpp"
+#include "../../include/libfdt.h"
 #include "../../include/machine.hpp"
 namespace rv64vm::dev
 {

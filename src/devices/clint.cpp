@@ -16,7 +16,7 @@ Copyright 2026 Spalishe
 */
 
 #include "../../include/devices/clint.hpp"
-#include "../../include/libfdt.hpp"
+#include "../../include/libfdt.h"
 #include "../../include/machine.hpp"
 #include <atomic>
 #include <chrono>

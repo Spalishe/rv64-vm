@@ -18,7 +18,7 @@ Copyright 2026 Spalishe
 #pragma once
 
 #include "../device.hpp"
-#include "../libfdt.hpp"
+#include "../libfdt.h"
 #include "plic.hpp"
 
 #include "../fwd.hpp"

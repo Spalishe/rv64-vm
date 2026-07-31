@@ -77,7 +77,7 @@ namespace rv64vm::runner
 				continue;
 
 			if(ph.p_vaddr < 0x80000000) mmap->add_region(ph.p_vaddr, ph.p_memsz);
-			MemoryRegion* newreg = mmap->find_region(ph.p_vaddr);
+			MemoryMap::MemoryRegion* newreg = mmap->find_region(ph.p_vaddr);
 
 			memcpy(newreg->data + (ph.p_paddr - newreg->base_addr), buffer + ph.p_offset, ph.p_filesz);
 

@@ -16,7 +16,7 @@ Copyright 2026 Spalishe
 */
 #include "../../../include/devices/i2c/i2c-core.hpp"
 #include "../../../include/devices/plic.hpp"
-#include "../../../include/libfdt.hpp"
+#include "../../../include/libfdt.h"
 #include "../../../include/machine.hpp"
 
 namespace rv64vm::dev

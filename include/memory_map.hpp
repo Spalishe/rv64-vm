@@ -28,50 +28,94 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::runner
 {
-	struct MemoryRegion
+	/**
+	 * @ingroup RV64VM-API
+	 * @brief RV64-VM Memory map class.
+	 * @details This class implements Main memory storage.
+	 */
+	class MemoryMap
 	{
-		uint64_t base_addr;
-		size_t size;
-		uint8_t* data;
-
-		MemoryRegion(uint64_t base, size_t sz)
-			: base_addr(base), size(sz)
-		{
-			data = new uint8_t[size]{ 0 };
-		}
-
-		~MemoryRegion()
-		{
-			delete[] data;
-		}
-
-		uint8_t* ptr(uint64_t addr)
-		{
-			if(addr < base_addr || addr >= base_addr + size)
-				throw std::out_of_range("Memory access out of region");
-			return data + (addr - base_addr);
-		}
-		std::optional<uint8_t*> ptr_safe(uint64_t addr)
-		{
-			if(addr < base_addr || addr >= base_addr + size)
-				return std::nullopt;
-			return data + (addr - base_addr);
-		}
-	};
-
-	struct MemoryMap
-	{
-		std::vector<MemoryRegion*> regions;
-		MemoryRegion* ram_direct = nullptr;
-		ELFParser elf			 = ELFParser(this);
-		// std::unordered_map<uint64_t,MemoryRegion*> cache;
-
+	  public:
+		/**
+		 * @brief MemoryMap constructor
+		 */
+		MemoryMap() {};
+		/**
+		 * @brief MemoryMap destructor
+		 * @details Safely removes all regions
+		 */
 		~MemoryMap()
 		{
 			for(auto* r : regions)
 				delete r;
 		}
 
+		/**
+		 * @brief Memory Region object
+		 * @details A pie in a total cake. Contains raw data to memory.
+		 */
+		class MemoryRegion
+		{
+		  public:
+			/**
+			 * @brief Returns Memory region base address in GUEST ram
+			 * @return Guest base address
+			 */
+			uint64_t get_base_addr() const { return base_addr; }
+			/**
+			 * @brief Returns Memory region size.
+			 * @return Size (bytes)
+			 */
+			size_t get_size() const { return size; }
+
+			/**
+			 * @brief Returns Host pointer to Guest address.
+			 * @param addr Guest address
+			 * @return Host address
+			 * @note Make sure you check if MemoryRegion base address and size is in range
+			 */
+			uint8_t* ptr(uint64_t addr)
+			{
+				if(addr < base_addr || addr >= base_addr + size)
+					throw std::out_of_range("Memory access out of region");
+				return data + (addr - base_addr);
+			}
+
+		  private:
+			uint64_t base_addr;
+			size_t size;
+			uint8_t* data;
+
+			MemoryRegion(uint64_t base, size_t sz)
+				: base_addr(base), size(sz)
+			{
+				data = new uint8_t[size]{ 0 };
+			}
+
+			~MemoryRegion()
+			{
+				delete[] data;
+			}
+			friend class MemoryMap;
+		};
+
+		/**
+		 * @brief Returns all created regions
+		 * @see MemoryRegion
+		 * @return Memory regions
+		 */
+		inline std::vector<MemoryRegion*>& get_regions() { return regions; }
+		/**
+		 * @brief Returns pointer to 0x80000000 guest ram region
+		 * @see MemoryRegion
+		 * @return Direct pointer to region
+		 */
+		inline MemoryRegion* get_ram_direct() const { return ram_direct; }
+		/**
+		 * @brief Creates new guest region in memory
+		 * @param base Guest base
+		 * @param size Region size
+		 */
 		void add_region(uint64_t base, size_t size)
 		{
 			regions.push_back(new MemoryRegion(base, size));
@@ -80,7 +124,13 @@ namespace rv64vm::runner
 				ram_direct = regions.back();
 			}
 		}
-
+		/**
+		 * @brief Loads binary or ELF file to guest memory
+		 * @param memory_path Guest address to put data in
+		 * @param path Path to file
+		 * @param entry_pc Output program counter readed from ELF file(if you use elf)
+		 * @return Success boolean
+		 */
 		bool load_file(uint64_t memory_path, std::string path = "", uint64_t* entry_pc = NULL)
 		{
 			std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -111,7 +161,14 @@ namespace rv64vm::runner
 				return true;
 			}
 		}
-
+		/**
+		 * @brief Loads buffer to guest memory
+		 * @param memory_path Guest address to put data in
+		 * @param buffer Host pointer to buffer
+		 * @param size Buffer size
+		 * @param entry_pc Output program counter readed from ELF file(if you use elf)
+		 * @return Success boolean
+		 */
 		bool load_buffer(uint64_t memory_path, char* buffer, uint64_t size, uint64_t* entry_pc = NULL)
 		{
 			bool isElf = *(uint32_t*)buffer == ELF_MAGIC;
@@ -127,7 +184,12 @@ namespace rv64vm::runner
 				return true;
 			}
 		}
-
+		/**
+		 * @brief Loads value from guest memory
+		 * @param addr Guest address
+		 * @param size Data size (bits)
+		 * @return Value stored in memory
+		 */
 		uint64_t load(uint64_t addr, uint64_t size)
 		{
 			MemoryRegion* r = find_region(addr);
@@ -152,55 +214,12 @@ namespace rv64vm::runner
 					throw std::invalid_argument("Invalid load size");
 			}
 		}
-
-		std::optional<uint64_t> load_safe(uint64_t addr, uint64_t size)
-		{
-			std::optional<MemoryRegion*> r = find_region_safe(addr);
-			if(!r.has_value()) return std::nullopt;
-			std::optional<uint8_t*> p = r.value()->ptr_safe(addr);
-			if(!p.has_value()) return std::nullopt;
-			switch(size)
-			{
-				case 8:
-					return p.value()[0];
-				case 16:
-					return p.value()[0] | ((uint64_t)p.value()[1] << 8);
-				case 32:
-					return p.value()[0] | ((uint64_t)p.value()[1] << 8)
-						   | ((uint64_t)p.value()[2] << 16) | ((uint64_t)p.value()[3] << 24);
-				case 64:
-				{
-					uint64_t val = 0;
-					for(int i = 0; i < 8; i++)
-						val |= ((uint64_t)p.value()[i] << (i * 8));
-					return val;
-				}
-				default:
-					return std::nullopt;
-			}
-		}
-
-		void copy_mem(uint64_t addr, uint64_t size, void* buffer)
-		{
-			MemoryRegion* r = find_region(addr);
-			uint8_t* p		= r->ptr(addr);
-			if((addr + size) > (r->base_addr + r->size))
-				size = (r->base_addr + r->size) - addr;
-			memcpy(buffer, p, size);
-		}
-
-		bool copy_mem_safe(uint64_t addr, uint64_t size, void* buffer)
-		{
-			std::optional<MemoryRegion*> rs = find_region_safe(addr);
-			if(rs == std::nullopt) return false;
-			MemoryRegion* r = *rs;
-			uint8_t* p		= r->ptr(addr);
-			if((addr + size) > (r->base_addr + r->size))
-				size = (r->base_addr + r->size) - addr;
-			memcpy(buffer, p, size);
-			return true;
-		}
-
+		/**
+		 * @brief Stores value to guest memory
+		 * @param addr Guest address
+		 * @param size Data size (bits)
+		 * @param value Value to store
+		 */
 		void store(uint64_t addr, uint64_t size, uint64_t value)
 		{
 			MemoryRegion* r = find_region(addr);
@@ -229,6 +248,12 @@ namespace rv64vm::runner
 			}
 		}
 
+		/**
+		 * @brief Finds region by specidied guest address
+		 * @param addr Guest addr
+		 * @return Memory region
+		 * @see MemoryRegion
+		 */
 		MemoryRegion* find_region(uint64_t addr)
 		{
 			// if(cache.find(addr) != cache.end()) {return cache[addr];}
@@ -236,7 +261,7 @@ namespace rv64vm::runner
 				return ram_direct;
 			for(auto* r : regions)
 			{
-				if(addr >= r->base_addr && addr < r->base_addr + r->size)
+				if(addr >= r->get_base_addr() && addr < r->get_base_addr() + r->get_size())
 				{
 					// cache[addr] = r;
 					return r;
@@ -244,18 +269,10 @@ namespace rv64vm::runner
 			}
 			throw std::out_of_range(std::format("Address not mapped in MemoryMap: 0x{:08x}", addr));
 		}
-		std::optional<MemoryRegion*> find_region_safe(uint64_t addr)
-		{
-			// if(cache.find(addr) != cache.end()) {return cache[addr];}
-			for(auto* r : regions)
-			{
-				if(addr >= r->base_addr && addr < r->base_addr + r->size)
-				{
-					// cache[addr] = r;
-					return r;
-				}
-			}
-			return std::nullopt;
-		}
+
+	  private:
+		std::vector<MemoryRegion*> regions;
+		MemoryRegion* ram_direct = nullptr;
+		ELFParser elf			 = ELFParser(this);
 	};
 }

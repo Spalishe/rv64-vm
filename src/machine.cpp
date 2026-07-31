@@ -507,7 +507,7 @@ namespace rv64vm::runner
 	void Machine::reset_memory()
 	{
 		if(!mmap) return;
-		for(auto* reg : mmap->regions)
+		for(auto* reg : mmap->get_regions())
 		{
 			memset(reg->data, 0, reg->size);
 		}
@@ -528,11 +528,11 @@ namespace rv64vm::runner
 	void Machine::destroy_mmap()
 	{
 		if(!mmap) return;
-		for(auto* reg : mmap->regions)
+		for(auto* reg : mmap->get_regions())
 		{
 			delete reg;
 		}
-		mmap->regions.clear();
+		mmap->get_regions().clear();
 		delete mmap;
 		mmap = nullptr;
 		delete mmio;
