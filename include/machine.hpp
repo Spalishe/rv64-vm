@@ -26,7 +26,7 @@ Copyright 2026 Spalishe
 namespace rv64vm::runner
 {
 	/**
-	 * @ingroup RV64VM-API
+	 * @ingroup RV64VM-API
 	 * @brief Machine State enum
 	 */
 	enum class MachineState : uint8_t

@@ -9,144 +9,161 @@ import re
 MARKDOWN_OUTPUT_DIR = "./docs/api"
 INDEX_FILE_PATH = "./docs/API-Reference.md"
 
-# Project namespaces sorted by length descending
-KNOWN_NAMESPACES = ["rv64vm"] 
+def get_or_create_class_node(tree, class_hierarchy):
+    """Navigates or builds a nested class dictionary tree."""
+    current = tree
+    target_node = None
+    for part in class_hierarchy:
+        if part not in current:
+            current[part] = {"members": [], "file": "", "nested": {}}
+        target_node = current[part]
+        current = target_node["nested"]
+    return target_node
 
-def parse_moxygen_filename(file_name):
-    # Extract namespace and class hierarchy from filename.
-    name_without_ext = os.path.splitext(file_name)[0]
-    parts = name_without_ext.split('-')
-    
-    for ns in sorted(KNOWN_NAMESPACES, key=len, reverse=True):
-        ns_parts = ns.split('::')
-        if parts[:len(ns_parts)] == ns_parts:
-            ns_length = len(ns_parts)
-            return "::".join(parts[:ns_length]), parts[ns_length:]
-            
-    if len(parts) > 1:
-        return parts[0], parts[1:]
-    return "rv64vm", [name_without_ext]
+def write_toc_level(file_handle, class_dict, indent_level=0):
+    """Recursively writes nested classes, structs, and their members into the Markdown index."""
+    for clazz in sorted(class_dict.keys()):
+        node = class_dict[clazz]
+        indent = "  " * indent_level
+        file_rel_path = f"api/{node['file']}" if node['file'] else ""
 
-def clean_content(content, namespace_part, class_name):
-    # Clean up moxygen artifacts and format markers.
-    content = re.sub(r'^#\s+.*', f'**Namespace:** `{namespace_part}`\n\n# {class_name}', content, count=1)
-    
-    # Merge #include blocks with class/struct declarations
-    content = re.sub(
-        r'```cpp\s*(#include\s+.*?)\s*```\s*```cpp\s*(class\s+.*?|struct\s+.*?)\s*```',
-        r'```cpp\n\1\n\n\2\n```',
-        content, flags=re.DOTALL
-    )
-    content = re.sub(r'\{\#[a-zA-Z0-9_-]+\}', '', content)
-    content = re.sub(r':::note\s+(.*?)\s*:::', r'> [!NOTE]\n> \1', content, flags=re.DOTALL)
-    content = re.sub(r':::warning\s+(.*?)\s*:::', r'> [!WARNING]\n> \1', content, flags=re.DOTALL)
-    content = re.sub(r']\(#([a-zA-Z0-9_-]+)\)', lambda m: f'](#{m.group(1).lower()})', content)
-    return content
+        if file_rel_path:
+            file_handle.write(f"{indent}* **[{clazz}]({file_rel_path})**\n")
+        else:
+            file_handle.write(f"{indent}* **{clazz}**\n")
 
-def extract_members(content):
-    # Extract methods and functions from content.
-    members = re.findall(r'^###\s+(.*)', content, re.MULTILINE)
-    clean_members = []
-    for member in members:
-        clean_member = re.sub(r'\{\#[a-zA-Z0-9_-]+\}', '', member).strip()
-        clean_member = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', clean_member)
-        if clean_member and not clean_member.lower().startswith(("public", "private")):
-            clean_members.append(clean_member)
-    return clean_members
+        # Write members (methods / fields)
+        member_indent = indent + "  "
+        for member in node["members"]:
+            anchor = member.lower().strip()
+            anchor = anchor.replace("~", "").replace("::", "")
+            anchor = re.sub(r'[^a-z0-9_-]', '', anchor.replace(" ", "-"))
 
-def generate_anchor(member_name):
-    # Generates anchor.
-    anchor = member_name.lower().strip()
-    anchor = anchor.replace("~", "").replace("::", "")
-    return re.sub(r'[^a-z0-9_-]', '', anchor.replace(" ", "-"))
+            if file_rel_path:
+                file_handle.write(f"{member_indent}* [{member}]({file_rel_path}#{anchor})\n")
+            else:
+                file_handle.write(f"{member_indent}* {member}\n")
+
+        # Recurse into nested classes/structs
+        if node["nested"]:
+            write_toc_level(file_handle, node["nested"], indent_level + 1)
 
 def post_process_markdown():
     if not os.path.exists(MARKDOWN_OUTPUT_DIR):
         print(f"Error: {MARKDOWN_OUTPUT_DIR} directory not found.")
         return
 
-    # Tree: { Namespace: { MainClass: { content, members, substructures: { SubClass: data } } } }
-    docs_tree = {}
-    files_to_delete = []
+    # Collect all markdown base file names to distinguish namespaces from existing class files
+    all_md_files = {
+        os.path.splitext(f)[0]
+        for f in os.listdir(MARKDOWN_OUTPUT_DIR)
+        if f.endswith(".md")
+    }
 
-    # Parse files and build dependency tree
+    # Structured TOC tree: { "Namespace": { "ParentClass": { "nested": { "ChildStruct": ... } } } }
+    toc_structure = {}
+    processed_files = []
+
     for file_name in os.listdir(MARKDOWN_OUTPUT_DIR):
         if not file_name.endswith(".md") or '-' not in file_name:
             continue
 
         md_path = os.path.join(MARKDOWN_OUTPUT_DIR, file_name)
         with open(md_path, "r", encoding="utf-8") as f:
-            raw_content = f.read()
+            content = f.read()
 
-        namespace_part, class_hierarchy = parse_moxygen_filename(file_name)
-        
-        main_class = class_hierarchy[0]
-        is_substructure = len(class_hierarchy) > 1
-        full_class_name = "::".join(class_hierarchy)
+        name_without_ext = os.path.splitext(file_name)[0]
+        parts = name_without_ext.split('-')
 
-        content = clean_content(raw_content, namespace_part, full_class_name)
-        members = extract_members(content)
+        if len(parts) > 1:
+            # Determine where the class hierarchy begins by checking existing files
+            class_start_idx = len(parts) - 1
+            for i in range(1, len(parts)):
+                prefix_filename = "-".join(parts[:i + 1])
+                if prefix_filename in all_md_files:
+                    class_start_idx = i
+                    break
 
-        if namespace_part not in docs_tree:
-            docs_tree[namespace_part] = {}
-        if main_class not in docs_tree[namespace_part]:
-            docs_tree[namespace_part][main_class] = {"content": "", "members": [], "substructures": {}}
+            namespace_parts = parts[:class_start_idx]
+            class_hierarchy = parts[class_start_idx:]
 
-        if is_substructure:
-            sub_name = "::".join(class_hierarchy[1:])
-            docs_tree[namespace_part][main_class]["substructures"][sub_name] = {
-                "members": members,
-                "append_content": f"\n\n## Substructure `{full_class_name}`\n\n" + re.sub(r'^#\s+.*', '', content, count=1).strip()
-            }
-            files_to_delete.append(md_path)
+            namespace_part = "::".join(namespace_parts) if namespace_parts else "rv64vm"
+            scope_str = "::".join(parts[:-1])
+            class_part = parts[-1]
+            new_file_name = f"{class_part}.md"
+
+            content = re.sub(
+                r'^#\s+.*', 
+                f'**Namespace:** `{scope_str}`\n\n# {class_part}', 
+                content, 
+                count=1
+            )
         else:
-            docs_tree[namespace_part][main_class]["content"] = content
-            docs_tree[namespace_part][main_class]["members"] = members
-            docs_tree[namespace_part][main_class]["old_path"] = md_path
+            namespace_part = "rv64vm"
+            class_hierarchy = [name_without_ext]
+            class_part = name_without_ext
+            new_file_name = file_name
 
-    # Merge nested structures into parent files
-    for ns, classes in docs_tree.items():
-        for main_class, data in classes.items():
-            final_content = data["content"] if data["content"] else f"# {main_class}\n**Namespace:** `{ns}`"
-            
-            for sub_name, sub_data in data["substructures"].items():
-                final_content += sub_data["append_content"]
+        # Extract all methods and functions using '### ' signature
+        members = re.findall(r'^###\s+(.*)', content, re.MULTILINE)
+        clean_members = []
+        for member in members:
+            # Strip anchors or markdown links inside header if moxygen added any
+            clean_member = re.sub(r'\{\#[a-zA-Z0-9_-]+\}', '', member).strip()
+            clean_member = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', clean_member)
+            if clean_member and not clean_member.lower().startswith(("public", "private")):
+                clean_members.append(clean_member)
 
-            new_file_path = os.path.join(MARKDOWN_OUTPUT_DIR, f"{main_class}.md")
-            with open(new_file_path, "w", encoding="utf-8") as f:
-                f.write(final_content)
+        # Store into hierarchical tree
+        if namespace_part not in toc_structure:
+            toc_structure[namespace_part] = {}
 
-            if "old_path" in data and data["old_path"] != new_file_path:
-                files_to_delete.append(data["old_path"])
+        node = get_or_create_class_node(toc_structure[namespace_part], class_hierarchy)
+        node["members"] = clean_members
+        node["file"] = new_file_name
 
-    # Cleanup original moxygen files
-    for old_path in set(files_to_delete):
-        if os.path.exists(old_path):
-            os.remove(old_path)
+        # Merge standalone #include code blocks with class/struct definition blocks
+        content = re.sub(
+            r'```cpp\s*(#include\s+.*?)\s*```\s*```cpp\s*(class\s+.*?|struct\s+.*?)\s*```',
+            r'```cpp\n\1\n\n\2\n```',
+            content,
+            flags=re.DOTALL
+        )
 
-    # Generate global API-Reference.md
+        # Strip custom documentation anchors {#machine-1}
+        content = re.sub(r'\{\#[a-zA-Z0-9_-]+\}', '', content)
+
+        # Convert custom markdown containers (:::note, :::warning) into normal looking alerts
+        content = re.sub(r':::note\s+(.*?)\s*:::', r'> [!NOTE]\n> \1', content, flags=re.DOTALL)
+        content = re.sub(r':::warning\s+(.*?)\s*:::', r'> [!WARNING]\n> \1', content, flags=re.DOTALL)
+
+        # Force internal anchors to be lowercase for GitHub compatibility
+        content = re.sub(r'\]\(\#([a-zA-Z0-9_-]+)\)', lambda m: f'](#{m.group(1).lower()})', content)
+
+        processed_files.append({
+            "old_path": md_path,
+            "new_path": os.path.join(MARKDOWN_OUTPUT_DIR, new_file_name),
+            "content": content
+        })
+
+    # Write clean files and remove old long-named ones
+    for file_data in processed_files:
+        with open(file_data["new_path"], "w", encoding="utf-8") as f:
+            f.write(file_data["content"])
+        if file_data["old_path"] != file_data["new_path"]:
+            os.remove(file_data["old_path"])
+
+    # Generate the consolidated API-Reference.md file
     os.makedirs(os.path.dirname(INDEX_FILE_PATH), exist_ok=True)
     with open(INDEX_FILE_PATH, "w", encoding="utf-8") as f:
         f.write("# rv64-vm API Reference\n")
-        f.write("This document contains all Exported API functions.\n\n")
+        f.write("This document contains all Exported API objects.\n\n")
 
-        for ns in sorted(docs_tree.keys()):
+        for ns in sorted(toc_structure.keys()):
             f.write(f"## Namespace `{ns}`\n\n")
-            for main_class in sorted(docs_tree[ns].keys()):
-                f.write(f"* **[{main_class}](api/{main_class}.md)**\n")
-
-                for member in docs_tree[ns][main_class]["members"]:
-                    anchor = generate_anchor(member)
-                    f.write(f"  * [{member}](api/{main_class}.md#{anchor})\n")
-
-                for sub_name, sub_data in sorted(docs_tree[ns][main_class]["substructures"].items()):
-                    sub_anchor = generate_anchor(f"Substructure {main_class}::{sub_name}")
-                    f.write(f"  * **[{main_class}::{sub_name}](api/{main_class}.md#{sub_anchor})** (Nested)\n")
-                    for member in sub_data["members"]:
-                        anchor = generate_anchor(member)
-                        f.write(f"    * [{member}](api/{main_class}.md#{anchor})\n")
+            write_toc_level(f, toc_structure[ns], indent_level=0)
             f.write("\n")
 
 if __name__ == "__main__":
     post_process_markdown()
-
+    os.remove(MARKDOWN_OUTPUT_DIR + "/api.md")
