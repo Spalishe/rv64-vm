@@ -509,7 +509,7 @@ namespace rv64vm::runner
 		if(!mmap) return;
 		for(auto* reg : mmap->get_regions())
 		{
-			memset(reg->data, 0, reg->size);
+			memset(reg->get_data(), 0, reg->get_size());
 		}
 	}
 

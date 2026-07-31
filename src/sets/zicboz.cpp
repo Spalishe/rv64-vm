@@ -27,7 +27,7 @@ ExecReturn exec_cbo_zero(Hart& hart, InstructionData& inst)
 	if(addr >= 0x80000000)
 	{
 		// Effectively zero the memory
-		memset(hart.get_mmap()->get_ram_direct()->data + (addr - 0x80000000), 0, 64);
+		memset(hart.get_mmap()->get_ram_direct()->get_data() + (addr - 0x80000000), 0, 64);
 	}
 	else
 	{

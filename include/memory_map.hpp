@@ -61,12 +61,17 @@ namespace rv64vm::runner
 			 * @brief Returns Memory region base address in GUEST ram
 			 * @return Guest base address
 			 */
-			uint64_t get_base_addr() const { return base_addr; }
+			inline uint64_t get_base_addr() const { return base_addr; }
 			/**
 			 * @brief Returns Memory region size.
 			 * @return Size (bytes)
 			 */
-			size_t get_size() const { return size; }
+			inline size_t get_size() const { return size; }
+			/**
+			 * @brief Returns Memory region data host pointer
+			 * @return Data host pointer
+			 */
+			inline uint8_t* get_data() const { return data; }
 
 			/**
 			 * @brief Returns Host pointer to Guest address.
@@ -74,29 +79,35 @@ namespace rv64vm::runner
 			 * @return Host address
 			 * @note Make sure you check if MemoryRegion base address and size is in range
 			 */
-			uint8_t* ptr(uint64_t addr)
+			inline uint8_t* ptr(uint64_t addr)
 			{
 				if(addr < base_addr || addr >= base_addr + size)
 					throw std::out_of_range("Memory access out of region");
 				return data + (addr - base_addr);
 			}
 
-		  private:
-			uint64_t base_addr;
-			size_t size;
-			uint8_t* data;
-
+			/**
+			 * @brief Memory region constructor
+			 * @param base Guest address
+			 * @param sz Memory size
+			 */
 			MemoryRegion(uint64_t base, size_t sz)
 				: base_addr(base), size(sz)
 			{
 				data = new uint8_t[size]{ 0 };
 			}
-
+			/**
+			 * @brief Memory region destructor
+			 */
 			~MemoryRegion()
 			{
 				delete[] data;
 			}
-			friend class MemoryMap;
+
+		  private:
+			uint64_t base_addr;
+			size_t size;
+			uint8_t* data;
 		};
 
 		/**

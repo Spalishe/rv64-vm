@@ -26,7 +26,7 @@ Copyright 2026 Spalishe
 namespace rv64vm::runner
 {
 	/**
-	 * @ingroup RV64VM-API
+	 * @ingroup RV64VM-API
 	 * @brief Machine State enum
 	 */
 	enum class MachineState : uint8_t
@@ -51,7 +51,6 @@ namespace rv64vm::runner
 		std::string dtb_dump_path;
 		bool init_fdt = true;
 	};
-
 	/**
 	 * @ingroup RV64VM-API
 	 * @brief RV64-VM Main machine class.

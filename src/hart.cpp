@@ -45,7 +45,7 @@ namespace rv64vm::runner
 		hctx.regs	 = GPR;
 		hctx.mmio	 = mmio;
 		hctx.ram	 = mmap->get_ram_direct()->ptr(0x80000000);
-		hctx.memsize = mmap->get_ram_direct()->size;
+		hctx.memsize = mmap->get_ram_direct()->get_size();
 #endif
 	}
 
