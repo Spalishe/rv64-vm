@@ -25,6 +25,10 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::runner
 {
+	/**
+	 * @ingroup RV64VM-API
+	 * @brief Machine State enum
+	 */
 	enum class MachineState : uint8_t
 	{
 		Off		  = 0,
@@ -33,6 +37,10 @@ namespace rv64vm::runner
 		Resetting = 3,
 	};
 
+	/**
+	 * @ingroup RV64VM-API
+	 * @brief Machine configuration
+	 */
 	struct MachineConfig
 	{
 		uint64_t memory_size;
