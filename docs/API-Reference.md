@@ -1,11 +1,53 @@
 # rv64-vm API Reference
 This document contains all Exported API objects.
 
+## Namespace `rv64vm::dev`
+
+* **[CLINT](api/CLINT.md)**
+  * [read](api/CLINT.md#read)
+  * [write](api/CLINT.md#write)
+  * [tick](api/CLINT.md#tick)
+* **[Device](api/Device.md)**
+  * [mmap](api/Device.md#mmap)
+  * [start](api/Device.md#start)
+  * [size](api/Device.md#size)
+  * [end](api/Device.md#end)
+  * [Device](api/Device.md#device)
+  * [read](api/Device.md#read)
+  * [write](api/Device.md#write)
+  * [tick](api/Device.md#tick)
+  * [get](api/Device.md#get)
+* **[I2C](api/I2C.md)**
+  * [tick](api/I2C.md#tick)
+  * [read](api/I2C.md#read)
+  * [write](api/I2C.md#write)
+* **[PLIC](api/PLIC.md)**
+  * [read](api/PLIC.md#read)
+  * [write](api/PLIC.md#write)
+  * [tick](api/PLIC.md#tick)
+* **[SYSCON](api/SYSCON.md)**
+  * [read](api/SYSCON.md#read)
+  * [write](api/SYSCON.md#write)
+* **[UART](api/UART.md)**
+  * [read](api/UART.md#read)
+  * [write](api/UART.md#write)
+* **[VirtIO_BLK](api/VirtIO_BLK.md)**
+  * [read](api/VirtIO_BLK.md#read)
+  * [write](api/VirtIO_BLK.md#write)
+
 ## Namespace `rv64vm::runner`
 
 * **[Hart](api/Hart.md)**
   * [Hart](api/Hart.md#hart)
   * [~Hart](api/Hart.md#~hart)
+  * [get_mmio](api/Hart.md#get_mmio)
+  * [get_mmap](api/Hart.md#get_mmap)
+  * [get_reservation](api/Hart.md#get_reservation)
+  * [clear_decode_cache](api/Hart.md#clear_decode_cache)
+  * [amo_check_reservation](api/Hart.md#amo_check_reservation)
+  * [csr_read](api/Hart.md#csr_read)
+  * [csr_write](api/Hart.md#csr_write)
+  * [trap](api/Hart.md#trap)
   * [PrivilegeMode](api/Hart.md#privilegemode)
   * **[Reservation](api/Reservation.md)**
 * **[MMIO](api/MMIO.md)**
