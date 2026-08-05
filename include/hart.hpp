@@ -26,31 +26,53 @@ Copyright 2026 Spalishe
 #include <cstdint>
 namespace rv64vm::runner
 {
-	enum class PrivilegeMode
-	{
-		User	   = 0,
-		Supervisor = 1,
-		Hypervisor = 2,
-		Machine	   = 3
-	};
-
 	class MMIO;
 
 	struct InstructionCache;
 
-	struct Reservation
-	{
-		uint64_t vaddr;
-		MemorySize size;
-		bool valid;
-	};
-
+	/**
+	 * @ingroup RV64VM-API
+	 * @brief RISC-V CPU Core
+	 */
 	class Hart
 	{
 	  public:
+		/**
+		 * @brief CPU PrivilegeMode
+		 * @details Current CPU privilege mode.
+		 */
+		enum class PrivilegeMode
+		{
+			User	   = 0,
+			Supervisor = 1,
+			Hypervisor = 2,
+			Machine	   = 3
+		};
+		/**
+		 * @brief CPU Atomic Reservation
+		 * @details Used by RV64 Atomic Extension
+		 */
+		struct Reservation
+		{
+			uint64_t vaddr;
+			MemorySize size;
+			bool valid;
+		};
+
+		/**
+		 * @brief Hart constructor
+		 * @details Creates RISC-V core
+		 * @param id Internal Hart ID (starts from 0)
+		 * @param memsize Memory size
+		 * @note It must be equal with memory size defined in machine config.
+		 */
 		Hart(uint8_t id, uint64_t memsize);
 		Hart(const Hart&)			 = delete;
 		Hart& operator=(const Hart&) = delete;
+		/**
+		 * @brief Hart destructor
+		 * @details Destroys RISC-V core
+		 */
 		~Hart()
 		{
 #ifdef USE_JIT

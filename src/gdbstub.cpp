@@ -710,7 +710,7 @@ void Machine::GDBStub::parse_packet(const std::string& buffer)
 		}
 		else if(idx == 33)
 		{
-			active_hart->mode = static_cast<PrivilegeMode>(num);
+			active_hart->mode = static_cast<Hart::PrivilegeMode>(num);
 		}
 		else if(idx > 33 && idx < 64)
 		{

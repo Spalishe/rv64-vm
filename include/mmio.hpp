@@ -28,20 +28,46 @@ namespace rv64vm::runner
 	class Hart;
 	class Machine;
 
+	/**
+	 * @ingroup RV64VM-API
+	 * @brief RV64-VM Memory-Mapped Input/Output controller.
+	 * @details This class implements RISC-V basic MMIO structure which holds all devices
+	 */
 	class MMIO
 	{
 	  public:
+		/**
+		 * @brief MMIO constructor
+		 * @details Creates MMIO object
+		 */
 		MMIO(MemoryMap* mmap, uint64_t mem_size);
+		/**
+		 * @brief MMIO destructor
+		 * @details Removes MMIO object
+		 */
+		~MMIO() {};
 
-		uint64_t memsize;
+		/**
+		 * @brief Device list
+		 * @details Contains list of all created and using devices in system.
+		 */
 		std::vector<std::shared_ptr<::rv64vm::dev::Device>> devs;
 
-		// Performs write, returns whether write operation was successful
+		/**
+		 * @brief Write operation
+		 * @details Writes data to DRAM. If defined address is beyond DRAM base address then it check for all devices and writes data to them.
+		 */
 		MemoryReturn write(Hart& h, uint64_t vaddr, MemorySize size, uint64_t val);
-		// Preforms read, returns whether read operation was successful
+		/**
+		 * @brief Read operation
+		 * @details Reads data from DRAM. If defined address is beyond DRAM base address then it check for all devices and reads their memory.
+		 */
 		MemoryReturn read(Hart& h, uint64_t vaddr, MemorySize size, void* val);
 
-		// Creates new device
+		/**
+		 * @brief Creates new device
+		 * @details Creates new T device and automatically adds it to device list.
+		 */
 		template <typename T, typename... Args>
 		std::shared_ptr<T> create_device(Args&&... args)
 		{
@@ -49,7 +75,11 @@ namespace rv64vm::runner
 			devs.push_back(new_device);
 			return new_device;
 		}
-		// Creates new device calling it auto function
+		/**
+		 * @brief Creates new device automatically
+		 * @details Creates new T device by calling it auto create function.
+		 * @note It is recommended to use this function to create devices.
+		 */
 		template <typename T>
 		std::shared_ptr<T> create_device_auto(Machine& cpu)
 		{
@@ -58,7 +88,11 @@ namespace rv64vm::runner
 			return new_device;
 		}
 
-		// Runs tick() on every created device
+		/**
+		 * @brief Devices tick function
+		 * @details Wrapper that automatically will call every registered device tick function
+		 * @note This function automatically calls in Machine, no need to call it manually **unless you have a reason**.
+		 */
 		void tick_all()
 		{
 			for(const auto& dev : devs)
@@ -70,7 +104,10 @@ namespace rv64vm::runner
 			}
 		}
 
-		// Returns device
+		/**
+		 * @brief Device getter function
+		 * @details Returns first-found T from device list
+		 */
 		template <typename T>
 		std::shared_ptr<T> get()
 		{
@@ -85,6 +122,7 @@ namespace rv64vm::runner
 		}
 
 	  private:
+		uint64_t memsize;
 		MemoryMap* mmap;
 		inline uint64_t read_dram_fast(uint64_t vaddr, MemorySize size);
 	};

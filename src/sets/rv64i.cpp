@@ -488,11 +488,11 @@ ExecReturn exec_ECALL(Hart& hart, InstructionData& inst)
 
 	switch(hart.mode)
 	{
-		case PrivilegeMode::Machine:
+		case Hart::PrivilegeMode::Machine:
 			return { false, true, 0, EXC_ENV_CALL_FROM_M, 0 };
-		case PrivilegeMode::Supervisor:
+		case Hart::PrivilegeMode::Supervisor:
 			return { false, true, 0, EXC_ENV_CALL_FROM_S, 0 };
-		case PrivilegeMode::User:
+		case Hart::PrivilegeMode::User:
 			return { false, true, 0, EXC_ENV_CALL_FROM_U, 0 };
 		default:
 			// How did we get here?

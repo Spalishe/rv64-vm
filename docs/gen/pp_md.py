@@ -35,9 +35,16 @@ def write_toc_level(file_handle, class_dict, indent_level=0):
         # Write members (methods / fields)
         member_indent = indent + "  "
         for member in node["members"]:
-            anchor = member.lower().strip()
-            anchor = anchor.replace("~", "").replace("::", "")
+            is_destructor = "~" in member
+            clean_member = member.replace("~", "") if is_destructor else member
+
+            anchor = clean_member.lower().strip()
+            anchor = anchor.replace("::", "")
             anchor = re.sub(r'[^a-z0-9_-]', '', anchor.replace(" ", "-"))
+            anchor = re.sub(r'-\d+$', '', anchor)  # Удаляем суффиксы -1, -2
+
+            if is_destructor:
+                anchor = f"~{anchor}"
 
             if file_rel_path:
                 file_handle.write(f"{member_indent}* [{member}]({file_rel_path}#{anchor})\n")
@@ -47,6 +54,94 @@ def write_toc_level(file_handle, class_dict, indent_level=0):
         # Recurse into nested classes/structs
         if node["nested"]:
             write_toc_level(file_handle, node["nested"], indent_level + 1)
+
+def clean_links_in_code_blocks(content):
+    """Removes Markdown links [Type](link.md#anchor) strictly inside code blocks (`...` or ```...```)."""
+    def replace_in_code(match):
+        backticks = match.group(1)
+        code_body = match.group(2)
+        # Replacing links like [MachineConfig](MachineConfig.md#machineconfig) -> MachineConfig
+        cleaned_body = re.sub(r'\[([^\]]+)\]\([^)]*?\)', r'\1', code_body)
+        return f"{backticks}{cleaned_body}{backticks}"
+
+    return re.sub(r'(`{1,3})([\s\S]*?)\1', replace_in_code, content)
+
+def resolve_symbol_link(sym, symbol_map):
+    """Resolves a symbol name (class, method, or full path) to its target markdown link."""
+    # 1. Direct match
+    if sym in symbol_map:
+        return symbol_map[sym]
+
+    # 2. Stripped parentheses match
+    sym_no_parens = re.sub(r'\(\)$', '', sym).strip()
+    if sym_no_parens in symbol_map:
+        return symbol_map[sym_no_parens]
+
+    # 3. Match qualified paths (Class::Member or Namespace::Class)
+    if "::" in sym_no_parens:
+        parts = sym_no_parens.split("::")
+
+        # Check suffix combinations
+        for i in range(len(parts)):
+            sub_sym = "::".join(parts[i:])
+            if sub_sym in symbol_map:
+                return symbol_map[sub_sym]
+
+        # Check Class::Member pattern
+        if len(parts) >= 2:
+            class_candidate = parts[-2]
+            member_candidate = parts[-1]
+            if class_candidate in symbol_map and symbol_map[class_candidate].endswith(".md"):
+                class_file = symbol_map[class_candidate]
+                is_destruct = "~" in member_candidate
+                clean_m = member_candidate.replace("~", "")
+                anchor = clean_m.lower().strip()
+                anchor = re.sub(r'[^a-z0-9_-]', '', anchor.replace(" ", "-"))
+                if is_destruct:
+                    anchor = f"~{anchor}"
+                return f"{class_file}#{anchor}"
+
+    # 4. Fallback: match by final identifier
+    last_part = sym_no_parens.split("::")[-1]
+    if last_part in symbol_map:
+        return symbol_map[last_part]
+
+    return None
+
+def process_see_also_section(content, symbol_map):
+    """Moves '**See also**:' to a new line and adds hyperlinks to referenced objects."""
+    # Move **See also**: to a new line if preceded by non-newline characters
+    content = re.sub(r'([^\n])\s*\*\*See also\*\*:', r'\1\n\n**See also**:', content)
+
+    def replace_see_also_block(match):
+        prefix = match.group(1)
+        body = match.group(2)
+
+        # Strip existing markdown links in body to get clean symbol names
+        clean_body = re.sub(r'\[([^\]]+)\]\([^)]*\)', r'\1', body)
+
+        # Pattern to match identifiers with optional backticks
+        candidate_pattern = r'(`?)([a-zA-Z_~][a-zA-Z0-9_:]*(?:\(\))?)(`?)'
+
+        def replace_candidate(m):
+            bt_open = m.group(1)
+            sym = m.group(2)
+            bt_close = m.group(3)
+
+            link = resolve_symbol_link(sym, symbol_map)
+            if link:
+                if bt_open and bt_close:
+                    return f"[`{sym}`]({link})"
+                else:
+                    return f"[{sym}]({link})"
+            return m.group(0)
+
+        transformed_body = re.sub(candidate_pattern, replace_candidate, clean_body)
+        return prefix + transformed_body
+
+    # Match **See also**: followed by its content up to double newline or header
+    see_also_regex = r'(\*\*See also\*\*:\s*)([^\n]+(?:\n(?!#|\n)[^\n]+)*)'
+    return re.sub(see_also_regex, replace_see_also_block, content)
 
 def post_process_markdown():
     if not os.path.exists(MARKDOWN_OUTPUT_DIR):
@@ -63,6 +158,7 @@ def post_process_markdown():
     # Structured TOC tree: { "Namespace": { "ParentClass": { "nested": { "ChildStruct": ... } } } }
     toc_structure = {}
     processed_files = []
+    symbol_map = {}  # Map of symbol names -> "FileName.md" or "FileName.md#anchor"
 
     for file_name in os.listdir(MARKDOWN_OUTPUT_DIR):
         if not file_name.endswith(".md") or '-' not in file_name:
@@ -104,6 +200,11 @@ def post_process_markdown():
             class_part = name_without_ext
             new_file_name = file_name
 
+        # Map class/struct names for See Also resolution
+        symbol_map[class_part] = new_file_name
+        symbol_map["::".join(class_hierarchy)] = new_file_name
+        symbol_map[f"{namespace_part}::{'::'.join(class_hierarchy)}"] = new_file_name
+
         # Extract all methods and functions using '### ' signature
         members = re.findall(r'^###\s+(.*)', content, re.MULTILINE)
         clean_members = []
@@ -113,6 +214,18 @@ def post_process_markdown():
             clean_member = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', clean_member)
             if clean_member and not clean_member.lower().startswith(("public", "private")):
                 clean_members.append(clean_member)
+
+                # Store member symbol mapping
+                is_destructor = "~" in clean_member
+                clean_m = clean_member.replace("~", "") if is_destructor else clean_member
+                anchor = clean_m.lower().strip().replace("::", "")
+                anchor = re.sub(r'[^a-z0-9_-]', '', anchor.replace(" ", "-"))
+                anchor = re.sub(r'-\d+$', '', anchor)
+                if is_destructor:
+                    anchor = f"~{anchor}"
+
+                member_name = re.sub(r'\(.*\)', '', clean_member).strip()
+                symbol_map[f"{class_part}::{member_name}"] = f"{new_file_name}#{anchor}"
 
         # Store into hierarchical tree
         if namespace_part not in toc_structure:
@@ -133,12 +246,19 @@ def post_process_markdown():
         # Strip custom documentation anchors {#machine-1}
         content = re.sub(r'\{\#[a-zA-Z0-9_-]+\}', '', content)
 
+        # Remove links to types EXCLUSIVELY inside code blocks / backticks (`...` or ```...```)
+        content = clean_links_in_code_blocks(content)
+
         # Convert custom markdown containers (:::note, :::warning) into normal looking alerts
         content = re.sub(r':::note\s+(.*?)\s*:::', r'> [!NOTE]\n> \1', content, flags=re.DOTALL)
         content = re.sub(r':::warning\s+(.*?)\s*:::', r'> [!WARNING]\n> \1', content, flags=re.DOTALL)
 
-        # Force internal anchors to be lowercase for GitHub compatibility
-        content = re.sub(r'\]\(\#([a-zA-Z0-9_-]+)\)', lambda m: f'](#{m.group(1).lower()})', content)
+        # Fix internal anchor links for constructors (-1) and destructors (-2)
+        content = re.sub(r'\]\(\#([a-zA-Z0-9_]+)-1\)', r'](#\1)', content)
+        content = re.sub(r'\]\(\#~?([a-zA-Z0-9_]+)-2\)', r'](#~\1)', content)
+
+        # Force internal anchors to be lowercase for GitHub compatibility (preserving ~)
+        content = re.sub(r'\]\(\#([a-zA-Z0-9_~-]+)\)', lambda m: f'](#{m.group(1).lower()})', content)
 
         processed_files.append({
             "old_path": md_path,
@@ -152,14 +272,16 @@ def post_process_markdown():
         new_fn = os.path.basename(file_data["new_path"])
         replacements[old_fn] = new_fn
 
-    # Write clean files and remove old long-named ones
+    # Pass 2: Write clean files, resolve inter-file filenames, and format See Also sections
     for file_data in processed_files:
-        # Change all references in content
         content = file_data["content"]
 
         for old_fn, new_fn in replacements.items():
             if old_fn in content:
                 content = content.replace(old_fn, new_fn)
+
+        # Format **See also**: sections and generate links
+        content = process_see_also_section(content, symbol_map)
 
         with open(file_data["new_path"], "w", encoding="utf-8") as f:
             f.write(content)
@@ -179,4 +301,7 @@ def post_process_markdown():
 
 if __name__ == "__main__":
     post_process_markdown()
-    os.remove(MARKDOWN_OUTPUT_DIR + "/api.md")
+
+    api_md_file = os.path.join(MARKDOWN_OUTPUT_DIR, "api.md")
+    if os.path.exists(api_md_file):
+        os.remove(api_md_file)

@@ -27,18 +27,6 @@ namespace rv64vm::runner
 {
 	/**
 	 * @ingroup RV64VM-API
-	 * @brief Machine State enum
-	 */
-	enum class MachineState : uint8_t
-	{
-		Off		  = 0,
-		Halted	  = 1,
-		Running	  = 2,
-		Resetting = 3,
-	};
-
-	/**
-	 * @ingroup RV64VM-API
 	 * @brief Machine configuration
 	 */
 	struct MachineConfig
@@ -60,9 +48,20 @@ namespace rv64vm::runner
 	{
 	  public:
 		/**
+		 * @brief Machine State enum
+		 */
+		enum class MachineState : uint8_t
+		{
+			Off		  = 0, /** Powered off */
+			Halted	  = 1, /** Awaiting any command */
+			Running	  = 2, /** Self-explanatory */
+			Resetting = 3  /** Internal reset function state to safely restart machine */
+		};
+		/**
 		 * @brief Machine constructor
 		 * @details Creates RISC-V machine
 		 * @param cfg Machine configuration
+		 * @see MachineConfig
 		 */
 		Machine(const MachineConfig& cfg);
 		/**

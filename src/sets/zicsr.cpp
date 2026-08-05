@@ -20,6 +20,7 @@ Copyright 2026 Spalishe
 #include "../../include/hart.hpp"
 
 using namespace rv64vm::runner;
+using PrivilegeMode = Hart::PrivilegeMode;
 // ZiCSR
 
 bool compatible_mode(PrivilegeMode csr_level, PrivilegeMode cur_mode)
