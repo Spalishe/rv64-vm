@@ -113,9 +113,27 @@ namespace rv64vm::runner
 		fcsr_t fcsr;
 		bool WFI = false;
 
+		/**
+		 * @brief Returns MMIO pointer
+		 * @see MMIO
+		 * @return MMIO Pointer
+		 */
 		inline MMIO* get_mmio() { return mmio; }
+		/**
+		 * @brief Returns MemoryMap pointer
+		 * @see MemoryMap
+		 * @return MemoryMap pointer
+		 */
 		inline MemoryMap* get_mmap() { return mmap; }
+		/**
+		 * @brief Returns CPU Atomic Reservation
+		 * @see Reservation
+		 * @return Reservation reference object
+		 */
 		inline Reservation& get_reservation() { return reservation; }
+		/**
+		 * @brief Clears Instruction Decoder Cache
+		 */
 		inline void clear_decode_cache()
 		{
 			for(int i = 0; i < CACHE_SIZE; i++)
@@ -125,6 +143,10 @@ namespace rv64vm::runner
 				idec->cache[i].victim		 = 0;
 			}
 		}
+		/**
+		 * @brief Clears reservation if defined address is within CPU reservation address
+		 * @param va Virtual Address
+		 */
 		inline void amo_check_reservation(uint64_t va)
 		{
 			if(reservation.valid && reservation.vaddr >= va && va <= reservation.vaddr + (int)reservation.size)
@@ -132,11 +154,33 @@ namespace rv64vm::runner
 				reservation.valid = false;
 			}
 		}
+#ifdef USE_JIT
+		/**
+		 * @brief Returns JIT context
+		 * @return JIT context
+		 */
 		inline jit::JIT_Context* get_jctx() { return jctx; }
-
+#endif
+		/**
+		 * @brief Returns value stored in CSR
+		 * @param csr CSR address
+		 * @return CSR value
+		 */
 		uint64_t csr_read(uint16_t csr);
+		/**
+		 * @brief Stores value to CSR
+		 * @param csr CSR address
+		 * @param val Value
+		 */
 		void csr_write(uint16_t csr, uint64_t val);
 
+		/**
+		 * @brief CPU Trap function
+		 * @details Raises trap in CPU core.
+		 * @param cause Trap cause
+		 * @param tval Trap value (can be zero)
+		 * @param interrupt Is trap will be interrupt(true) of exception(false)?
+		 */
 		void trap(uint64_t cause, uint64_t tval, bool interrupt);
 
 	  private:
