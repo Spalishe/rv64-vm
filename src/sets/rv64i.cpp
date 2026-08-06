@@ -20,7 +20,9 @@ Copyright 2026 Spalishe
 #include <cstddef>
 
 using namespace rv64vm::runner;
+#ifdef USE_JIT
 using namespace rv64vm::jit;
+#endif
 // R-Type
 
 ExecReturn exec_ADDW(Hart& hart, InstructionData& inst)
@@ -1808,6 +1810,7 @@ void InstructionDecoder::init_rv64i()
 
 	register_instr("0000********00000000000000001111", exec_FENCE, imm_I);
 
+#ifdef USE_JIT
 	inst_add->jit_func	 = &execjit_ADD;
 	inst_addw->jit_func	 = &execjit_ADDW;
 	inst_sub->jit_func	 = &execjit_SUB;
@@ -1858,4 +1861,5 @@ void InstructionDecoder::init_rv64i()
 	// inst_jalr->jit_func	= &execjit_JALR;
 	inst_lui->jit_func	 = &execjit_LUI;
 	inst_auipc->jit_func = &execjit_AUIPC;
+#endif
 }
