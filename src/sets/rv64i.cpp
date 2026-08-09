@@ -1617,8 +1617,12 @@ bool jit_branch(Hart& hart, InstructionData& inst, JIT_Block& blk, JIT_Emitter& 
 		// taken handler
 		em.realize_label(blk, "taken");
 		em.flush_all(blk);
-		blk.jmp_labels.push_back({ "branch", blk.byte_pos, false, 4, (int64_t)blk.size + (int64_t)imm });
-		jmp32(blk, 0);
+
+		blk.outgoing_links.push_back({ .target_pc  = (blk.pc + blk.size) + (int64_t)imm,
+									   .patch_offs = blk.byte_pos,
+									   .linkage	   = Linkage::Jmp });
+		mov_imm64(blk, REG_RCX, 0);
+		jmp_reg(blk, REG_RCX);
 
 		em.realize_label(blk, "slow_path");
 		em.flush_all(blk);
@@ -1683,12 +1687,12 @@ bool execjit_JAL(Hart& hart, InstructionData& inst, JIT_Block& blk, JIT_Emitter&
 								   1 });
 		js8(blk, 0);
 
-		blk.jmp_labels.push_back({ "branch",
-								   blk.byte_pos,
-								   false,
-								   4,
-								   (int64_t)blk.size + (int64_t)imm });
-		jmp32(blk, 0);
+		blk.outgoing_links.push_back({ .target_pc  = (blk.pc + blk.size) + (int64_t)imm,
+									   .patch_offs = blk.byte_pos,
+									   .linkage	   = Linkage::Jmp });
+		mov_imm64(blk, REG_RCX, 0);
+		jmp_reg(blk, REG_RCX);
+
 		{
 			em.realize_label(blk, "slow_path");
 

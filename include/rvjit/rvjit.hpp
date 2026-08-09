@@ -53,6 +53,10 @@ namespace rv64vm::jit
 		bool valid			   = false;
 		uint64_t page_version  = 0; // at which page version this function was created
 		uint64_t arena_index   = 0;
+		uint8_t prologue_offs  = 0;
+
+		std::vector<Link> linked;
+		void cleanup();
 
 		JIT_Function(const JIT_Function&)			 = delete;
 		JIT_Function& operator=(const JIT_Function&) = delete;
@@ -64,7 +68,9 @@ namespace rv64vm::jit
 			  pc(other.pc),
 			  inst_size(other.inst_size),
 			  valid(other.valid),
-			  arena_index(other.arena_index)
+			  arena_index(other.arena_index),
+			  page_version(other.page_version),
+			  linked(std::move(other.linked))
 		{
 			other.func		  = nullptr;
 			other.offset	  = 0;
@@ -86,14 +92,16 @@ namespace rv64vm::jit
 				inst_size	= other.inst_size;
 				valid		= other.valid;
 				arena_index = other.arena_index;
+				linked		= std::move(other.linked);
 
-				other.func		  = nullptr;
-				other.offset	  = 0;
-				other.size		  = 0;
-				other.pc		  = 0;
-				other.inst_size	  = 0;
-				other.valid		  = false;
-				other.arena_index = 0;
+				other.func		   = nullptr;
+				other.offset	   = 0;
+				other.size		   = 0;
+				other.pc		   = 0;
+				other.inst_size	   = 0;
+				other.valid		   = false;
+				other.page_version = 0;
+				other.arena_index  = 0;
 			}
 			return *this;
 		}
@@ -204,10 +212,8 @@ namespace rv64vm::jit
 		};
 		~JIT_Context()
 		{
-			if(jits)
-				delete[] jits;
-			if(page_verion_bitmap)
-				delete[] page_verion_bitmap;
+			if(jits) delete[] jits;
+			if(page_verion_bitmap) delete[] page_verion_bitmap;
 		}
 
 		// Forbid copy
@@ -245,6 +251,7 @@ namespace rv64vm::jit
 		std::queue<uint64_t> arena_order;
 		size_t total_allocated = 0;
 		size_t max_cache_size  = 64 * 1024 * 1024; // 64 MB by default
+		std::unordered_map<uint64_t, std::vector<Link>> waiting_links;
 
 		JIT_Function* jits;
 		std::unordered_map<uint64_t, JIT_Arena> arenas;

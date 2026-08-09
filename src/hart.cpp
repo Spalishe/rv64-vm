@@ -20,6 +20,7 @@ Copyright 2026 Spalishe
 #include "../include/defines/csr.hpp"
 #include "../include/defines/traps.hpp"
 #include <assert.h>
+#include <cstdio>
 
 namespace rv64vm::runner
 {
@@ -90,7 +91,7 @@ namespace rv64vm::runner
 			{
 				if(jit_entry.page_version != jctx->page_verion_bitmap[(pc - 0x80000000) >> 12]) [[unlikely]]
 				{
-					jit_entry.valid = false;
+					jit_entry.cleanup();
 					return;
 				}
 				hctx.exit_pc	= 0;
@@ -108,7 +109,8 @@ namespace rv64vm::runner
 			}
 		}
 #endif
-		uint32_t inst			= fetch(pc);
+		uint32_t inst = fetch(pc);
+
 		InstructionCache& cache = idec->decode_inst(pc, inst);
 		if(!cache.valid)
 		{

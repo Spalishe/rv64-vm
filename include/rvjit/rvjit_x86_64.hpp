@@ -354,7 +354,7 @@ namespace rv64vm::jit
 		blk.bytes[blk.byte_pos++] = 0x89;
 		blk.bytes[blk.byte_pos++] = modrm(3, (source & 7), (dest & 7));
 	}
-	// MOV r/m64, imm32
+	// MOV r64, imm32
 	inline void mov_imm32(JIT_Block& blk, char dest, int32_t imm32)
 	{
 		// dest is RM,  REG must be 0
@@ -366,7 +366,7 @@ namespace rv64vm::jit
 		blk.bytes[blk.byte_pos++] = (imm32 >> 16) & 0xFF;
 		blk.bytes[blk.byte_pos++] = (imm32 >> 24) & 0xFF;
 	}
-	// MOV r/m64, imm64
+	// MOV r64, imm64
 	inline void mov_imm64(JIT_Block& blk, char dest, int64_t imm64)
 	{
 		// dest is RM, REG must be 0
@@ -752,6 +752,13 @@ namespace rv64vm::jit
 		blk.bytes[blk.byte_pos++] = (rel32 >> 16) & 0xFF;
 		blk.bytes[blk.byte_pos++] = (rel32 >> 24) & 0xFF;
 	}
+	// JMP r/m64
+	inline void jmp_reg(JIT_Block& blk, char reg)
+	{
+		blk.bytes[blk.byte_pos++] = rex(0, 0, 0, (reg > 7));
+		blk.bytes[blk.byte_pos++] = 0xFF;
+		blk.bytes[blk.byte_pos++] = modrm(0b11, 4, reg & 7);
+	}
 	// JS rel8
 	inline void js8(JIT_Block& blk, int8_t rel8)
 	{
@@ -821,11 +828,11 @@ namespace rv64vm::jit
 		mov(blk, REG_R12, REG_RDI);													// Mov hart context to R12
 		mov_rm(blk, REG_R13, REG_R12, NO_INDEX, 0, 0);								// Mov regs from hart context to R13
 		mov_rm(blk, REG_R14, REG_R12, NO_INDEX, 0, offsetof(JIT_HartContext, ram)); // Mov ram* from hart context to R1$
+		blk.prologue_offs = blk.byte_pos;
 	}
 	inline void JIT_Emitter::rvjit_emit_epilogue(JIT_Block& blk)
 	{
 		realize_label(blk, "epilogue");
-		realize_label(blk, "branch");
 		for(auto& vreg : vregs)
 		{
 			if(!vreg.allocated)
@@ -841,10 +848,19 @@ namespace rv64vm::jit
 			mov_mr(blk, vreg.host_reg, REG_R13, NO_INDEX, 0, vreg.vreg * 8);
 		}
 
+		mov(blk, REG_RDI, REG_R12);
 		pop(blk, REG_R14);
 		pop(blk, REG_R13); // pop hart regs
 		pop(blk, REG_R12); // pop hart context from r12
+		// ret(blk);
+		blk.outgoing_links.push_back({ .target_pc  = (blk.pc + blk.size),
+									   .patch_offs = blk.byte_pos,
+									   .linkage	   = Linkage::Tail });
+		mov_imm64(blk, REG_RCX, 0);
 		ret(blk);
+		// 2 trailing zeroes for JMP
+		blk.bytes[blk.byte_pos++] = 0x0;
+		blk.bytes[blk.byte_pos++] = 0x0;
 	}
 	inline void JIT_Emitter::reset()
 	{
@@ -886,31 +902,6 @@ namespace rv64vm::jit
 			uint32_t patch_pos = lbl.offs + (lbl.is_opcode_2 ? 2 : 1);
 			uint32_t insn_size = lbl.size + (lbl.is_opcode_2 ? 2 : 1);
 
-			if(lbl.determined_pos != INT64_MIN)
-			{
-				int64_t target = lbl.determined_pos;
-
-				if(target >= 0 && target < RVJIT_FUNC_SIZE)
-				{
-					uint64_t host = blk.inst_addr_jmp[target];
-
-					if(host != UINT64_MAX)
-					{
-						// fast path
-						cur_pos = host;
-					}
-					else
-					{
-						// slow path
-						cur_pos = lbl.offs + insn_size;
-					}
-				}
-				else
-				{
-					cur_pos = lbl.offs + insn_size;
-				}
-			}
-
 			if(lbl.size == 1)
 			{
 				// rel8
@@ -927,6 +918,65 @@ namespace rv64vm::jit
 			blk.jmp_labels.erase(blk.jmp_labels.begin() + i);
 
 			continue;
+		}
+	}
+	inline void JIT_Emitter::link_all(JIT_Block& blk, JIT_Context* ctx)
+	{
+		for(auto& link : blk.outgoing_links)
+		{
+			uint64_t original_byte_pos = blk.byte_pos;
+			blk.byte_pos			   = link.patch_offs;
+			if(link.linkage == Linkage::None)
+			{
+				// Generate mov rcx, 0 and ret
+				mov_imm64(blk, REG_RCX, 0);
+				ret(blk);
+
+				// Generating 2 trailing zeroes to remove old jmp
+				blk.bytes[blk.byte_pos++] = 0;
+				blk.bytes[blk.byte_pos++] = 0;
+			}
+			// TODO: make page version check
+			else if(link.linkage == Linkage::Tail)
+			{
+				// Search for next block, if there any jump to it, if not, place pending link
+				JIT_Function& jit_entry = ctx->jits[jit::jit_index(link.target_pc)];
+				if(jit_entry.valid && jit_entry.pc == link.target_pc)
+				{
+					// found valid block
+					// blk.bytes[blk.byte_pos++] = 0xCC;
+					mov_imm64(blk, REG_RCX, (uint64_t)jit_entry.func);
+					jmp_reg(blk, REG_RCX);
+					// original_byte_pos++;
+
+					jit_entry.linked.push_back(link);
+				}
+				else
+				{
+					// no entry found
+					ctx->waiting_links[blk.pc].push_back(link);
+				}
+			}
+			else if(link.linkage == Linkage::Jmp)
+			{
+				// Direct jump to PC, skiping prologue
+				// Search for next block, if there any jump to it, if not, place pending link
+				JIT_Function& jit_entry = ctx->jits[jit::jit_index(link.target_pc)];
+				if(jit_entry.valid && jit_entry.pc == link.target_pc)
+				{
+					// found valid block
+					mov_imm64(blk, REG_RCX, (uint64_t)jit_entry.func + jit_entry.prologue_offs);
+					jmp_reg(blk, REG_RCX);
+
+					jit_entry.linked.push_back(link);
+				}
+				else
+				{
+					// no entry found
+					ctx->waiting_links[blk.pc].push_back(link);
+				}
+			}
+			blk.byte_pos = original_byte_pos;
 		}
 	}
 	inline void JIT_Emitter::ensure_loaded(JIT_Block& blk, VReg& vreg)

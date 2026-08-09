@@ -134,7 +134,7 @@ int get_random_port()
 	// try the primary choice (1512) first
 	if(try_bind_port(sock, 1512))
 	{
-		close(sock); // Close here if you just wanted the number
+		close(sock);
 		return 1512;
 	}
 

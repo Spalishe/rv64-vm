@@ -374,10 +374,6 @@ namespace rv64vm::runner
 				std::this_thread::yield();
 				continue;
 			}
-#ifdef USE_GDBSTUB
-			handle_gdb_breakpoints();
-#endif
-
 			// Update devices
 			dev_tick_time++;
 			if(dev_tick_time == 0x1000)
@@ -397,6 +393,7 @@ namespace rv64vm::runner
 				gdb_single_step = false;
 				state.store(MachineState::Halted, std::memory_order_release);
 			}
+			handle_gdb_breakpoints();
 #endif
 		}
 		work_thread_running = false;

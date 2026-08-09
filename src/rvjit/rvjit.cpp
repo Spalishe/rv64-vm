@@ -32,6 +32,7 @@ namespace rv64vm::jit
 		if(block_c)
 		{
 			auto jc = cache.inst->jit_func;
+
 			if(jc == nullptr || block.count >= RVJIT_MAX_INSTRUCTIONS || pc > block.pc + block.size)
 			{
 				goto end_block_gen;
@@ -44,6 +45,12 @@ namespace rv64vm::jit
 				block.count++;
 				if(stop)
 					goto end_block_gen;
+			}
+
+			if(block.count >= RVJIT_MAX_INSTRUCTIONS || pc > block.pc + block.size)
+			{
+				goto end_block_gen;
+				return;
 			}
 			return;
 		}
@@ -63,6 +70,8 @@ namespace rv64vm::jit
 				block.size	   = 0;
 				block.count	   = 0;
 				block.jmp_labels.clear();
+				block.prologue_offs = 0;
+				block.outgoing_links.clear();
 
 				emitter.reset();
 				emitter.rvjit_emit_prologue(block);
@@ -89,6 +98,7 @@ namespace rv64vm::jit
 			auto& arena = arenas[last_arena];
 
 			emitter.rvjit_emit_epilogue(block);
+			emitter.link_all(block, this);
 
 			/*char name[64];
 			snprintf(name, 64, "/tmp/jit_0x%lx.bin", block.pc);
@@ -102,6 +112,7 @@ namespace rv64vm::jit
 			func.inst_size			  = block.size;
 			func.pc					  = block.pc;
 			func.page_version		  = page_verion_bitmap[(block.pc - 0x80000000) >> 12];
+			func.prologue_offs		  = block.prologue_offs;
 			jits[jit_index(block.pc)] = std::move(func);
 			count++;
 		}
@@ -112,6 +123,11 @@ namespace rv64vm::jit
 		{
 			block_c = false;
 		}
+	}
+
+	void JIT_Function::cleanup()
+	{
+		valid = false;
 	}
 
 #include <sys/mman.h>
@@ -129,7 +145,7 @@ namespace rv64vm::jit
 			{
 				if(jits[i].valid && jits[i].arena_index == old_idx)
 				{
-					jits[i].valid = false;
+					jits[i].cleanup();
 				}
 			}
 

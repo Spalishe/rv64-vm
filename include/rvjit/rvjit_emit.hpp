@@ -54,13 +54,26 @@ namespace rv64vm::jit
 		bool valid		 = false;
 		bool is_zero	 = false;
 	};
+
 	struct JumpLabel
 	{
 		std::string label;
 		uint64_t offs;
-		bool is_opcode_2	   = false;
-		size_t size			   = 4;
-		int64_t determined_pos = INT64_MIN;
+		bool is_opcode_2 = false;
+		size_t size		 = 4;
+	};
+
+	enum class Linkage
+	{
+		None, // push return
+		Tail, // search next block and link to his start
+		Jmp	  // Direct jump to address
+	};
+	struct Link
+	{
+		uint64_t target_pc;
+		uint64_t patch_offs;
+		Linkage linkage;
 	};
 
 	struct JIT_Block
@@ -101,6 +114,9 @@ namespace rv64vm::jit
 		std::vector<JumpLabel> jmp_labels;
 		uint64_t inst_addr_jmp[RVJIT_FUNC_SIZE * 4];
 
+		std::vector<Link> outgoing_links;
+		uint8_t prologue_offs = 0;
+
 		uint64_t pc;
 		uint64_t size  = 0;
 		uint64_t count = 0;
@@ -108,6 +124,7 @@ namespace rv64vm::jit
 	};
 
 	struct JIT_Emitter;
+	struct JIT_Context;
 
 	using ROpFunction = void (*)(JIT_Emitter& em, JIT_Block& blk, VReg& rd, VReg& rs1, VReg& rs2, uint64_t pc, void* tmp);
 	using IOpFunction = void (*)(JIT_Emitter& em, JIT_Block& blk, VReg& rd, VReg& rs1, uint64_t imm, uint64_t pc, void* tmp);
@@ -131,6 +148,7 @@ namespace rv64vm::jit
 		void flush_all(JIT_Block& blk);
 		void invalidate_all();
 		void realize_label(JIT_Block& blk, const std::string& label);
+		void link_all(JIT_Block& blk, JIT_Context* ctx);
 
 		void inst_emit_r_type(::rv64vm::runner::Hart& h, ::rv64vm::runner::InstructionData& inst, JIT_Block& blk, bool optimize_if_rsz, ROpFunction emit_op, uint64_t pc = 0, void* tmp = nullptr);
 		void inst_emit_i_type(::rv64vm::runner::Hart& h, ::rv64vm::runner::InstructionData& inst, JIT_Block& blk, bool optimize_if_rsz, IOpFunction emit_op, uint64_t pc = 0, void* tmp = nullptr);
