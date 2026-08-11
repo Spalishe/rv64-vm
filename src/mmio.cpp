@@ -54,7 +54,9 @@ namespace rv64vm::runner
 	}
 	inline uint64_t MMIO::read_dram_fast(uint64_t vaddr, MemorySize size)
 	{
-		unsigned char* ptr = mmap->get_ram_direct()->get_data() + (vaddr - 0x80000000ULL);
+		if(direct_ram == nullptr)
+			direct_ram = mmap->get_ram_direct()->get_data();
+		unsigned char* ptr = direct_ram + (vaddr - 0x80000000ULL);
 		switch(size)
 		{
 			case MemorySize::Byte:

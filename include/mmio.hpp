@@ -123,6 +123,7 @@ namespace rv64vm::runner
 
 	  private:
 		uint64_t memsize;
+		uint8_t* direct_ram = nullptr;
 		MemoryMap* mmap;
 		inline uint64_t read_dram_fast(uint64_t vaddr, MemorySize size);
 	};

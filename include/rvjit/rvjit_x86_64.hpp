@@ -920,12 +920,14 @@ namespace rv64vm::jit
 			continue;
 		}
 	}
-	inline void JIT_Emitter::link_all(JIT_Block& blk, JIT_Context* ctx)
+	inline void JIT_Emitter::link_out(JIT_Block& blk, JIT_Context* ctx)
 	{
+		// Outgoing links
 		for(auto& link : blk.outgoing_links)
 		{
 			uint64_t original_byte_pos = blk.byte_pos;
 			blk.byte_pos			   = link.patch_offs;
+			JIT_Function& jit_entry	   = ctx->jits[jit::jit_index(link.target_pc)];
 			if(link.linkage == Linkage::None)
 			{
 				// Generate mov rcx, 0 and ret
@@ -940,45 +942,99 @@ namespace rv64vm::jit
 			else if(link.linkage == Linkage::Tail)
 			{
 				// Search for next block, if there any jump to it, if not, place pending link
-				JIT_Function& jit_entry = ctx->jits[jit::jit_index(link.target_pc)];
 				if(jit_entry.valid && jit_entry.pc == link.target_pc)
 				{
 					// found valid block
-					// blk.bytes[blk.byte_pos++] = 0xCC;
+					blk.bytes[blk.byte_pos++] = 0xCC;
 					mov_imm64(blk, REG_RCX, (uint64_t)jit_entry.func);
 					jmp_reg(blk, REG_RCX);
-					// original_byte_pos++;
+					original_byte_pos++;
 
-					jit_entry.linked.push_back(link);
+					jit_entry.linked.push_back({ .func_pc	 = blk.pc,
+												 .patch_offs = link.patch_offs,
+												 .linkage	 = link.linkage });
 				}
 				else
 				{
 					// no entry found
-					ctx->waiting_links[blk.pc].push_back(link);
+					ctx->waiting_links[link.target_pc].push_back({ .func_pc	   = blk.pc,
+																   .patch_offs = link.patch_offs,
+																   .linkage	   = link.linkage });
 				}
 			}
 			else if(link.linkage == Linkage::Jmp)
 			{
 				// Direct jump to PC, skiping prologue
 				// Search for next block, if there any jump to it, if not, place pending link
-				JIT_Function& jit_entry = ctx->jits[jit::jit_index(link.target_pc)];
 				if(jit_entry.valid && jit_entry.pc == link.target_pc)
 				{
 					// found valid block
 					mov_imm64(blk, REG_RCX, (uint64_t)jit_entry.func + jit_entry.prologue_offs);
 					jmp_reg(blk, REG_RCX);
 
-					jit_entry.linked.push_back(link);
+					jit_entry.linked.push_back({ .func_pc	 = blk.pc,
+												 .patch_offs = link.patch_offs,
+												 .linkage	 = link.linkage });
 				}
 				else
 				{
 					// no entry found
-					ctx->waiting_links[blk.pc].push_back(link);
+					ctx->waiting_links[blk.pc].push_back({ .func_pc	   = blk.pc,
+														   .patch_offs = link.patch_offs,
+														   .linkage	   = link.linkage });
 				}
 			}
 			blk.byte_pos = original_byte_pos;
 		}
 	}
+	inline void JIT_Emitter::link_waiting(JIT_Function* fnc, JIT_Context* ctx)
+	{
+		// And pending ones for this pc
+		auto it = ctx->waiting_links.find(fnc->pc);
+		if(it != ctx->waiting_links.end() && !it->second.empty())
+		{
+			auto& vec = it->second;
+			for(auto& item : vec)
+			{
+				// Find target function
+				JIT_Function& f = ctx->jits[jit_index(item.func_pc)];
+				if(f.valid && f.pc == item.func_pc)
+				{
+					uint64_t patch_offs = item.patch_offs;
+					uint8_t* bytes		= (uint8_t*)f.func;
+
+					// Now check for linkage
+					if(item.linkage == Linkage::None)
+					{
+						// We assume each link target have RET
+					}
+					else if(item.linkage == Linkage::Tail)
+					{
+						// ADD 0xCC
+						bytes[patch_offs++] = 0xCC;
+						// MOV IMM64
+						bytes[patch_offs++] = rex(1, 0, 0, 0);
+						bytes[patch_offs++] = 0xB8 + REG_RCX;
+						for(int i = 0; i < 8; i++)
+							bytes[patch_offs++] = (((uint64_t)fnc->func) >> (i * 8)) & 0xFF;
+
+						// JMP REG
+						bytes[patch_offs++] = rex(0, 0, 0, REG_RCX);
+						bytes[patch_offs++] = 0xFF;
+						bytes[patch_offs++] = modrm(0b11, 4, REG_RCX);
+
+						fnc->linked.push_back({ .func_pc	= item.func_pc,
+												.patch_offs = item.patch_offs,
+												.linkage	= item.linkage });
+					}
+					else if(item.linkage == Linkage::Jmp)
+					{
+					}
+				}
+			}
+		}
+	}
+
 	inline void JIT_Emitter::ensure_loaded(JIT_Block& blk, VReg& vreg)
 	{
 		if(vreg.allocated && !vreg.valid)
@@ -1027,16 +1083,13 @@ namespace rv64vm::jit
 	{
 		for(auto& reg : host_regs)
 		{
-			if(reg.used)
-			{
-				if(!reg.used)
-					continue;
-				reg.used	   = false;
-				VReg& vreg	   = vregs[reg.vreg];
-				vreg.allocated = false;
-				vreg.valid	   = false;
-				vreg.dirty	   = false;
-			}
+			if(!reg.used)
+				continue;
+			reg.used	   = false;
+			VReg& vreg	   = vregs[reg.vreg];
+			vreg.allocated = false;
+			vreg.valid	   = false;
+			vreg.dirty	   = false;
 		}
 	}
 
@@ -1067,6 +1120,7 @@ namespace rv64vm::jit
 				hreg.vreg	   = user_reg;
 				auto& vreg	   = vregs[user_reg];
 				vreg.host_reg  = hreg.host_reg;
+				vreg.host_idx  = hreg.idx;
 				vreg.allocated = true;
 				ensure_loaded(blk, vreg);
 				return vreg;
@@ -1215,11 +1269,6 @@ namespace rv64vm::jit
 		blk.inst_addr_jmp[blk.size] = blk.byte_pos;
 
 		VReg& rd = rvjit_alloc_reg(blk, inst.rd, 0);
-
-		VReg& rs1 = rvjit_alloc_reg(
-			blk,
-			inst.rs1,
-			(1ULL << rd.host_reg));
 
 		emit_op(*this, blk, rd, inst.imm, pc, tmp);
 

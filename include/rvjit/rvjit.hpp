@@ -55,7 +55,7 @@ namespace rv64vm::jit
 		uint64_t arena_index   = 0;
 		uint8_t prologue_offs  = 0;
 
-		std::vector<Link> linked;
+		std::vector<IncomingLink> linked;
 		void cleanup();
 
 		JIT_Function(const JIT_Function&)			 = delete;
@@ -70,38 +70,42 @@ namespace rv64vm::jit
 			  valid(other.valid),
 			  arena_index(other.arena_index),
 			  page_version(other.page_version),
-			  linked(std::move(other.linked))
+			  linked(std::move(other.linked)),
+			  prologue_offs(other.prologue_offs)
 		{
-			other.func		  = nullptr;
-			other.offset	  = 0;
-			other.size		  = 0;
-			other.pc		  = 0;
-			other.inst_size	  = 0;
-			other.valid		  = false;
-			other.arena_index = 0;
+			other.func			= nullptr;
+			other.offset		= 0;
+			other.size			= 0;
+			other.pc			= 0;
+			other.inst_size		= 0;
+			other.valid			= false;
+			other.arena_index	= 0;
+			other.prologue_offs = 0;
 		}
 
 		JIT_Function& operator=(JIT_Function&& other) noexcept
 		{
 			if(this != &other)
 			{
-				func		= other.func;
-				offset		= other.offset;
-				size		= other.size;
-				pc			= other.pc;
-				inst_size	= other.inst_size;
-				valid		= other.valid;
-				arena_index = other.arena_index;
-				linked		= std::move(other.linked);
+				func		  = other.func;
+				offset		  = other.offset;
+				size		  = other.size;
+				pc			  = other.pc;
+				inst_size	  = other.inst_size;
+				valid		  = other.valid;
+				arena_index	  = other.arena_index;
+				linked		  = std::move(other.linked);
+				prologue_offs = other.prologue_offs;
 
-				other.func		   = nullptr;
-				other.offset	   = 0;
-				other.size		   = 0;
-				other.pc		   = 0;
-				other.inst_size	   = 0;
-				other.valid		   = false;
-				other.page_version = 0;
-				other.arena_index  = 0;
+				other.func			= nullptr;
+				other.offset		= 0;
+				other.size			= 0;
+				other.pc			= 0;
+				other.inst_size		= 0;
+				other.valid			= false;
+				other.page_version	= 0;
+				other.arena_index	= 0;
+				other.prologue_offs = 0;
 			}
 			return *this;
 		}
@@ -251,7 +255,7 @@ namespace rv64vm::jit
 		std::queue<uint64_t> arena_order;
 		size_t total_allocated = 0;
 		size_t max_cache_size  = 64 * 1024 * 1024; // 64 MB by default
-		std::unordered_map<uint64_t, std::vector<Link>> waiting_links;
+		std::unordered_map<uint64_t, std::vector<IncomingLink>> waiting_links;
 
 		JIT_Function* jits;
 		std::unordered_map<uint64_t, JIT_Arena> arenas;

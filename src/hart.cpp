@@ -24,7 +24,7 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::runner
 {
-	Hart::Hart(uint8_t id, uint64_t memsize) : id(id)
+	Hart::Hart(uint8_t id, uint64_t memsize) : id(id), memsize(memsize)
 	{
 #ifdef USE_JIT
 		jctx	  = new jit::JIT_Context(memsize);
@@ -55,7 +55,7 @@ namespace rv64vm::runner
 		uint32_t val	 = 0;
 		MemoryReturn out = mmio->read(*this, inst_pc, MemorySize::Int, &val);
 
-		if(!out.is_success)
+		if(!out.is_success) [[unlikely]]
 			trap(EXC_INST_ACCESS_FAULT, out.tval, false);
 
 		return val;
@@ -70,7 +70,7 @@ namespace rv64vm::runner
 	void Hart::tick()
 	{
 		GPR[0] = 0;
-		csrs[CSR_MCYCLE]++;
+		cycle++;
 		if((ip.raw & ie.raw) != 0) [[unlikely]]
 			check_ints();
 		if(WFI) [[unlikely]]
@@ -109,10 +109,27 @@ namespace rv64vm::runner
 			}
 		}
 #endif
-		uint32_t inst = fetch(pc);
+		uint32_t inst = 0;
+		// MemoryReturn out1 = mmio->read(*this, pc, MemorySize::Int, &inst);
+		if(pc >= 0x80000000ULL && pc <= 0x80000000ULL + memsize - sizeof(uint32_t))
+		{
+			if(direct_ram == nullptr)
+			{
+				direct_ram = mmap->get_ram_direct()->get_data();
+			}
+			inst = *(uint32_t*)(direct_ram + (pc - 0x80000000ULL));
+		}
+		else
+		{
+			trap(EXC_INST_ACCESS_FAULT, pc, false);
+		}
+		// if(!out1.is_success) [[unlikely]]
+		//	trap(EXC_INST_ACCESS_FAULT, out1.tval, false);
+
+		//  uint32_t inst = fetch(pc);
 
 		InstructionCache& cache = idec->decode_inst(pc, inst);
-		if(!cache.valid)
+		if(cache.pc == 0)
 		{
 #ifdef USE_JIT
 			jctx->stopBlock();
@@ -133,7 +150,7 @@ namespace rv64vm::runner
 		}
 		else
 		{
-			csrs[CSR_MINSTRET]++;
+			instret++;
 			pc += out.increase_pc;
 		}
 #ifdef USE_JIT
@@ -339,9 +356,11 @@ namespace rv64vm::runner
 			case CSR_MIE:
 				return ie.raw;
 			case CSR_CYCLE:
-				return csrs[CSR_MCYCLE];
+			case CSR_MCYCLE:
+				return cycle;
 			case CSR_INSTRET:
-				return csrs[CSR_MINSTRET];
+			case CSR_MINSTRET:
+				return instret;
 			case CSR_HPMCOUNTER3 ... CSR_HPMCOUNTER31:
 				return csrs[csr - 0x100]; // get M versions
 			case CSR_STIMECMP:

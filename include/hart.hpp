@@ -101,6 +101,28 @@ namespace rv64vm::runner
 		}
 		uint8_t id;
 		uint64_t GPR[32];
+		/*class GPR
+		{
+		  public:
+			uint64_t& operator[](size_t index)
+			{
+				if(index == 0)
+				{
+					zero_dummy = 0;
+					return zero_dummy;
+				}
+				return GPR[index];
+			}
+			const uint64_t& operator[](size_t index) const
+			{
+				return GPR[index];
+			}
+
+		  private:
+			std::array<uint64_t, 32> GPR;
+			uint64_t zero_dummy;
+		};
+		GPR GPR;*/
 #ifdef USE_FPU
 		double FPR[32];
 #endif
@@ -111,6 +133,8 @@ namespace rv64vm::runner
 		ip_t ip;
 		timecmp_st stimecmp;
 		fcsr_t fcsr;
+		uint64_t cycle;
+		uint64_t instret;
 		bool WFI = false;
 
 		/**
@@ -136,12 +160,13 @@ namespace rv64vm::runner
 		 */
 		inline void clear_decode_cache()
 		{
-			for(int i = 0; i < CACHE_SIZE; i++)
+			/*for(int i = 0; i < CACHE_SIZE; i++)
 			{
-				idec->cache[i].ways[0].valid = false;
-				idec->cache[i].ways[1].valid = false;
-				idec->cache[i].victim		 = 0;
-			}
+				idec->cache[i].ways[0].pc = 0;
+				idec->cache[i].ways[1].pc = 0;
+				idec->cache[i].victim	  = 0;
+			}*/
+			idec->cache_generation++;
 		}
 		/**
 		 * @brief Clears reservation if defined address is within CPU reservation address
@@ -195,6 +220,8 @@ namespace rv64vm::runner
 		MemoryMap* mmap;
 		MMIO* mmio;
 
+		uint64_t memsize	= 0;
+		uint8_t* direct_ram = nullptr;
 		Reservation reservation;
 
 		void init(uint64_t dtb_pos_at_memory, uint64_t entry_pc);

@@ -75,6 +75,12 @@ namespace rv64vm::jit
 		uint64_t patch_offs;
 		Linkage linkage;
 	};
+	struct IncomingLink
+	{
+		uint64_t func_pc;
+		uint64_t patch_offs;
+		Linkage linkage;
+	};
 
 	struct JIT_Block
 	{
@@ -88,7 +94,9 @@ namespace rv64vm::jit
 		JIT_Block(JIT_Block&& other) noexcept
 			: byte_pos(other.byte_pos), valid(other.valid), pc(other.pc),
 			  size(other.size), count(other.count),
-			  jmp_labels(std::move(other.jmp_labels))
+			  jmp_labels(std::move(other.jmp_labels)),
+			  outgoing_links(other.outgoing_links),
+			  prologue_offs(std::move(other.prologue_offs))
 		{
 			std::copy(std::begin(other.bytes), std::end(other.bytes), std::begin(bytes));
 			std::copy(std::begin(other.inst_addr_jmp), std::end(other.inst_addr_jmp), std::begin(inst_addr_jmp));
@@ -100,12 +108,14 @@ namespace rv64vm::jit
 			{
 				std::copy(std::begin(other.bytes), std::end(other.bytes), std::begin(bytes));
 				std::copy(std::begin(other.inst_addr_jmp), std::end(other.inst_addr_jmp), std::begin(inst_addr_jmp));
-				byte_pos   = other.byte_pos;
-				valid	   = other.valid;
-				pc		   = other.pc;
-				size	   = other.size;
-				count	   = other.count;
-				jmp_labels = std::move(other.jmp_labels);
+				byte_pos	   = other.byte_pos;
+				valid		   = other.valid;
+				pc			   = other.pc;
+				size		   = other.size;
+				count		   = other.count;
+				jmp_labels	   = std::move(other.jmp_labels);
+				prologue_offs  = other.prologue_offs;
+				outgoing_links = std::move(other.outgoing_links);
 			}
 			return *this;
 		}
@@ -125,6 +135,7 @@ namespace rv64vm::jit
 
 	struct JIT_Emitter;
 	struct JIT_Context;
+	struct JIT_Function;
 
 	using ROpFunction = void (*)(JIT_Emitter& em, JIT_Block& blk, VReg& rd, VReg& rs1, VReg& rs2, uint64_t pc, void* tmp);
 	using IOpFunction = void (*)(JIT_Emitter& em, JIT_Block& blk, VReg& rd, VReg& rs1, uint64_t imm, uint64_t pc, void* tmp);
@@ -148,7 +159,8 @@ namespace rv64vm::jit
 		void flush_all(JIT_Block& blk);
 		void invalidate_all();
 		void realize_label(JIT_Block& blk, const std::string& label);
-		void link_all(JIT_Block& blk, JIT_Context* ctx);
+		void link_out(JIT_Block& blk, JIT_Context* ctx);
+		void link_waiting(JIT_Function* fnc, JIT_Context* ctx);
 
 		void inst_emit_r_type(::rv64vm::runner::Hart& h, ::rv64vm::runner::InstructionData& inst, JIT_Block& blk, bool optimize_if_rsz, ROpFunction emit_op, uint64_t pc = 0, void* tmp = nullptr);
 		void inst_emit_i_type(::rv64vm::runner::Hart& h, ::rv64vm::runner::InstructionData& inst, JIT_Block& blk, bool optimize_if_rsz, IOpFunction emit_op, uint64_t pc = 0, void* tmp = nullptr);

@@ -98,7 +98,7 @@ namespace rv64vm::jit
 			auto& arena = arenas[last_arena];
 
 			emitter.rvjit_emit_epilogue(block);
-			emitter.link_all(block, this);
+			emitter.link_out(block, this);
 
 			/*char name[64];
 			snprintf(name, 64, "/tmp/jit_0x%lx.bin", block.pc);
@@ -108,11 +108,12 @@ namespace rv64vm::jit
 			printf("jit: 0x%lx\n", block.pc);*/
 
 			// We built block sized enough. Go go gadget w^x allocations
-			JIT_Function func		  = arena.push_function(block.bytes, block.byte_pos, last_arena);
-			func.inst_size			  = block.size;
-			func.pc					  = block.pc;
-			func.page_version		  = page_verion_bitmap[(block.pc - 0x80000000) >> 12];
-			func.prologue_offs		  = block.prologue_offs;
+			JIT_Function func  = arena.push_function(block.bytes, block.byte_pos, last_arena);
+			func.inst_size	   = block.size;
+			func.pc			   = block.pc;
+			func.page_version  = page_verion_bitmap[(block.pc - 0x80000000) >> 12];
+			func.prologue_offs = block.prologue_offs;
+			emitter.link_waiting(func, this);
 			jits[jit_index(block.pc)] = std::move(func);
 			count++;
 		}

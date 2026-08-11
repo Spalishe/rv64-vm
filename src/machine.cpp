@@ -303,7 +303,7 @@ namespace rv64vm::runner
 // prepare
 #ifdef USE_GDBSTUB
 		state = gdb ? MachineState::Halted : MachineState::Running;
-		listen_gdb(gdb_port);
+		if(gdb) listen_gdb(gdb_port);
 #else
 		state = MachineState::Running;
 #endif
@@ -324,7 +324,7 @@ namespace rv64vm::runner
 				destroy_harts();
 				reset_memory();
 #ifdef USE_GDBSTUB
-				gdb_server.stop();
+				if(gdb) gdb_server.stop();
 #endif
 
 				if(bios_file)
@@ -356,7 +356,7 @@ namespace rv64vm::runner
 // prepare
 #ifdef USE_GDBSTUB
 				state.store(gdb ? MachineState::Halted : MachineState::Running, std::memory_order_release);
-				listen_gdb(gdb_port);
+				if(gdb) listen_gdb(gdb_port);
 #else
 				state.store(MachineState::Running, std::memory_order_release);
 #endif
@@ -366,9 +366,12 @@ namespace rv64vm::runner
 			if(state.load(std::memory_order_acquire) == MachineState::Halted)
 			{
 #ifdef USE_GDBSTUB
-				if(gdb_single_step)
+				if(gdb)
 				{
-					state.store(MachineState::Running, std::memory_order_release);
+					if(gdb_single_step)
+					{
+						state.store(MachineState::Running, std::memory_order_release);
+					}
 				}
 #endif
 				std::this_thread::yield();
@@ -388,17 +391,20 @@ namespace rv64vm::runner
 			}
 
 #ifdef USE_GDBSTUB
-			if(gdb_single_step)
+			if(gdb)
 			{
-				gdb_single_step = false;
-				state.store(MachineState::Halted, std::memory_order_release);
+				if(gdb_single_step)
+				{
+					gdb_single_step = false;
+					state.store(MachineState::Halted, std::memory_order_release);
+				}
+				handle_gdb_breakpoints();
 			}
-			handle_gdb_breakpoints();
 #endif
 		}
 		work_thread_running = false;
 #ifdef USE_GDBSTUB
-		gdb_server.stop();
+		if(gdb) gdb_server.stop();
 #endif
 	}
 
@@ -433,7 +439,7 @@ namespace rv64vm::runner
 	{
 		state.store(MachineState::Off, std::memory_order_release);
 #ifdef USE_GDBSTUB
-		gdb_server.stop();
+		if(gdb) gdb_server.stop();
 #endif
 		if(!work_thread_running.exchange(false, std::memory_order_acq_rel))
 		{
@@ -492,7 +498,7 @@ namespace rv64vm::runner
 // prepare
 #ifdef USE_GDBSTUB
 			state.store(gdb ? MachineState::Halted : MachineState::Running, std::memory_order_release);
-			listen_gdb(gdb_port);
+			if(gdb) listen_gdb(gdb_port);
 #else
 			state.store(MachineState::Running, std::memory_order_release);
 #endif

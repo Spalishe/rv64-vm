@@ -173,15 +173,16 @@ namespace rv64vm::runner
 
 	struct InstructionData
 	{
-		uint32_t inst;
-		uint8_t rs1;
-		uint8_t rs2;
-		uint8_t rd;
-		uint64_t imm;
 #ifdef USE_FPU
 		uint8_t rs3;
 		uint8_t rm;
 #endif
+		uint8_t rs1;
+		uint8_t rs2;
+		uint8_t rd;
+
+		uint32_t inst;
+		uint64_t imm;
 	};
 
 	struct Instruction
@@ -198,11 +199,10 @@ namespace rv64vm::runner
 
 	struct InstructionCache
 	{
-		uint64_t pc;
-		uint32_t inst_raw = 0;
+		uint64_t pc = 0;
 		const Instruction* inst;
 		InstructionData data;
-		bool valid = false;
+		uint64_t cache_gen = 0;
 	};
 
 	struct CacheSet
@@ -225,6 +225,8 @@ namespace rv64vm::runner
 		static constexpr uint32_t HASH_MASK_16 = 0x0000FFFF;
 
 		CacheSet cache[CACHE_SIZE];
+		uint64_t cache_generation = 0;
+		// InstructionCache cache[CACHE_SIZE];
 
 		InstructionCache& decode_inst_slow(uint64_t pc, uint32_t inst);
 		inline InstructionCache& decode_inst(uint64_t pc, uint32_t inst)
@@ -232,18 +234,18 @@ namespace rv64vm::runner
 			size_t idx	  = (pc >> 2) & (CACHE_SIZE - 1);
 			/*if(cache[idx].valid && cache[idx].pc == pc) [[likely]]
 			{
-				hit++;
 				return cache[idx];
 			}*/
 			CacheSet& set = cache[idx];
-
-			if(set.ways[0].valid && set.ways[0].pc == pc && set.ways[0].inst_raw == inst)
+			if(set.ways[0].cache_gen == cache_generation && set.ways[0].pc == pc) [[likely]]
 			{
+				set.victim = 1;
 				return set.ways[0];
 			}
 
-			if(set.ways[1].valid && set.ways[1].pc == pc && set.ways[1].inst_raw == inst)
+			if(set.ways[1].cache_gen == cache_generation && set.ways[1].pc == pc)
 			{
+				set.victim = 0;
 				return set.ways[1];
 			}
 

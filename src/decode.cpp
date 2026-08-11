@@ -56,24 +56,22 @@ __attribute__((noinline)) InstructionCache& InstructionDecoder::decode_inst_slow
 
 	if(f) [[likely]]
 	{
-		data.imm	   = dinst->imm_decode_func(inst);
+		data.imm		= dinst->imm_decode_func != nullptr ? dinst->imm_decode_func(inst) : 0;
 		// cache[idx] = { pc, inst, dinst, data, true };
-		entry.pc	   = pc;
-		entry.inst_raw = inst;
-		entry.inst	   = dinst;
-		entry.data	   = data;
-		entry.valid	   = true;
+		entry.pc		= pc;
+		entry.inst		= dinst;
+		entry.cache_gen = cache_generation;
+		entry.data		= data;
 	}
 	else
 	{
 		data.imm = 0;
 		Instruction* invalid_inst{};
 		// cache[idx] = { pc, inst, invalid_inst, data, false };
-		entry.pc	   = pc;
-		entry.inst_raw = inst;
-		entry.inst	   = invalid_inst;
-		entry.data	   = data;
-		entry.valid	   = false;
+		entry.pc		= 0;
+		entry.cache_gen = 0;
+		entry.inst		= invalid_inst;
+		entry.data		= data;
 	}
 
 	// printf("inst=0x%lx match=0x%lx mask=0x%lx func=%p\n", inst, dinst->match, dinst->mask, dinst->func);
@@ -107,7 +105,7 @@ Instruction* InstructionDecoder::register_instr(std::string mask, ExecReturn (*f
 		inst_mask,
 		inst_match,
 		func,
-		(imm_decode_func == NULL) ? imm_I : imm_decode_func, (uint8_t)(mask.size() / 8) // default decode func if user dont provide such
+		(imm_decode_func == NULL) ? nullptr : imm_decode_func, (uint8_t)(mask.size() / 8) // default decode func if user dont provide such
 	};
 	// printf("Registered instr mask=0x%dx match=0x%dx with func=%p, imm_decode_func=%p\n", inst_mask, inst_match, func, imm_decode_func);
 	instructions.push_back(inst);
