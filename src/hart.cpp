@@ -91,7 +91,7 @@ namespace rv64vm::runner
 			{
 				if(jit_entry.page_version != jctx->page_verion_bitmap[(pc - 0x80000000) >> 12]) [[unlikely]]
 				{
-					jit_entry.cleanup();
+					jit_entry.cleanup(jctx->jits);
 					return;
 				}
 				hctx.exit_pc	= 0;

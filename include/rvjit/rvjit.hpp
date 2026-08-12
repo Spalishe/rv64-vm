@@ -56,7 +56,7 @@ namespace rv64vm::jit
 		uint8_t prologue_offs  = 0;
 
 		std::vector<IncomingLink> linked;
-		void cleanup();
+		void cleanup(JIT_Function* jits);
 
 		JIT_Function(const JIT_Function&)			 = delete;
 		JIT_Function& operator=(const JIT_Function&) = delete;

@@ -833,6 +833,9 @@ namespace rv64vm::jit
 	}
 	inline void JIT_Emitter::rvjit_emit_epilogue(JIT_Block& blk)
 	{
+		mov_imm64(blk, REG_RCX, blk.pc + blk.size);
+		mov_mr(blk, REG_RCX, REG_R12, NO_INDEX, 0, offsetof(JIT_HartContext, exit_pc));
+
 		realize_label(blk, "epilogue");
 		for(auto& vreg : vregs)
 		{
@@ -1056,6 +1059,19 @@ namespace rv64vm::jit
 				}
 			}
 		}
+	}
+	inline static void JITFunction_cleanup_link(uint8_t* bytes, size_t patch_offs)
+	{
+		bytes[patch_offs++] = rex(1, 0, 0, 0);
+		bytes[patch_offs++] = 0xB8 + REG_RCX;
+
+		for(int i = 0; i < 8; i++)
+			bytes[patch_offs++] = 0;
+
+		bytes[patch_offs++] = 0xC3; // ret
+
+		bytes[patch_offs++] = 0;
+		bytes[patch_offs++] = 0;
 	}
 
 	inline void JIT_Emitter::ensure_loaded(JIT_Block& blk, VReg& vreg)

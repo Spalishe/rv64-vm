@@ -126,9 +126,41 @@ namespace rv64vm::jit
 		}
 	}
 
-	void JIT_Function::cleanup()
+	void JIT_Function::cleanup(JIT_Function* jits)
 	{
-		valid = false;
+		if(!valid)
+			return;
+
+		size_t pg_size = sysconf(_SC_PAGESIZE);
+
+		for(auto& link : linked)
+		{
+			JIT_Function& src = jits[jit::jit_index(link.func_pc)];
+
+			if(!src.valid || src.pc != link.func_pc)
+				continue;
+
+			uint8_t* bytes = (uint8_t*)src.func;
+
+			mprotect((void*)((uintptr_t)bytes & ~(pg_size - 1)),
+					 pg_size,
+					 PROT_READ | PROT_WRITE);
+
+			uint64_t patch_offs = link.patch_offs;
+			JITFunction_cleanup_link(bytes, patch_offs);
+
+			mprotect((void*)((uintptr_t)bytes & ~(pg_size - 1)),
+					 pg_size,
+					 PROT_READ | PROT_EXEC);
+		}
+
+		linked.clear();
+
+		pc			  = 0;
+		page_version  = 0;
+		inst_size	  = 0;
+		prologue_offs = 0;
+		valid		  = false;
 	}
 
 #include <sys/mman.h>
@@ -146,7 +178,7 @@ namespace rv64vm::jit
 			{
 				if(jits[i].valid && jits[i].arena_index == old_idx)
 				{
-					jits[i].cleanup();
+					jits[i].cleanup(jits);
 				}
 			}
 
