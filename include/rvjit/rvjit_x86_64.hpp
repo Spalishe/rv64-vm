@@ -828,7 +828,7 @@ namespace rv64vm::jit
 		push(blk, REG_R14);
 		mov(blk, REG_R12, REG_RDI);													// Mov hart context to R12
 		mov_rm(blk, REG_R13, REG_R12, NO_INDEX, 0, 0);								// Mov regs from hart context to R13
-		mov_rm(blk, REG_R14, REG_R12, NO_INDEX, 0, offsetof(JIT_HartContext, ram)); // Mov ram* from hart context to R1$
+		mov_rm(blk, REG_R14, REG_R12, NO_INDEX, 0, offsetof(JIT_HartContext, ram)); // Mov ram* from hart context to R14
 		blk.prologue_offs = blk.byte_pos;
 	}
 	inline void JIT_Emitter::rvjit_emit_epilogue(JIT_Block& blk)
