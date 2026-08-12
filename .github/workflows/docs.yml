@@ -51,18 +51,17 @@ jobs:
 
       - name: Step 4 - Post-Process Markdown and Generate Index
         run: python3 docs/gen/pp_md.py
-
+      
       - name: Step 5 - Commit and Push Changes to Repo
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@://github.com"
+          git config user.email "github-actions[bot]@github.com"
           
           git add docs/API-Reference.md docs/api/*.md
           
-          if [ -n "$(git status --porcelain)" ]; then
+          if [ -n "$(git diff --cached --name-only)" ]; then
             git commit -m "docs: auto-update API-Reference tree and modular classes"
             git push
           else
             echo "No documentation changes detected. Skipping push."
           fi
-
