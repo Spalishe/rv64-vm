@@ -98,7 +98,7 @@ Destroys RISC-V core
 inline MMIO * get_mmio()
 ```
 
-Defined in include/hart.hpp:121
+Defined in include/hart.hpp:145
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -119,7 +119,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/hart.hpp:127
+Defined in include/hart.hpp:151
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -140,7 +140,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline Reservation & get_reservation()
 ```
 
-Defined in include/hart.hpp:133
+Defined in include/hart.hpp:157
 
 Returns CPU Atomic [Reservation](Reservation.md#reservation).
 
@@ -161,7 +161,7 @@ Returns CPU Atomic [Reservation](Reservation.md#reservation).
 inline void clear_decode_cache()
 ```
 
-Defined in include/hart.hpp:137
+Defined in include/hart.hpp:161
 
 Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 
@@ -177,7 +177,7 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 inline void amo_check_reservation(uint64_t va)
 ```
 
-Defined in include/hart.hpp:150
+Defined in include/hart.hpp:175
 
 Clears reservation if defined address is within CPU reservation address.
 
@@ -197,7 +197,7 @@ Clears reservation if defined address is within CPU reservation address.
 uint64_t csr_read(uint16_t csr)
 ```
 
-Defined in include/hart.hpp:169
+Defined in include/hart.hpp:194
 
 Returns value stored in CSR.
 
@@ -220,7 +220,7 @@ CSR value
 void csr_write(uint16_t csr, uint64_t val)
 ```
 
-Defined in include/hart.hpp:175
+Defined in include/hart.hpp:200
 
 Stores value to CSR.
 
@@ -241,7 +241,7 @@ Stores value to CSR.
 void trap(uint64_t cause, uint64_t tval, bool interrupt)
 ```
 
-Defined in include/hart.hpp:184
+Defined in include/hart.hpp:209
 
 CPU Trap function.
 
