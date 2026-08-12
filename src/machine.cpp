@@ -391,7 +391,7 @@ namespace rv64vm::runner
 			}
 
 #ifdef USE_GDBSTUB
-			if(gdb)
+			if(gdb) [[unlikely]]
 			{
 				if(gdb_single_step)
 				{

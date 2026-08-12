@@ -16,6 +16,7 @@
 */
 #pragma once
 #include "rvjit.hpp"
+#include <unistd.h>
 #ifdef USE_JIT
 #include "rvjit_cfg.hpp"
 #include "rvjit_emit.hpp"
@@ -945,10 +946,10 @@ namespace rv64vm::jit
 				if(jit_entry.valid && jit_entry.pc == link.target_pc)
 				{
 					// found valid block
-					blk.bytes[blk.byte_pos++] = 0xCC;
+					// blk.bytes[blk.byte_pos++] = 0xCC;
 					mov_imm64(blk, REG_RCX, (uint64_t)jit_entry.func);
 					jmp_reg(blk, REG_RCX);
-					original_byte_pos++;
+					// original_byte_pos++;
 
 					jit_entry.linked.push_back({ .func_pc	 = blk.pc,
 												 .patch_offs = link.patch_offs,
@@ -1003,6 +1004,10 @@ namespace rv64vm::jit
 					uint64_t patch_offs = item.patch_offs;
 					uint8_t* bytes		= (uint8_t*)f.func;
 
+					size_t pg_size = sysconf(_SC_PAGESIZE);
+					// Change memory permissions to RW
+					mprotect(reinterpret_cast<void*>(bytes), pg_size, PROT_READ | PROT_WRITE);
+
 					// Now check for linkage
 					if(item.linkage == Linkage::None)
 					{
@@ -1010,8 +1015,8 @@ namespace rv64vm::jit
 					}
 					else if(item.linkage == Linkage::Tail)
 					{
-						// ADD 0xCC
-						bytes[patch_offs++] = 0xCC;
+						// INT3
+						// bytes[patch_offs++] = 0xCC;
 						// MOV IMM64
 						bytes[patch_offs++] = rex(1, 0, 0, 0);
 						bytes[patch_offs++] = 0xB8 + REG_RCX;
@@ -1019,7 +1024,7 @@ namespace rv64vm::jit
 							bytes[patch_offs++] = (((uint64_t)fnc->func) >> (i * 8)) & 0xFF;
 
 						// JMP REG
-						bytes[patch_offs++] = rex(0, 0, 0, REG_RCX);
+						bytes[patch_offs++] = rex(0, 0, 0, 0);
 						bytes[patch_offs++] = 0xFF;
 						bytes[patch_offs++] = modrm(0b11, 4, REG_RCX);
 
@@ -1029,7 +1034,25 @@ namespace rv64vm::jit
 					}
 					else if(item.linkage == Linkage::Jmp)
 					{
+						// INT3
+						// bytes[patch_offs++] = 0xCC;
+						// MOV IMM64
+						bytes[patch_offs++] = rex(1, 0, 0, 0);
+						bytes[patch_offs++] = 0xB8 + REG_RCX;
+						for(int i = 0; i < 8; i++)
+							bytes[patch_offs++] = (((uint64_t)fnc->func + fnc->prologue_offs) >> (i * 8)) & 0xFF;
+
+						// JMP REG
+						bytes[patch_offs++] = rex(0, 0, 0, 0);
+						bytes[patch_offs++] = 0xFF;
+						bytes[patch_offs++] = modrm(0b11, 4, REG_RCX);
+
+						fnc->linked.push_back({ .func_pc	= item.func_pc,
+												.patch_offs = item.patch_offs,
+												.linkage	= item.linkage });
 					}
+					// Change memory permissions back to RX
+					mprotect(reinterpret_cast<void*>(bytes), pg_size, PROT_READ | PROT_EXEC);
 				}
 			}
 		}

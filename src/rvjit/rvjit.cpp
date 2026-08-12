@@ -113,7 +113,7 @@ namespace rv64vm::jit
 			func.pc			   = block.pc;
 			func.page_version  = page_verion_bitmap[(block.pc - 0x80000000) >> 12];
 			func.prologue_offs = block.prologue_offs;
-			emitter.link_waiting(func, this);
+			emitter.link_waiting(&func, this);
 			jits[jit_index(block.pc)] = std::move(func);
 			count++;
 		}
