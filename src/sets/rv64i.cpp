@@ -1210,8 +1210,7 @@ bool jit_load(Hart& hart, InstructionData& inst, JIT_Block& blk, JIT_Emitter& em
 	{
 		mov(blk, REG_RCX, rs1.host_reg);
 		add_rimm32(blk, REG_RCX, (int32_t)imm);
-		sub_rimm32(blk, REG_RCX, 0x40000000); //
-		sub_rimm32(blk, REG_RCX, 0x40000000); // This does sum of 0x80000000, which is beyond the int32_t limit
+		add_rimm32(blk, REG_RCX, INT32_MIN); // literally add -0x80000000
 		cmp_rm(blk, REG_RCX, REG_R12, NO_INDEX, 0, offsetof(JIT_HartContext, memsize));
 
 		blk.jmp_labels.push_back({ "fast_path", blk.byte_pos, false, 1 });
@@ -1844,13 +1843,13 @@ void InstructionDecoder::init_rv64i()
 	inst_slti->jit_func	 = &execjit_SLTI;
 	inst_sltiu->jit_func = &execjit_SLTIU;
 
-	/*inst_lb->jit_func	 = &execjit_LB;
+	inst_lb->jit_func	 = &execjit_LB;
 	inst_lbu->jit_func	 = &execjit_LBU;
 	inst_lh->jit_func	 = &execjit_LH;
 	inst_lhu->jit_func	 = &execjit_LHU;
 	inst_lw->jit_func	 = &execjit_LW;
 	inst_lwu->jit_func	 = &execjit_LWU;
-	inst_ld->jit_func	 = &execjit_LD;*/
+	inst_ld->jit_func	 = &execjit_LD;
 	/*inst_sb->jit_func	 = &execjit_SB;
 	inst_sh->jit_func	 = &execjit_SH;
 	inst_sw->jit_func	 = &execjit_SW;

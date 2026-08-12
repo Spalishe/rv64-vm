@@ -31,7 +31,20 @@ namespace rv64vm::runner
 			h.amo_check_reservation(vaddr);
 			mmap->store(vaddr, (int)size * 8, val);
 #ifdef USE_JIT
-			h.get_jctx()->page_verion_bitmap[(vaddr - 0x80000000) >> 12]++;
+			auto* jctx = h.get_jctx();
+
+			const uint64_t ram_offset = vaddr - 0x80000000ULL;
+
+			const size_t first_page = ram_offset >> 12;
+			const size_t last_page	= (ram_offset + static_cast<uint64_t>(size) - 1) >> 12;
+
+			for(size_t page = first_page; page <= last_page; ++page)
+			{
+				if(jctx->jit_page_bitmap[page])
+				{
+					++jctx->page_verion_bitmap[page];
+				}
+			}
 #endif
 			return { true, 0, 0 };
 		}

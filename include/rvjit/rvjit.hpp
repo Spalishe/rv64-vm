@@ -15,6 +15,7 @@ Copyright 2026 Spalishe
 
 */
 #pragma once
+#include <unistd.h>
 #ifdef USE_JIT
 #include "../decode.hpp"
 #include "../mmio.hpp"
@@ -56,7 +57,7 @@ namespace rv64vm::jit
 		uint8_t prologue_offs  = 0;
 
 		std::vector<IncomingLink> linked;
-		void cleanup(JIT_Function* jits);
+		void cleanup(JIT_Context* ctx);
 
 		JIT_Function(const JIT_Function&)			 = delete;
 		JIT_Function& operator=(const JIT_Function&) = delete;
@@ -174,6 +175,8 @@ namespace rv64vm::jit
 		uint64_t size	   = 0;
 		uint64_t used_size = 0;
 
+		std::vector<uint32_t> function_slots;
+
 		JIT_Function push_function(const void* code, size_t code_size, uint64_t arena_index);
 		void init()
 		{
@@ -212,6 +215,9 @@ namespace rv64vm::jit
 			emitter			   = JIT_Emitter();
 			jits			   = new JIT_Function[JIT_CACHE_SIZE];
 			page_verion_bitmap = new uint64_t[memory_size >> 12]{};
+			jit_page_bitmap.resize(memory_size >> 12, 0);
+
+			page_size = sysconf(_SC_PAGESIZE);
 			createNewArena();
 		};
 		~JIT_Context()
@@ -262,7 +268,9 @@ namespace rv64vm::jit
 		bool block_c = false;
 		JIT_Block block;
 
+		size_t page_size;
 		uint64_t* page_verion_bitmap;
+		std::vector<uint8_t> jit_page_bitmap;
 
 		uint64_t last_arena	 = 0;
 		uint64_t count		 = 0;

@@ -87,15 +87,17 @@ namespace rv64vm::runner
 		{
 			jit::JIT_Function& jit_entry = jctx->jits[jit::jit_index(pc)];
 
-			if(jit_entry.valid && jit_entry.pc == pc) [[unlikely]]
+			if(jit_entry.valid && jit_entry.pc == pc) [[likely]]
 			{
 				if(jit_entry.page_version != jctx->page_verion_bitmap[(pc - 0x80000000) >> 12]) [[unlikely]]
 				{
-					jit_entry.cleanup(jctx->jits);
+					jit_entry.cleanup(jctx);
 					return;
 				}
+
 				hctx.exit_pc	= 0;
 				hctx.loop_count = 1000;
+
 				jit_entry.func(&hctx);
 
 				if(hctx.exit_pc != 0)
@@ -103,7 +105,9 @@ namespace rv64vm::runner
 					pc = hctx.exit_pc;
 				}
 				else
+				{
 					pc += jit_entry.inst_size;
+				}
 
 				return;
 			}

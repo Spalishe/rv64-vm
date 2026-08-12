@@ -27,12 +27,16 @@ namespace rv64vm::jit
 	{
 		uint64_t pc = prev_pc;
 		if(prev_pc < 0x80000000) return;
-		if(jits[jit_index(pc)].valid) return;
+
+		JIT_Function& entry = jits[jit_index(pc)];
+
+		if(entry.valid && entry.pc == pc)
+			return;
+
+		auto jc = cache.inst->jit_func;
 
 		if(block_c)
 		{
-			auto jc = cache.inst->jit_func;
-
 			if(jc == nullptr || block.count >= RVJIT_MAX_INSTRUCTIONS || pc > block.pc + block.size)
 			{
 				goto end_block_gen;
@@ -58,30 +62,28 @@ namespace rv64vm::jit
 		// Check if there any reference of this instruction in decoder
 		{
 			// If not block creating rn
-			auto jc = cache.inst->jit_func;
-			if(jc != nullptr)
-			{
-				block_c = true;
-				memset(&block.bytes, 0, sizeof(block.bytes));
-				memset(&block.inst_addr_jmp, 0xFF, sizeof(block.inst_addr_jmp));
-				block.byte_pos = 0;
-				block.valid	   = true;
-				block.pc	   = pc;
-				block.size	   = 0;
-				block.count	   = 0;
-				block.jmp_labels.clear();
-				block.prologue_offs = 0;
-				block.outgoing_links.clear();
+			if(jc == nullptr) return;
 
-				emitter.reset();
-				emitter.rvjit_emit_prologue(block);
+			block_c		   = true;
+			// memset(block.bytes, 0, block.byte_pos);
+			// memset(&block.inst_addr_jmp, 0xFF, sizeof(block.inst_addr_jmp));
+			block.byte_pos = 0;
+			block.valid	   = true;
+			block.pc	   = pc;
+			block.size	   = 0;
+			block.count	   = 0;
+			block.jmp_labels.clear();
+			block.prologue_offs = 0;
+			block.outgoing_links.clear();
 
-				bool stop	= jc(h, cache.data, block, emitter);
-				block.size	= cache.inst->size;
-				block.count = 1;
-				if(stop)
-					goto end_block_gen;
-			}
+			emitter.reset();
+			emitter.rvjit_emit_prologue(block);
+
+			bool stop	= jc(h, cache.data, block, emitter);
+			block.size	= cache.inst->size;
+			block.count = 1;
+			if(stop)
+				goto end_block_gen;
 		}
 		return;
 
@@ -90,7 +92,7 @@ namespace rv64vm::jit
 		if(block.count >= RVJIT_MIN_INSTRUCTIONS)
 		{
 			// Check if our arena is overfilled
-			if(arenas[last_arena].used_size == arenas[last_arena].size)
+			if(arenas[last_arena].used_size + RVJIT_FUNC_SIZE > arenas[last_arena].size)
 			{
 				// Create new arena
 				createNewArena();
@@ -108,13 +110,25 @@ namespace rv64vm::jit
 			printf("jit: 0x%lx\n", block.pc);*/
 
 			// We built block sized enough. Go go gadget w^x allocations
-			JIT_Function func  = arena.push_function(block.bytes, block.byte_pos, last_arena);
-			func.inst_size	   = block.size;
-			func.pc			   = block.pc;
+			JIT_Function func = arena.push_function(block.bytes, block.byte_pos, last_arena);
+			func.inst_size	  = block.size;
+			func.pc			  = block.pc;
+
+			const uint64_t block_start = block.pc - 0x80000000ULL;
+			const uint64_t block_end   = block_start + block.size - 1;
+
+			const size_t first_page = block_start >> 12;
+			const size_t last_page	= block_end >> 12;
+
+			for(size_t page = first_page; page <= last_page; ++page)
+				jit_page_bitmap[page] = 1;
+
 			func.page_version  = page_verion_bitmap[(block.pc - 0x80000000) >> 12];
 			func.prologue_offs = block.prologue_offs;
 			emitter.link_waiting(&func, this);
-			jits[jit_index(block.pc)] = std::move(func);
+			uint32_t slot = jit::jit_index(block.pc);
+			jits[slot]	  = std::move(func);
+			arenas[last_arena].function_slots.push_back(slot);
 			count++;
 		}
 	}
@@ -126,32 +140,78 @@ namespace rv64vm::jit
 		}
 	}
 
-	void JIT_Function::cleanup(JIT_Function* jits)
+	void JIT_Function::cleanup(JIT_Context* ctx)
 	{
 		if(!valid)
 			return;
 
-		size_t pg_size = sysconf(_SC_PAGESIZE);
+		const size_t page_size = ctx->page_size;
 
-		for(auto& link : linked)
+		uintptr_t pages[32];
+		size_t page_count = 0;
+
+		for(const auto& link : linked)
 		{
-			JIT_Function& src = jits[jit::jit_index(link.func_pc)];
+			JIT_Function& src = ctx->jits[jit::jit_index(link.func_pc)];
 
 			if(!src.valid || src.pc != link.func_pc)
 				continue;
 
-			uint8_t* bytes = (uint8_t*)src.func;
+			uintptr_t page = (reinterpret_cast<uintptr_t>(src.func) + link.patch_offs)
+							 & ~(page_size - 1);
 
-			mprotect((void*)((uintptr_t)bytes & ~(pg_size - 1)),
-					 pg_size,
-					 PROT_READ | PROT_WRITE);
+			bool found = false;
 
-			uint64_t patch_offs = link.patch_offs;
-			JITFunction_cleanup_link(bytes, patch_offs);
+			for(size_t i = 0; i < page_count; ++i)
+			{
+				if(pages[i] == page)
+				{
+					found = true;
+					break;
+				}
+			}
 
-			mprotect((void*)((uintptr_t)bytes & ~(pg_size - 1)),
-					 pg_size,
-					 PROT_READ | PROT_EXEC);
+			if(!found)
+			{
+				if(page_count < std::size(pages))
+					pages[page_count++] = page;
+				else
+				{
+					// fallback, если links неожиданно много
+					mprotect(
+						reinterpret_cast<void*>(page),
+						page_size,
+						PROT_READ | PROT_WRITE);
+				}
+			}
+		}
+
+		for(size_t i = 0; i < page_count; ++i)
+		{
+			mprotect(
+				reinterpret_cast<void*>(pages[i]),
+				page_size,
+				PROT_READ | PROT_WRITE);
+		}
+
+		for(const auto& link : linked)
+		{
+			JIT_Function& src = ctx->jits[jit::jit_index(link.func_pc)];
+
+			if(!src.valid || src.pc != link.func_pc)
+				continue;
+
+			JITFunction_cleanup_link(
+				reinterpret_cast<uint8_t*>(src.func),
+				link.patch_offs);
+		}
+
+		for(size_t i = 0; i < page_count; ++i)
+		{
+			mprotect(
+				reinterpret_cast<void*>(pages[i]),
+				page_size,
+				PROT_READ | PROT_EXEC);
 		}
 
 		linked.clear();
@@ -168,54 +228,69 @@ namespace rv64vm::jit
 
 	void JIT_Context::createNewArena()
 	{
-		size_t arena_size = RVJIT_ARENA_PAGES * sysconf(_SC_PAGESIZE);
+		const size_t arena_size = RVJIT_ARENA_PAGES * sysconf(_SC_PAGESIZE);
+
 		while(total_allocated + arena_size > max_cache_size && !arenas.empty())
 		{
-			uint64_t old_idx = arena_order.front();
+			const uint64_t old_idx = arena_order.front();
 			arena_order.pop();
 
-			for(size_t i = 0; i < JIT_CACHE_SIZE; ++i)
-			{
-				if(jits[i].valid && jits[i].arena_index == old_idx)
-				{
-					jits[i].cleanup(jits);
-				}
-			}
+			auto arena_it = arenas.find(old_idx);
 
-			total_allocated -= arenas[old_idx].size;
-			arenas.erase(old_idx);
+			if(arena_it != arenas.end())
+			{
+				JIT_Arena& arena = arena_it->second;
+
+				for(uint32_t slot : arena.function_slots)
+				{
+					JIT_Function& fn = jits[slot];
+
+					if(fn.valid && fn.arena_index == old_idx)
+					{
+						fn.cleanup(this);
+					}
+				}
+
+				total_allocated -= arena.size;
+				arenas.erase(arena_it);
+			}
 		}
-		last_arena++;
-		arenas.insert({ last_arena, JIT_Arena() });
-		arenas.at(last_arena).init();
-		total_allocated += arenas[last_arena].size;
+
+		++last_arena;
+
+		auto [it, inserted] = arenas.try_emplace(last_arena);
+
+		JIT_Arena& arena = it->second;
+		arena.init();
+
+		total_allocated += arena.size;
 		arena_order.push(last_arena);
 	}
-
 	void JIT_Arena::allocate()
 	{
 		_page_size = sysconf(_SC_PAGESIZE);
 		size	   = RVJIT_ARENA_PAGES * _page_size;
 
-		// Allocate READ | WRITE
-		void* buffer = mmap(NULL, size, PROT_READ | PROT_WRITE,
-							MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		void* buffer = mmap(
+			nullptr,
+			size,
+			PROT_READ | PROT_WRITE,
+			MAP_PRIVATE | MAP_ANONYMOUS,
+			-1,
+			0);
+
 		if(buffer == MAP_FAILED)
 		{
 			fprintf(stderr, "[RVJIT] Failed to allocate RW region.\n");
 			return;
 		}
 
-		// Change permissions to READ | EXEC for default
-		if(mprotect(buffer, size, PROT_READ | PROT_EXEC) == -1)
-		{
-			munmap(buffer, size);
-			fprintf(stderr, "[RVJIT] Failed to change region permission to RX.\n");
-			return;
-		}
 		base	  = buffer;
 		valid	  = true;
 		used_size = 0;
+
+		function_slots.clear();
+		function_slots.reserve(size / RVJIT_FUNC_SIZE);
 	}
 	JIT_Function JIT_Arena::push_function(const void* code, size_t code_size, uint64_t arena_index)
 	{
@@ -254,12 +329,12 @@ namespace rv64vm::jit
 			return JIT_Function{};
 		}
 
-		used_size += RVJIT_FUNC_SIZE;
 		JIT_Function result;
 		result.func		   = reinterpret_cast<JITCompilatedFunc>(func_pos);
 		result.size		   = code_size;
 		result.valid	   = true;
 		result.arena_index = arena_index;
+		used_size += RVJIT_FUNC_SIZE;
 		return result;
 	}
 }
