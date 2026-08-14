@@ -20,6 +20,7 @@ Copyright 2026 Spalishe
 #include "libfdt.h"
 #include "memory_map.hpp"
 #include "mmio.hpp"
+#include "mmu.hpp"
 #include <thread>
 #include <vector>
 
@@ -33,8 +34,9 @@ namespace rv64vm::runner
 	{
 		uint64_t memory_size;
 		uint8_t hart_count;
-		uint64_t entry_pc = 0x80000000;
-		uint64_t timebase = 5'000'000ULL;
+		uint64_t entry_pc	  = 0x80000000;
+		uint64_t timebase	  = 5'000'000ULL;
+		MMU::SatpMode MMUMode = MMU::SatpMode::Sv39;
 		std::string append;
 		std::string dtb_dump_path;
 		bool init_fdt = true;

@@ -240,6 +240,7 @@ int main(int argc, char* argv[])
 	cfg.append						  = append_var->val();
 	cfg.dtb_dump_path				  = dumpdtb_var->val();
 	cfg.hart_count					  = harts;
+	cfg.MMUMode						  = rv64vm::runner::MMU::SatpMode::Sv39;
 	cfg.memory_size					  = memsize;
 
 	rv64vm::runner::Machine machine = rv64vm::runner::Machine(cfg);

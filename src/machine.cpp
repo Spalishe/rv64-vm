@@ -167,7 +167,15 @@ namespace rv64vm::runner
 			fdt_node_add_prop_u32(cpu, "riscv,cboz-block-size", 64);
 			fdt_node_add_prop_str(cpu, "compatible", "riscv");
 			fdt_node_add_prop_str(cpu, "riscv,isa", "rv64imafdc_zicsr_zifencei_zicboz_zba_zbb_zbc_zbs");
-			fdt_node_add_prop_str(cpu, "mmu-type", "riscv,none");
+			static constexpr std::array<std::string, 11> conv = {
+				"none",						// Bare
+				"", "", "", "", "", "", "", // Reserved/Unused
+				"sv39",						// Sv39
+				"sv48",						// Sv48
+				"sv57"						// Sv57
+			};
+
+			fdt_node_add_prop_str(cpu, "mmu-type", ("riscv," + conv[(int)config.MMUMode]).c_str());
 			fdt_node_add_prop_str(cpu, "status", "okay");
 
 			fdt_node* intc = fdt_node_create("interrupt-controller");

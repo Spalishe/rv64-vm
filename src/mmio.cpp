@@ -22,18 +22,30 @@ namespace rv64vm::runner
 {
 	MMIO::MMIO(MemoryMap* mmap, uint64_t mem_size) : mmap(mmap), memsize(mem_size) {};
 
-	MemoryReturn MMIO::write(Hart& h, uint64_t vaddr, MemorySize size, uint64_t val)
+	MemoryReturn MMIO::write(Hart& h, uint64_t addr, MemorySize size, uint64_t val, bool isphys)
 	{
+		uint64_t paddr = 0;
+		if(!isphys) [[likely]]
+		{
+			auto res = h.get_mmu().translate(&h, AccessType::STORE, addr, &paddr);
+			if(!res.is_success)
+			{
+				return res;
+			}
+		}
+		else
+			paddr = addr;
+
 		uint64_t end = 0x80000000ULL + memsize;
-		if(vaddr >= 0x80000000ULL && (vaddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
+		if(paddr >= 0x80000000ULL && (paddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
 		{
 			// DRAM
-			h.amo_check_reservation(vaddr);
-			mmap->store(vaddr, (int)size * 8, val);
+			h.amo_check_reservation(paddr);
+			mmap->store(paddr, (int)size * 8, val);
 #ifdef USE_JIT
 			auto* jctx = h.get_jctx();
 
-			const uint64_t ram_offset = vaddr - 0x80000000ULL;
+			const uint64_t ram_offset = paddr - 0x80000000ULL;
 
 			const size_t first_page = ram_offset >> 12;
 			const size_t last_page	= (ram_offset + static_cast<uint64_t>(size) - 1) >> 12;
@@ -51,25 +63,25 @@ namespace rv64vm::runner
 		// Looking up for devices in this range
 		for(const auto& dev : devs)
 		{
-			if(vaddr >= dev->start && vaddr < (dev->start + dev->size - (int)size))
+			if(paddr >= dev->start && paddr < (dev->start + dev->size - (int)size))
 			{
 				// found a device
 				// mmap->store(vaddr, (int)size * 8, val); // unnecessary
-				h.amo_check_reservation(vaddr);
-				dev->write(vaddr, size, val);
+				h.amo_check_reservation(paddr);
+				dev->write(paddr, size, val);
 				return { true, 0, 0 };
 			}
 		}
 
 		// We hit none of the existing regions
 		// h.trap(EXC_STORE_ACCESS_FAULT, vaddr, false);
-		return { false, EXC_STORE_ACCESS_FAULT, vaddr };
+		return { false, EXC_STORE_ACCESS_FAULT, addr };
 	}
-	inline uint64_t MMIO::read_dram_fast(uint64_t vaddr, MemorySize size)
+	inline uint64_t MMIO::read_dram_fast(uint64_t paddr, MemorySize size)
 	{
 		if(direct_ram == nullptr)
 			direct_ram = mmap->get_ram_direct()->get_data();
-		unsigned char* ptr = direct_ram + (vaddr - 0x80000000ULL);
+		unsigned char* ptr = direct_ram + (paddr - 0x80000000ULL);
 		switch(size)
 		{
 			case MemorySize::Byte:
@@ -83,33 +95,45 @@ namespace rv64vm::runner
 		}
 		return 0;
 	}
-	MemoryReturn MMIO::read(Hart& h, uint64_t vaddr, MemorySize size, void* val)
+	MemoryReturn MMIO::read(Hart& h, uint64_t addr, MemorySize size, void* val, bool isphys)
 	{
+		uint64_t paddr = 0;
+		if(!isphys) [[likely]]
+		{
+			auto res = h.get_mmu().translate(&h, AccessType::LOAD, addr, &paddr);
+			if(!res.is_success)
+			{
+				return res;
+			}
+		}
+		else
+			paddr = addr;
+
 		uint64_t out;
 
 		uint64_t end = 0x80000000ULL + memsize;
-		if(vaddr >= 0x80000000ULL && (vaddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
+		if(paddr >= 0x80000000ULL && (paddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
 		{
 			// DRAM
-			// out = mmap->load(vaddr, (int)size * 8);
-			out = read_dram_fast(vaddr, size);
+			// out = mmap->load(paddr, (int)size * 8);
+			out = read_dram_fast(paddr, size);
 			goto success;
 		}
 		// Looking up for devices in this range
 		for(const auto& dev : devs)
 		{
-			if(vaddr >= dev->start && vaddr < (dev->start + dev->size - (int)size + 1))
+			if(paddr >= dev->start && paddr < (dev->start + dev->size - (int)size + 1))
 			{
 				// found a device
-				// out = mmap->load(vaddr, (int)size * 8); // unnecessary
-				out = dev->read(vaddr, size);
+				// out = mmap->load(paddr, (int)size * 8); // unnecessary
+				out = dev->read(paddr, size);
 				goto success;
 			}
 		}
 
 		// We hit none of the existing regions
-		// h.trap(EXC_LOAD_ACCESS_FAULT, vaddr, false);
-		return { false, EXC_LOAD_ACCESS_FAULT, vaddr };
+		// h.trap(EXC_LOAD_ACCESS_FAULT, paddr, false);
+		return { false, EXC_LOAD_ACCESS_FAULT, addr };
 
 	success:
 		// write out to val

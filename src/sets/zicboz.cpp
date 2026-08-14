@@ -21,20 +21,25 @@ Copyright 2026 Spalishe
 using namespace rv64vm::runner;
 ExecReturn exec_cbo_zero(Hart& hart, InstructionData& inst)
 {
-	uint64_t addr = hart.GPR[inst.rs1];
+	uint64_t va = hart.GPR[inst.rs1];
 	// align
-	addr		  = addr & ~63;
-	if(addr >= 0x80000000)
+
+	uint64_t pa		 = 0;
+	MemoryReturn ret = hart.get_mmu().translate(&hart, AccessType::STORE, va, &pa);
+	if(!ret.is_success) return { false, false, 0, ret.exc_code, ret.tval };
+
+	pa = pa & ~63;
+	if(pa >= 0x80000000)
 	{
 		// Effectively zero the memory
-		memset(hart.get_mmap()->get_ram_direct()->get_data() + (addr - 0x80000000), 0, 64);
+		memset(hart.get_mmap()->get_ram_direct()->get_data() + (pa - 0x80000000), 0, 64);
 	}
 	else
 	{
 		// Fallback for devices
 		for(size_t i = 0; i < 64; ++i)
 		{
-			hart.get_mmio()->write(hart, addr + i, MemorySize::Byte, 0);
+			hart.get_mmio()->write(hart, pa + i, MemorySize::Byte, 0);
 		}
 	}
 	return { true, false, 4, 0, 0 };

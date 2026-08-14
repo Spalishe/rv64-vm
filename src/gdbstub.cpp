@@ -182,12 +182,12 @@ static const std::vector<std::tuple<std::string, uint32_t, char, std::optional<s
 		{ "scause", CSR_SCAUSE, 'c', std::nullopt },
 		{ "stval", CSR_STVAL, 'c', std::nullopt },
 		{ "stimecmp", CSR_STIMECMP, 'c', std::nullopt },
-/*{ "satp", CSR_SATP, 'c',
-  vector<tuple<string, uint8_t, uint8_t>>{
-	  { "MODE", SATP_MODE_LOW, SATP_MODE_HIGH },
-	  { "ASID", SATP_ASID_LOW, SATP_ASID_HIGH },
-	  { "PPN", SATP_PPN_LOW, SATP_PPN_HIGH },
-  } },*/
+		{ "satp", CSR_SATP, 'c',
+		  std::vector<std::tuple<std::string, uint8_t, uint8_t>>{
+			  { "MODE", 60, 63 },
+			  { "ASID", 44, 59 },
+			  { "PPN", 0, 43 },
+		  } },
 // mmu
 #ifdef USE_FPU
 		{ "fcsr", CSR_FCSR + 5000, 'c',
@@ -788,6 +788,15 @@ void Machine::GDBStub::parse_packet(const std::string& buffer)
 		uint64_t size	 = std::stoul(packet.substr(comma + 1, colon - comma - 1), nullptr, 16);
 		std::string data = packet.substr(colon + 1);
 
+		if(active_hart->satp.fields.mode != 0)
+		{
+			MemoryReturn ret = active_hart->mmu.translate(active_hart, AccessType::LOAD, address, &address);
+			if(!ret.is_success)
+			{
+				send_packet("E01");
+				return;
+			}
+		}
 		for(uint64_t i = 0; i < size; i++)
 		{
 			uint8_t byte_val = static_cast<uint8_t>(std::stoul(data.substr(i * 2, 2), nullptr, 16));
@@ -820,6 +829,16 @@ void Machine::GDBStub::parse_packet(const std::string& buffer)
 		uint64_t address = std::stoul(packet.substr(1, comma), nullptr, 16);
 		uint64_t size	 = std::stoul(packet.substr(comma + 1), nullptr, 16);
 		std::string resp;
+
+		if(active_hart->satp.fields.mode != 0)
+		{
+			MemoryReturn ret = active_hart->mmu.translate(active_hart, AccessType::LOAD, address, &address);
+			if(!ret.is_success)
+			{
+				send_packet("E01");
+				return;
+			}
+		}
 
 		for(uint64_t i = 0; i < size; i++)
 		{

@@ -42,6 +42,7 @@ namespace rv64vm::runner
 		csrs[CSR_MHARTID] = id;
 		status.fields.SXL = 2;
 		status.fields.UXL = 2;
+		mmu.mmap		  = mmap;
 #ifdef USE_JIT
 		hctx.regs	 = GPR;
 		hctx.mmio	 = mmio;
@@ -113,18 +114,29 @@ namespace rv64vm::runner
 			}
 		}
 #endif
-		uint32_t inst = 0;
+		uint32_t inst	 = 0;
 		// MemoryReturn out1 = mmio->read(*this, pc, MemorySize::Int, &inst);
-		if(pc >= 0x80000000ULL && pc <= 0x80000000ULL + memsize - sizeof(uint32_t))
+		uint64_t phys_pc = 0;
+
+		MemoryReturn ret = mmu.translate(this, AccessType::EXEC, pc, &phys_pc);
+
+		if(!ret.is_success)
+		{
+			trap(ret.exc_code, ret.tval, false);
+			return;
+		}
+		if(phys_pc >= 0x80000000ULL && phys_pc <= 0x80000000ULL + memsize - sizeof(uint32_t))
 		{
 			if(direct_ram == nullptr)
 			{
 				direct_ram = mmap->get_ram_direct()->get_data();
 			}
-			inst = *(uint32_t*)(direct_ram + (pc - 0x80000000ULL));
+			inst = *(uint32_t*)(direct_ram + (phys_pc - 0x80000000ULL));
 		}
 		else
 		{
+			printf("INST ACCESS FAULT PCV: 0x%llx PCP: 0x%llx\n", pc, phys_pc);
+			fflush(stdout);
 			trap(EXC_INST_ACCESS_FAULT, pc, false);
 		}
 		// if(!out1.is_success) [[unlikely]]
@@ -132,7 +144,7 @@ namespace rv64vm::runner
 
 		//  uint32_t inst = fetch(pc);
 
-		InstructionCache& cache = idec->decode_inst(pc, inst);
+		InstructionCache& cache = idec->decode_inst(phys_pc, inst);
 		if(cache.pc == 0)
 		{
 #ifdef USE_JIT
@@ -233,6 +245,9 @@ namespace rv64vm::runner
 
 	void Hart::trap(uint64_t cause, uint64_t tval, bool interrupt)
 	{
+		if(!((cause == 9 && !interrupt) || (cause == 5 && interrupt))) printf("TRAP: cause=0x%lx, tval=0x%lx, interrupt=%d, pc=0x%lx, mode=%d\n",
+																			  cause, tval, interrupt, pc, (int)mode);
+		reservation.valid		= false;
 		WFI						= false;
 		uint64_t trap_pc		= pc;
 		PrivilegeMode prev_mode = mode;
@@ -253,7 +268,7 @@ namespace rv64vm::runner
 			// Supervisor
 			mode			   = PrivilegeMode::Supervisor;
 			uint64_t vector	   = (((csrs[CSR_STVEC] & 1) == 1 && interrupt) ? 4 * cause : 0);
-			pc				   = (csrs[CSR_STVEC] & ~3) + vector;
+			pc				   = (csrs[CSR_STVEC] & ~1) + vector;
 			csrs[CSR_SEPC]	   = trap_pc;
 			csrs[CSR_SCAUSE]   = ((interrupt ? (1ULL << 63) : 0) | cause);
 			csrs[CSR_STVAL]	   = tval;
@@ -266,7 +281,7 @@ namespace rv64vm::runner
 			// Machine
 			mode			   = PrivilegeMode::Machine;
 			uint64_t vector	   = (((csrs[CSR_MTVEC] & 1) == 1 && interrupt) ? 4 * cause : 0);
-			pc				   = (csrs[CSR_MTVEC] & ~3) + vector;
+			pc				   = (csrs[CSR_MTVEC] & ~1) + vector;
 			csrs[CSR_MEPC]	   = trap_pc;
 			csrs[CSR_MCAUSE]   = ((interrupt ? (1ULL << 63) : 0) | cause);
 			csrs[CSR_MTVAL]	   = tval;
@@ -301,6 +316,13 @@ namespace rv64vm::runner
 			case CSR_STIMECMP:
 				timecmp_set(&stimecmp, val);
 				break;
+			case CSR_SATP:
+			{
+				uint64_t old_val = satp.raw;
+				satp.raw		 = val;
+				if((MMU::SatpMode)satp.fields.mode == MMU::SatpMode::Sv48 || (MMU::SatpMode)satp.fields.mode == MMU::SatpMode::Sv57) satp.raw = old_val;
+				break;
+			}
 			case CSR_FCSR:
 			{
 				if(!status.fields.FS)
@@ -369,6 +391,8 @@ namespace rv64vm::runner
 				return csrs[csr - 0x100]; // get M versions
 			case CSR_STIMECMP:
 				return timecmp_get(&stimecmp);
+			case CSR_SATP:
+				return satp.raw;
 			case CSR_FCSR:
 			{
 				if(!status.fields.FS)

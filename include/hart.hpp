@@ -21,6 +21,7 @@ Copyright 2026 Spalishe
 #include "defines/traps.hpp"
 #include "memory_map.hpp"
 #include "mmio.hpp"
+#include "mmu.hpp"
 #include "rvjit/rvjit.hpp"
 #include "structs/timecmp_st.hpp"
 #include <cstdint>
@@ -54,7 +55,7 @@ namespace rv64vm::runner
 		 */
 		struct Reservation
 		{
-			uint64_t vaddr;
+			uint64_t paddr;
 			MemorySize size;
 			bool valid;
 		};
@@ -133,10 +134,26 @@ namespace rv64vm::runner
 		ip_t ip;
 		timecmp_st stimecmp;
 		fcsr_t fcsr;
+		satp_t satp;
 		uint64_t cycle;
 		uint64_t instret;
 		bool WFI = false;
 
+		/**
+		 * @brief Returns CPU Effective mode for a specific memory access
+		 * @details Effective mode corresponds to MPRV bit in mstatus:
+		 *          1 - MPP (only for LOAD/STORE), 0 - current mode
+		 * @return Effective mode
+		 * @see PrivilegeMode
+		 */
+		inline PrivilegeMode get_effective_mode(AccessType access_type) const
+		{
+			if(status.fields.MPRV && (access_type == AccessType::LOAD || access_type == AccessType::STORE))
+			{
+				return static_cast<PrivilegeMode>(status.fields.MPP);
+			}
+			return mode;
+		}
 		/**
 		 * @brief Returns MMIO pointer
 		 * @see MMIO
@@ -156,6 +173,12 @@ namespace rv64vm::runner
 		 */
 		inline Reservation& get_reservation() { return reservation; }
 		/**
+		 * @brief Returns CPU Memory Management Unit
+		 * @see MMU
+		 * @return MMU reference
+		 */
+		inline MMU& get_mmu() { return mmu; }
+		/**
 		 * @brief Clears Instruction Decoder Cache
 		 */
 		inline void clear_decode_cache()
@@ -172,9 +195,9 @@ namespace rv64vm::runner
 		 * @brief Clears reservation if defined address is within CPU reservation address
 		 * @param va Virtual Address
 		 */
-		inline void amo_check_reservation(uint64_t va)
+		inline void amo_check_reservation(uint64_t pa)
 		{
-			if(reservation.valid && reservation.vaddr >= va && va <= reservation.vaddr + (int)reservation.size)
+			if(reservation.valid && reservation.paddr >= pa && pa <= reservation.paddr + (int)reservation.size)
 			{
 				reservation.valid = false;
 			}
@@ -219,6 +242,7 @@ namespace rv64vm::runner
 		InstructionDecoder* idec;
 		MemoryMap* mmap;
 		MMIO* mmio;
+		MMU mmu;
 
 		uint64_t memsize	= 0;
 		uint8_t* direct_ram = nullptr;

@@ -63,7 +63,7 @@ struct ExecReturn
 	char cause		   = 0;
 	uint64_t tval	   = 0;
 };
-enum class MemorySize
+enum class MemorySize : int
 {
 	Byte  = 1,
 	Short = 2,
@@ -75,4 +75,10 @@ struct MemoryReturn
 	bool is_success = true;
 	char exc_code	= 0;
 	uint64_t tval	= 0;
+};
+enum class AccessType : int
+{
+	LOAD  = 0,
+	STORE = 1,
+	EXEC  = 2
 };

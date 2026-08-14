@@ -456,3 +456,14 @@ union fcsr_t
 
 	uint64_t raw;
 };
+
+union satp_t
+{
+	struct
+	{
+		uint64_t ppn : 44;	// Root page table physical number aligned by 4096
+		uint64_t asid : 16; // Address space identifier
+		uint64_t mode : 4;
+	} fields;
+	uint64_t raw;
+};

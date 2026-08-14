@@ -56,13 +56,27 @@ namespace rv64vm::runner
 		/**
 		 * @brief Write operation
 		 * @details Writes data to DRAM. If defined address is beyond DRAM base address then it check for all devices and writes data to them.
+		 * @param h Hart reference
+		 * @param size Operation data size
+		 * @param val Value
+		 * @data isphys Is address physical or virtual
+		 * @return Memory operation data
+		 * @see MemoryReturn
+		 * @see Hart
 		 */
-		MemoryReturn write(Hart& h, uint64_t vaddr, MemorySize size, uint64_t val);
+		MemoryReturn write(Hart& h, uint64_t addr, MemorySize size, uint64_t val, bool isphys = false);
 		/**
 		 * @brief Read operation
 		 * @details Reads data from DRAM. If defined address is beyond DRAM base address then it check for all devices and reads their memory.
+		 * @param h Hart reference
+		 * @param size Operation data size
+		 * @param val Pointer to new value
+		 * @data isphys Is address physical or virtual
+		 * @return Memory operation data
+		 * @see MemoryReturn
+		 * @see Hart
 		 */
-		MemoryReturn read(Hart& h, uint64_t vaddr, MemorySize size, void* val);
+		MemoryReturn read(Hart& h, uint64_t addr, MemorySize size, void* val, bool isphys = false);
 
 		/**
 		 * @brief Creates new device

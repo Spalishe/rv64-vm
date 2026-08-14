@@ -21,9 +21,13 @@ Copyright 2026 Spalishe
 using namespace rv64vm::runner;
 MemoryReturn AMO_SC(Hart& hart, uint64_t va, MemorySize size, uint64_t val, void* out_val)
 {
-	if(hart.get_reservation().valid && hart.get_reservation().vaddr == va && hart.get_reservation().size == size)
+	uint64_t pa;
+	auto ret = hart.get_mmu().translate(&hart, AccessType::STORE, va, &pa);
+	if(!ret.is_success) return ret;
+
+	if(hart.get_reservation().valid && hart.get_reservation().paddr == pa && hart.get_reservation().size == size)
 	{
-		MemoryReturn out = hart.get_mmio()->write(hart, va, size, val);
+		MemoryReturn out = hart.get_mmio()->write(hart, pa, size, val, true);
 		if(!out.is_success) return out;
 		// amo_check_reservation(hart, va);
 		hart.get_reservation().valid = false;
@@ -39,12 +43,16 @@ MemoryReturn AMO_SC(Hart& hart, uint64_t va, MemorySize size, uint64_t val, void
 }
 MemoryReturn AMO_LR(Hart& hart, uint64_t va, MemorySize size, void* val)
 {
+	uint64_t pa;
+	auto ret = hart.get_mmu().translate(&hart, AccessType::LOAD, va, &pa);
+	if(!ret.is_success) return ret;
+
 	uint64_t value;
-	MemoryReturn p = hart.get_mmio()->read(hart, va, size, &value);
+	MemoryReturn p = hart.get_mmio()->read(hart, pa, size, &value, true);
 	if(!p.is_success) return p;
 	hart.get_reservation().valid = true;
 	hart.get_reservation().size	 = size;
-	hart.get_reservation().vaddr = va;
+	hart.get_reservation().paddr = pa;
 	switch(size)
 	{
 		case MemorySize::Byte:
