@@ -68,7 +68,6 @@ namespace rv64vm::runner
 
 		if(!va.isvalid())
 		{
-			std::cout << "pg fault: va is invalid" << std::endl;
 			*pa = 0;
 			return { false, AccessType_to_Fault[(uint8_t)type], raw_va };
 		}
@@ -90,9 +89,6 @@ namespace rv64vm::runner
 
 			if(pte.fields.V == 0 || (pte.fields.W == 1 and pte.fields.R == 0))
 			{
-				std::cout << "pg fault: pte is not valid or w == 1 and r == 0" << std::endl;
-				printf("PF va=0x%lx i=%d a=0x%lx addr=0x%lx pte=0x%lx satp=0x%lx type=%d mode=%d\n",
-					   raw_va, i, a, addr, pte.raw, hart->satp.raw, (int)type, (int)hart->get_effective_mode(type));
 				*pa = 0;
 				return {
 					false, AccessType_to_Fault[(uint8_t)type], raw_va
@@ -100,7 +96,6 @@ namespace rv64vm::runner
 			}
 			if((pte.raw >> 54) & 0x7F)
 			{
-				std::cout << "pg fault: reserved bits isnt 0" << std::endl;
 				*pa = 0;
 				return {
 					false, AccessType_to_Fault[(uint8_t)type], raw_va
@@ -129,7 +124,6 @@ namespace rv64vm::runner
 			i--;
 			if(i < 0)
 			{
-				std::cout << "pg fault: not found pte" << std::endl;
 				*pa = 0;
 				return {
 					false, AccessType_to_Fault[(uint8_t)type], raw_va
@@ -142,7 +136,6 @@ namespace rv64vm::runner
 		if(i > 0 && (pte.get_solid_ppn() & ((1ULL << (i * 9)) - 1)) != 0)
 		{
 			// misaligned superpage
-			std::cout << "pg fault: misaligned superpage" << std::endl;
 			*pa = 0;
 			return {
 				false, AccessType_to_Fault[(uint8_t)type], raw_va
@@ -155,7 +148,6 @@ namespace rv64vm::runner
 		{
 			if(!pte.fields.U)
 			{
-				std::cout << "pg fault: mode user and pte.U == 0" << std::endl;
 				*pa = 0;
 				return {
 					false, AccessType_to_Fault[(uint8_t)type], raw_va
@@ -168,7 +160,6 @@ namespace rv64vm::runner
 			{
 				if(type == AccessType::EXEC || !hart->status.fields.SUM)
 				{
-					std::cout << "pg fault: mode supervisor tried execution on page with pte.U or without SUM" << std::endl;
 					*pa = 0;
 					return {
 						false, AccessType_to_Fault[(uint8_t)type], raw_va
@@ -186,7 +177,6 @@ namespace rv64vm::runner
 
 		if(!allowed)
 		{
-			std::cout << "pg fault: not allowed" << std::endl;
 			*pa = 0;
 			return { false, AccessType_to_Fault[(uint8_t)type], raw_va };
 		}
