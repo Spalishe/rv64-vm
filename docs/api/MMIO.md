@@ -104,14 +104,28 @@ Removes [MMIO](#mmio) object
 ### write
 
 ```cpp
-MemoryReturn write(Hart & h, uint64_t vaddr, MemorySize size, uint64_t val)
+MemoryReturn write(Hart & h, uint64_t addr, MemorySize size, uint64_t val, bool isphys = false)
 ```
 
-Defined in include/mmio.hpp:60
+Defined in include/mmio.hpp:67
 
 Write operation.
 
-Writes data to DRAM. If defined address is beyond DRAM base address then it check for all devices and writes data to them.
+Writes data to DRAM. If defined address is beyond DRAM base address then it check for all devices and writes data to them. 
+#### Returns
+Memory operation data
+
+**See also**: MemoryReturn
+
+**See also**: [Hart](Hart.md)
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `h` | `Hart &` | [Hart](Hart.md#hart) reference |
+| `size` | `MemorySize` | Operation data size |
+| `val` | `uint64_t` | Value @data isphys Is address physical or virtual |
 
 ---
 
@@ -120,14 +134,28 @@ Writes data to DRAM. If defined address is beyond DRAM base address then it chec
 ### read
 
 ```cpp
-MemoryReturn read(Hart & h, uint64_t vaddr, MemorySize size, void * val)
+MemoryReturn read(Hart & h, uint64_t addr, MemorySize size, void * val, bool isphys = false)
 ```
 
-Defined in include/mmio.hpp:65
+Defined in include/mmio.hpp:79
 
 Read operation.
 
-Reads data from DRAM. If defined address is beyond DRAM base address then it check for all devices and reads their memory.
+Reads data from DRAM. If defined address is beyond DRAM base address then it check for all devices and reads their memory. 
+#### Returns
+Memory operation data
+
+**See also**: MemoryReturn
+
+**See also**: [Hart](Hart.md)
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `h` | `Hart &` | [Hart](Hart.md#hart) reference |
+| `size` | `MemorySize` | Operation data size |
+| `val` | `void *` | Pointer to new value @data isphys Is address physical or virtual |
 
 ---
 
@@ -141,7 +169,7 @@ Reads data from DRAM. If defined address is beyond DRAM base address then it che
 template<typenameT, typename... Args> inline std::shared_ptr< T > create_device(Args &&... args)
 ```
 
-Defined in include/mmio.hpp:72
+Defined in include/mmio.hpp:86
 
 Creates new device.
 
@@ -159,7 +187,7 @@ Creates new T device and automatically adds it to device list.
 template<typenameT> inline std::shared_ptr< T > create_device_auto(Machine & cpu)
 ```
 
-Defined in include/mmio.hpp:84
+Defined in include/mmio.hpp:98
 
 Creates new device automatically.
 
@@ -179,7 +207,7 @@ Creates new T device by calling it auto create function.
 inline void tick_all()
 ```
 
-Defined in include/mmio.hpp:96
+Defined in include/mmio.hpp:110
 
 Devices tick function.
 
@@ -199,7 +227,7 @@ Wrapper that automatically will call every registered device tick function
 template<typenameT> inline std::shared_ptr< T > get()
 ```
 
-Defined in include/mmio.hpp:112
+Defined in include/mmio.hpp:126
 
 Device getter function.
 

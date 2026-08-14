@@ -8,7 +8,7 @@
 class Hart
 ```
 
-Defined in include/hart.hpp:37
+Defined in include/hart.hpp:38
 
 RISC-V CPU Core.
 
@@ -18,9 +18,11 @@ RISC-V CPU Core.
 |------|------|-------|
 | [`Hart`](#hart) | `function` | Declared here |
 | [`~Hart`](#~hart) | `function` | Declared here |
+| [`get_effective_mode`](#get_effective_mode) | `function` | Declared here |
 | [`get_mmio`](#get_mmio) | `function` | Declared here |
 | [`get_mmap`](#get_mmap) | `function` | Declared here |
 | [`get_reservation`](#get_reservation) | `function` | Declared here |
+| [`get_mmu`](#get_mmu) | `function` | Declared here |
 | [`clear_decode_cache`](#clear_decode_cache) | `function` | Declared here |
 | [`amo_check_reservation`](#amo_check_reservation) | `function` | Declared here |
 | [`csr_read`](#csr_read) | `function` | Declared here |
@@ -34,9 +36,11 @@ RISC-V CPU Core.
 |--------|------|-------------|
 |  | [`Hart`](#hart)  | [Hart](#hart) constructor. |
 |  | [`~Hart`](#~hart) `inline` | [Hart](#hart) destructor. |
+| `PrivilegeMode` | [`get_effective_mode`](#get_effective_mode) `const` `inline` | Returns CPU Effective mode for a specific memory access. |
 | `MMIO *` | [`get_mmio`](#get_mmio) `inline` | Returns [MMIO](MMIO.md#mmio) pointer. |
 | `MemoryMap *` | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
 | `Reservation &` | [`get_reservation`](#get_reservation) `inline` | Returns CPU Atomic [Reservation](Reservation.md#reservation). |
+| `MMU &` | [`get_mmu`](#get_mmu) `inline` | Returns CPU Memory Management Unit. |
 | `void` | [`clear_decode_cache`](#clear_decode_cache) `inline` | Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache. |
 | `void` | [`amo_check_reservation`](#amo_check_reservation) `inline` | Clears reservation if defined address is within CPU reservation address. |
 | `uint64_t` | [`csr_read`](#csr_read)  | Returns value stored in CSR. |
@@ -53,7 +57,7 @@ RISC-V CPU Core.
 Hart(uint8_t id, uint64_t memsize)
 ```
 
-Defined in include/hart.hpp:69
+Defined in include/hart.hpp:70
 
 [Hart](#hart) constructor.
 
@@ -80,11 +84,33 @@ Creates RISC-V core
 inline ~Hart()
 ```
 
-Defined in include/hart.hpp:76
+Defined in include/hart.hpp:77
 
 [Hart](#hart) destructor.
 
 Destroys RISC-V core
+
+---
+
+
+
+### get_effective_mode
+
+`const` `inline`
+
+```cpp
+inline PrivilegeMode get_effective_mode(AccessType access_type) const
+```
+
+Defined in include/hart.hpp:149
+
+Returns CPU Effective mode for a specific memory access.
+
+Effective mode corresponds to MPRV bit in mstatus: 1 - MPP (only for LOAD/STORE), 0 - current mode 
+#### Returns
+Effective mode
+
+**See also**: PrivilegeMode
 
 ---
 
@@ -98,7 +124,7 @@ Destroys RISC-V core
 inline MMIO * get_mmio()
 ```
 
-Defined in include/hart.hpp:145
+Defined in include/hart.hpp:162
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -119,7 +145,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/hart.hpp:151
+Defined in include/hart.hpp:168
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -140,7 +166,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline Reservation & get_reservation()
 ```
 
-Defined in include/hart.hpp:157
+Defined in include/hart.hpp:174
 
 Returns CPU Atomic [Reservation](Reservation.md#reservation).
 
@@ -148,6 +174,27 @@ Returns CPU Atomic [Reservation](Reservation.md#reservation).
 
 #### Returns
 [Reservation](Reservation.md#reservation) reference object
+
+---
+
+
+
+### get_mmu
+
+`inline`
+
+```cpp
+inline MMU & get_mmu()
+```
+
+Defined in include/hart.hpp:180
+
+Returns CPU Memory Management Unit.
+
+**See also**: [MMU](MMU.md)
+
+#### Returns
+[MMU](MMU.md#mmu) reference
 
 ---
 
@@ -161,7 +208,7 @@ Returns CPU Atomic [Reservation](Reservation.md#reservation).
 inline void clear_decode_cache()
 ```
 
-Defined in include/hart.hpp:161
+Defined in include/hart.hpp:184
 
 Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 
@@ -174,18 +221,12 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 `inline`
 
 ```cpp
-inline void amo_check_reservation(uint64_t va)
+inline void amo_check_reservation(uint64_t pa)
 ```
 
-Defined in include/hart.hpp:175
+Defined in include/hart.hpp:198
 
 Clears reservation if defined address is within CPU reservation address.
-
-#### Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `va` | `uint64_t` | Virtual Address |
 
 ---
 
@@ -197,7 +238,7 @@ Clears reservation if defined address is within CPU reservation address.
 uint64_t csr_read(uint16_t csr)
 ```
 
-Defined in include/hart.hpp:194
+Defined in include/hart.hpp:217
 
 Returns value stored in CSR.
 
@@ -220,7 +261,7 @@ CSR value
 void csr_write(uint16_t csr, uint64_t val)
 ```
 
-Defined in include/hart.hpp:200
+Defined in include/hart.hpp:223
 
 Stores value to CSR.
 
@@ -241,7 +282,7 @@ Stores value to CSR.
 void trap(uint64_t cause, uint64_t tval, bool interrupt)
 ```
 
-Defined in include/hart.hpp:209
+Defined in include/hart.hpp:232
 
 CPU Trap function.
 
@@ -271,7 +312,7 @@ Raises trap in CPU core.
 enum PrivilegeMode
 ```
 
-Defined in include/hart.hpp:44
+Defined in include/hart.hpp:45
 
 CPU PrivilegeMode.
 

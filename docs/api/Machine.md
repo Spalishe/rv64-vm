@@ -8,7 +8,7 @@
 class Machine
 ```
 
-Defined in include/machine.hpp:47
+Defined in include/machine.hpp:49
 
 RV64-VM Main machine class.
 
@@ -81,7 +81,7 @@ This class implements RISC-V emulator machine.
 Machine(constMachineConfig & cfg)
 ```
 
-Defined in include/machine.hpp:66
+Defined in include/machine.hpp:68
 
 [Machine](#machine) constructor.
 
@@ -105,7 +105,7 @@ Creates RISC-V machine
 ~Machine()
 ```
 
-Defined in include/machine.hpp:72
+Defined in include/machine.hpp:74
 
 [Machine](#machine) destructor.
 
@@ -125,7 +125,7 @@ Destroys RISC-V machine
 inline void start_init()
 ```
 
-Defined in include/machine.hpp:83
+Defined in include/machine.hpp:85
 
 Device initialization start.
 
@@ -143,7 +143,7 @@ Creates FDT Base for all devices In this block you supposed to create all device
 inline void end_init()
 ```
 
-Defined in include/machine.hpp:93
+Defined in include/machine.hpp:95
 
 Device initialization end.
 
@@ -159,7 +159,7 @@ Writes FDT to memory. This function must be called after you created all devices
 void run()
 ```
 
-Defined in include/machine.hpp:102
+Defined in include/machine.hpp:104
 
 Runs machine.
 
@@ -175,7 +175,7 @@ Starts all [Hart](Hart.md#hart)'s execution loop.
 void stop()
 ```
 
-Defined in include/machine.hpp:108
+Defined in include/machine.hpp:110
 
 Stops machine.
 
@@ -193,7 +193,7 @@ Sends a signal to machine so it could stop and destroy all harts safely.
 void reset()
 ```
 
-Defined in include/machine.hpp:114
+Defined in include/machine.hpp:116
 
 Resets machines.
 
@@ -211,7 +211,7 @@ Sends a signal to machine so it could safely recreate all HART's.
 void wait()
 ```
 
-Defined in include/machine.hpp:118
+Defined in include/machine.hpp:120
 
 Joins machine work thread.
 
@@ -227,7 +227,7 @@ Joins machine work thread.
 inline MMIO * get_mmio()
 ```
 
-Defined in include/machine.hpp:125
+Defined in include/machine.hpp:127
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -248,7 +248,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline fdt_node * get_fdt()
 ```
 
-Defined in include/machine.hpp:131
+Defined in include/machine.hpp:133
 
 Returns FDT pointer.
 
@@ -269,7 +269,7 @@ FDT pointer
 inline uint64_t get_timebase() const
 ```
 
-Defined in include/machine.hpp:136
+Defined in include/machine.hpp:138
 
 Returns config specified timer timebase (Hz/S)
 
@@ -288,7 +288,7 @@ Timebase number
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/machine.hpp:142
+Defined in include/machine.hpp:144
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -309,7 +309,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline MachineState get_state() const
 ```
 
-Defined in include/machine.hpp:149
+Defined in include/machine.hpp:151
 
 Returns [Machine](#machine) internal state.
 
@@ -330,7 +330,7 @@ Returns [Machine](#machine) internal state.
 inline uint64_t get_memory_size() const
 ```
 
-Defined in include/machine.hpp:154
+Defined in include/machine.hpp:156
 
 Returns config specified RAM size.
 
@@ -349,7 +349,7 @@ Memory Size (bytes)
 inline uint8_t get_hart_count() const
 ```
 
-Defined in include/machine.hpp:160
+Defined in include/machine.hpp:162
 
 Returns config specified [Hart](Hart.md#hart) count.
 
@@ -370,7 +370,7 @@ HART count
 inline Hart & get_hart(size_t index)
 ```
 
-Defined in include/machine.hpp:167
+Defined in include/machine.hpp:169
 
 Returns specified [Hart](Hart.md#hart) by index.
 
@@ -395,7 +395,7 @@ Returns specified [Hart](Hart.md#hart) by index.
 bool load_image(const std::string & path)
 ```
 
-Defined in include/machine.hpp:174
+Defined in include/machine.hpp:176
 
 Loads Image file.
 
@@ -418,7 +418,7 @@ Success bool
 bool load_bios(const std::string & path)
 ```
 
-Defined in include/machine.hpp:180
+Defined in include/machine.hpp:182
 
 Loads Firmware file.
 
@@ -441,7 +441,7 @@ Success bool
 bool load_kernel(const std::string & path)
 ```
 
-Defined in include/machine.hpp:186
+Defined in include/machine.hpp:188
 
 Loads Kernel file.
 
@@ -464,7 +464,7 @@ Success bool
 bool load_dtb(const std::string & path)
 ```
 
-Defined in include/machine.hpp:194
+Defined in include/machine.hpp:196
 
 Loads DTB file.
 
@@ -491,7 +491,7 @@ Success bool
 FILE * get_image()
 ```
 
-Defined in include/machine.hpp:199
+Defined in include/machine.hpp:201
 
 Returns FILE pointer to loaded Image file.
 
@@ -508,7 +508,7 @@ FILE pointer
 void set_uart_output(FILE * stream)
 ```
 
-Defined in include/machine.hpp:204
+Defined in include/machine.hpp:206
 
 Sets UART output stream.
 
@@ -528,7 +528,7 @@ Sets UART output stream.
 FILE * get_uart_output()
 ```
 
-Defined in include/machine.hpp:209
+Defined in include/machine.hpp:211
 
 Returns UART output stream.
 
@@ -551,7 +551,7 @@ Output stream
 enum MachineState
 ```
 
-Defined in include/machine.hpp:53
+Defined in include/machine.hpp:55
 
 [Machine](#machine) State enum.
 

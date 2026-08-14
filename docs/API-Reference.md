@@ -40,9 +40,11 @@ This document contains all Exported API objects.
 * **[Hart](api/Hart.md)**
   * [Hart](api/Hart.md#hart)
   * [~Hart](api/Hart.md#~hart)
+  * [get_effective_mode](api/Hart.md#get_effective_mode)
   * [get_mmio](api/Hart.md#get_mmio)
   * [get_mmap](api/Hart.md#get_mmap)
   * [get_reservation](api/Hart.md#get_reservation)
+  * [get_mmu](api/Hart.md#get_mmu)
   * [clear_decode_cache](api/Hart.md#clear_decode_cache)
   * [amo_check_reservation](api/Hart.md#amo_check_reservation)
   * [csr_read](api/Hart.md#csr_read)
@@ -60,6 +62,14 @@ This document contains all Exported API objects.
   * [create_device_auto](api/MMIO.md#create_device_auto)
   * [tick_all](api/MMIO.md#tick_all)
   * [get](api/MMIO.md#get)
+* **[MMU](api/MMU.md)**
+  * [MMU](api/MMU.md#mmu)
+  * [~MMU](api/MMU.md#~mmu)
+  * [translate](api/MMU.md#translate)
+  * [SatpMode](api/MMU.md#satpmode)
+  * **[Sv39](api/Sv39.md)**
+    * **[PTE](api/PTE.md)**
+    * **[VirtualAddress](api/VirtualAddress.md)**
 * **[Machine](api/Machine.md)**
   * [Machine](api/Machine.md#machine)
   * [~Machine](api/Machine.md#~machine)
