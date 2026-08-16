@@ -122,7 +122,7 @@ namespace rv64vm::runner
 		// Looking up for devices in this range
 		for(const auto& dev : devs)
 		{
-			if(paddr >= dev->start && paddr < (dev->start + dev->size - (int)size + 1))
+			if(paddr >= dev->start && paddr < (dev->start + dev->size - (int)size))
 			{
 				// found a device
 				// out = mmap->load(paddr, (int)size * 8); // unnecessary

@@ -90,12 +90,19 @@ ExecReturn exec_SC_D(Hart& hart, InstructionData& inst)
 
 MemoryReturn AMO64(Hart& hart, uint64_t va, uint64_t rs2, uint64_t (*func)(uint64_t a, uint64_t b), uint64_t* out_val)
 {
+	uint64_t pa;
+
+	auto ret = hart.get_mmu().translate(&hart, AccessType::LOAD, va, &pa);
+
+	if(!ret.is_success)
+		return ret;
+
 	uint64_t val;
-	MemoryReturn out = hart.get_mmio()->read(hart, va, MemorySize::Long, &val);
+	MemoryReturn out = hart.get_mmio()->read(hart, pa, MemorySize::Long, &val, true);
 	if(!out.is_success) return out;
 	uint64_t new_val = func(val, rs2);
 
-	MemoryReturn s = hart.get_mmio()->write(hart, va, MemorySize::Long, new_val);
+	MemoryReturn s = hart.get_mmio()->write(hart, pa, MemorySize::Long, new_val, true);
 	if(!s.is_success) return s;
 	*(uint64_t*)out_val = val;
 	return { true, 0, 0 };
@@ -195,12 +202,18 @@ ExecReturn exec_SC_W(Hart& hart, InstructionData& inst)
 
 MemoryReturn AMO32(Hart& hart, uint64_t va, uint32_t rs2, uint32_t (*func)(uint32_t a, uint32_t b), uint32_t* out_val)
 {
+	uint64_t pa;
+
+	auto ret = hart.get_mmu().translate(&hart, AccessType::LOAD, va, &pa);
+
+	if(!ret.is_success)
+		return ret;
 	uint32_t val;
-	MemoryReturn out = hart.get_mmio()->read(hart, va, MemorySize::Int, &val);
+	MemoryReturn out = hart.get_mmio()->read(hart, pa, MemorySize::Int, &val, true);
 	if(!out.is_success) return out;
 	uint64_t new_val = func(val, rs2);
 
-	MemoryReturn s = hart.get_mmio()->write(hart, va, MemorySize::Int, new_val);
+	MemoryReturn s = hart.get_mmio()->write(hart, pa, MemorySize::Int, new_val, true);
 	if(!s.is_success) return s;
 	*(uint32_t*)out_val = val;
 	return { true, 0, 0 };

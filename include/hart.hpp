@@ -148,7 +148,7 @@ namespace rv64vm::runner
 		 */
 		inline PrivilegeMode get_effective_mode(AccessType access_type) const
 		{
-			if(status.fields.MPRV && (access_type == AccessType::LOAD || access_type == AccessType::STORE))
+			if(mode == PrivilegeMode::Machine && status.fields.MPRV && (access_type == AccessType::LOAD || access_type == AccessType::STORE))
 			{
 				return static_cast<PrivilegeMode>(status.fields.MPP);
 			}
@@ -191,6 +191,11 @@ namespace rv64vm::runner
 			}*/
 			idec->cache_generation++;
 		}
+		/**
+		 * @brief Returns RAM size
+		 * @return Memory size in bytes
+		 */
+		const inline uint64_t get_memsize() const { return memsize; }
 		/**
 		 * @brief Clears reservation if defined address is within CPU reservation address
 		 * @param va Virtual Address

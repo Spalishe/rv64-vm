@@ -72,6 +72,7 @@ namespace rv64vm::runner
 					uint64_t VPN_0 : 9;
 					uint64_t VPN_1 : 9;
 					uint64_t VPN_2 : 9;
+					uint64_t reserved : 25;
 				} fields;
 
 				uint64_t raw;
@@ -168,8 +169,7 @@ namespace rv64vm::runner
 	  private:
 		template <typename SvMode>
 		MemoryReturn translate_impl(Hart* hart, AccessType type, uint64_t va, uint64_t* pa);
-		template <typename SvMode>
-		uint64_t build_pa(const typename SvMode::VirtualAddress& va, const typename SvMode::PTE& pte, int leaf_level);
+
 		MemoryMap* mmap;
 		friend class Hart;
 	};

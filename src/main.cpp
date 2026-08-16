@@ -39,9 +39,6 @@ Copyright 2026 Spalishe
  *			-SPMP
  *		    -JIT:
  *				- MMU support(Software TLB)
- *				- 2-Pass Branch tags
- *				- AUIPC
- *				- LUI
  *				- RVC
  *		    -Zawrs
  *		    -Zabha

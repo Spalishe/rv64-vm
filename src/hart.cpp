@@ -245,8 +245,8 @@ namespace rv64vm::runner
 
 	void Hart::trap(uint64_t cause, uint64_t tval, bool interrupt)
 	{
-		if(!((cause == 9 && !interrupt) || (cause == 5 && interrupt))) printf("TRAP: cause=0x%lx, tval=0x%lx, interrupt=%d, pc=0x%lx, mode=%d\n",
-																			  cause, tval, interrupt, pc, (int)mode);
+		if(!interrupt && cause != 9) printf("TRAP: cause=0x%lx, tval=0x%lx, interrupt=%d, pc=0x%lx, mode=%d\n",
+											cause, tval, interrupt, pc, (int)mode);
 		reservation.valid		= false;
 		WFI						= false;
 		uint64_t trap_pc		= pc;
@@ -330,7 +330,8 @@ namespace rv64vm::runner
 					trap(EXC_ILLEGAL_INSTRUCTION, csr, false);
 					break;
 				}
-				fcsr.raw = val;
+				status.fields.FS = 3;
+				fcsr.raw		 = val;
 				break;
 			}
 			case CSR_FFLAGS:

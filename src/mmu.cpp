@@ -50,17 +50,6 @@ namespace rv64vm::runner
 	}
 
 	template <typename SvMode>
-	uint64_t MMU::build_pa(const typename SvMode::VirtualAddress& va, const typename SvMode::PTE& pte, int leaf_level)
-	{
-		uint64_t pa = va.fields.offset; // lower 12 bits
-		for(int lvl = 0; lvl < leaf_level; ++lvl)
-			pa |= (va.get_vpn(lvl) & 0x1FF) << SvMode::PPN_SHIFTS[lvl];
-		for(int lvl = leaf_level; lvl < SvMode::LEVELS; ++lvl)
-			pa |= pte.get_ppn(lvl) << SvMode::PPN_SHIFTS[lvl];
-		return pa;
-	}
-
-	template <typename SvMode>
 	MemoryReturn MMU::translate_impl(Hart* hart, AccessType type, uint64_t raw_va, uint64_t* pa)
 	{
 		typename SvMode::VirtualAddress va;
@@ -88,29 +77,6 @@ namespace rv64vm::runner
 			// TODO: if PMP violation then raise access fault
 
 			if(pte.fields.V == 0 || (pte.fields.W == 1 and pte.fields.R == 0))
-			{
-				*pa = 0;
-				return {
-					false, AccessType_to_Fault[(uint8_t)type], raw_va
-				};
-			}
-			if((pte.raw >> 54) & 0x7F)
-			{
-				*pa = 0;
-				return {
-					false, AccessType_to_Fault[(uint8_t)type], raw_va
-				};
-			}
-
-			if(pte.fields.PBMT != 0)
-			{
-				*pa = 0;
-				return {
-					false, AccessType_to_Fault[(uint8_t)type], raw_va
-				};
-			}
-
-			if(pte.fields.N != 0)
 			{
 				*pa = 0;
 				return {
@@ -197,13 +163,17 @@ namespace rv64vm::runner
 			}
 			else
 			{
-				std::cout << "pg fault: A/D update: pte in ram is not valid with found pte" << std::endl;
 				*pa = 0;
 				return { false, AccessType_to_Fault[(uint8_t)type], raw_va };
 			}
 		}
 
-		*pa = build_pa<SvMode>(va, pte, i);
+		uint64_t bit_off = 12 + i * 9;
+
+		uint64_t vmask = (1ULL << bit_off) - 1;		  // offset inside page/superpage
+		uint64_t pmask = ~vmask & ((1ULL << 56) - 1); // PA mask
+
+		*pa = ((pte.raw << 2) & pmask) | (raw_va & vmask);
 		return { true, 0, 0 };
 	}
 }
