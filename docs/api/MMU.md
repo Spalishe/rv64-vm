@@ -71,7 +71,7 @@ Defined in include/mmu.hpp:41
 MemoryReturn translate(Hart * hart, AccessType type, uint64_t va, uint64_t * pa)
 ```
 
-Defined in include/mmu.hpp:166
+Defined in include/mmu.hpp:167
 
 Translates Virtual address to Physical address.
 

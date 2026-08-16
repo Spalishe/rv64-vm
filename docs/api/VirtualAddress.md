@@ -22,6 +22,7 @@ Defined in include/mmu.hpp:67
 | [`VPN_0`](Sv39.md#unionrv64vm_1_1runner_1_1MMU_1_1Sv39_1_1VirtualAddress_1aac22608a461f472c81ad29dbbf19722c) | `variable` | Declared here |
 | [`VPN_1`](Sv39.md#unionrv64vm_1_1runner_1_1MMU_1_1Sv39_1_1VirtualAddress_1aee24d96f19af465e4e42dfe9bb33f857) | `variable` | Declared here |
 | [`VPN_2`](Sv39.md#unionrv64vm_1_1runner_1_1MMU_1_1Sv39_1_1VirtualAddress_1a95f42822cdf174de14aec73aade25047) | `variable` | Declared here |
+| [`reserved`](Sv39.md#unionrv64vm_1_1runner_1_1MMU_1_1Sv39_1_1VirtualAddress_1ad3cd29c9e6e1e5cbfe5e4f33a6a5f8d4) | `variable` | Declared here |
 | [`fields`](Sv39.md#unionrv64vm_1_1runner_1_1MMU_1_1Sv39_1_1VirtualAddress_1af64f6216772d207243dcfdd3e37a0c0a) | `variable` | Declared here |
 | [`raw`](Sv39.md#unionrv64vm_1_1runner_1_1MMU_1_1Sv39_1_1VirtualAddress_1a3c9458adc55ec674eb3e8b50a438c18d) | `variable` | Declared here |
 | [`SHIFTS`](Sv39.md#unionrv64vm_1_1runner_1_1MMU_1_1Sv39_1_1VirtualAddress_1aaee77d8fe77fe48e829cdd4c12966bfa) | `variable` | Declared here |

@@ -46,6 +46,7 @@ This document contains all Exported API objects.
   * [get_reservation](api/Hart.md#get_reservation)
   * [get_mmu](api/Hart.md#get_mmu)
   * [clear_decode_cache](api/Hart.md#clear_decode_cache)
+  * [get_memsize](api/Hart.md#get_memsize)
   * [amo_check_reservation](api/Hart.md#amo_check_reservation)
   * [csr_read](api/Hart.md#csr_read)
   * [csr_write](api/Hart.md#csr_write)

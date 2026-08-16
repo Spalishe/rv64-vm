@@ -24,6 +24,7 @@ RISC-V CPU Core.
 | [`get_reservation`](#get_reservation) | `function` | Declared here |
 | [`get_mmu`](#get_mmu) | `function` | Declared here |
 | [`clear_decode_cache`](#clear_decode_cache) | `function` | Declared here |
+| [`get_memsize`](#get_memsize) | `function` | Declared here |
 | [`amo_check_reservation`](#amo_check_reservation) | `function` | Declared here |
 | [`csr_read`](#csr_read) | `function` | Declared here |
 | [`csr_write`](#csr_write) | `function` | Declared here |
@@ -42,6 +43,7 @@ RISC-V CPU Core.
 | `Reservation &` | [`get_reservation`](#get_reservation) `inline` | Returns CPU Atomic [Reservation](Reservation.md#reservation). |
 | `MMU &` | [`get_mmu`](#get_mmu) `inline` | Returns CPU Memory Management Unit. |
 | `void` | [`clear_decode_cache`](#clear_decode_cache) `inline` | Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache. |
+| `constuint64_t` | [`get_memsize`](#get_memsize) `const` `inline` | Returns RAM size. |
 | `void` | [`amo_check_reservation`](#amo_check_reservation) `inline` | Clears reservation if defined address is within CPU reservation address. |
 | `uint64_t` | [`csr_read`](#csr_read)  | Returns value stored in CSR. |
 | `void` | [`csr_write`](#csr_write)  | Stores value to CSR. |
@@ -216,6 +218,25 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 
 
 
+### get_memsize
+
+`const` `inline`
+
+```cpp
+inline constuint64_t get_memsize() const
+```
+
+Defined in include/hart.hpp:198
+
+Returns RAM size.
+
+#### Returns
+Memory size in bytes
+
+---
+
+
+
 ### amo_check_reservation
 
 `inline`
@@ -224,7 +245,7 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 inline void amo_check_reservation(uint64_t pa)
 ```
 
-Defined in include/hart.hpp:198
+Defined in include/hart.hpp:203
 
 Clears reservation if defined address is within CPU reservation address.
 
@@ -238,7 +259,7 @@ Clears reservation if defined address is within CPU reservation address.
 uint64_t csr_read(uint16_t csr)
 ```
 
-Defined in include/hart.hpp:217
+Defined in include/hart.hpp:222
 
 Returns value stored in CSR.
 
@@ -261,7 +282,7 @@ CSR value
 void csr_write(uint16_t csr, uint64_t val)
 ```
 
-Defined in include/hart.hpp:223
+Defined in include/hart.hpp:228
 
 Stores value to CSR.
 
@@ -282,7 +303,7 @@ Stores value to CSR.
 void trap(uint64_t cause, uint64_t tval, bool interrupt)
 ```
 
-Defined in include/hart.hpp:232
+Defined in include/hart.hpp:237
 
 CPU Trap function.
 
