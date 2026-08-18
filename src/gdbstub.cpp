@@ -776,86 +776,138 @@ void Machine::GDBStub::parse_packet(const std::string& buffer)
 	// Guest memory store
 	if(packet.starts_with("M"))
 	{
-		if(!active_hart)
-		{
-			send_packet("E01");
-			return;
-		}
-		size_t comma = packet.find(',');
-		size_t colon = packet.find(':', comma);
-		if(comma == std::string::npos || colon == std::string::npos)
-		{
-			send_packet("E01");
-			return;
-		}
+		size_t comma	 = packet.find(',');
+		size_t colon	 = packet.find(':');
+		uint64_t address = std::stoull(packet.substr(1, comma), nullptr, 16);
+		uint64_t size	 = std::stoull(packet.substr(comma + 1, colon - comma - 1), nullptr, 16);
 
-		uint64_t address = std::stoul(packet.substr(1, comma), nullptr, 16);
-		uint64_t size	 = std::stoul(packet.substr(comma + 1, colon - comma - 1), nullptr, 16);
 		std::string data = packet.substr(colon + 1);
 
-		if(active_hart->satp.fields.mode != 0)
+		constexpr uint64_t PAGE_SIZE = 4096;
+
+		uint64_t data_offset = 0;
+
+		while(size)
 		{
-			MemoryReturn ret = active_hart->mmu.translate(active_hart, AccessType::LOAD, address, &address);
-			if(!ret.is_success)
+			uint64_t phys = address;
+
+			if(active_hart->satp.fields.mode != 0)
 			{
-				send_packet("E01");
-				return;
+				MemoryReturn ret = active_hart->mmu.translate(
+					active_hart,
+					AccessType::STORE,
+					address,
+					&phys);
+
+				if(!ret.is_success)
+				{
+					send_packet("E01");
+					return;
+				}
 			}
-		}
-		for(uint64_t i = 0; i < size; i++)
-		{
-			uint8_t byte_val = static_cast<uint8_t>(std::stoul(data.substr(i * 2, 2), nullptr, 16));
-			MemoryReturn out = active_hart->mmio->write(*active_hart, address + i, MemorySize::Byte, byte_val);
-			if(!out.is_success)
+
+			uint64_t chunk = size;
+
+			if(active_hart->satp.fields.mode != 0)
 			{
-				send_packet("E01");
-				return;
+				chunk = std::min(
+					size,
+					PAGE_SIZE - (address & (PAGE_SIZE - 1)));
 			}
+
+			for(uint64_t i = 0; i < chunk; i++)
+			{
+				uint8_t byte_val = static_cast<uint8_t>(
+					std::stoul(
+						data.substr((data_offset + i) * 2, 2),
+						nullptr,
+						16));
+
+				MemoryReturn out = active_hart->mmio->write(
+					*active_hart,
+					phys + i,
+					MemorySize::Byte,
+					byte_val, true);
+
+				if(!out.is_success)
+				{
+					send_packet("E01");
+					return;
+				}
+			}
+
+			address += chunk;
+			data_offset += chunk;
+			size -= chunk;
 		}
-		send_packet(std::format("{:x}", size));
+
+		send_packet("OK");
 		return;
 	}
 
 	// Guest memory read
 	if(packet.starts_with("m"))
 	{
-		if(!active_hart)
-		{
-			send_packet("E01");
-			return;
-		}
-		size_t comma = packet.find(',');
-		if(comma == std::string::npos)
-		{
-			send_packet("E01");
-			return;
-		}
+		size_t comma	 = packet.find(',');
+		uint64_t address = std::stoull(packet.substr(1, comma), nullptr, 16);
+		uint64_t size	 = std::stoull(packet.substr(comma + 1), nullptr, 16);
 
-		uint64_t address = std::stoul(packet.substr(1, comma), nullptr, 16);
-		uint64_t size	 = std::stoul(packet.substr(comma + 1), nullptr, 16);
 		std::string resp;
+		resp.reserve(size * 2);
 
-		if(active_hart->satp.fields.mode != 0)
+		constexpr uint64_t PAGE_SIZE = 4096;
+
+		while(size)
 		{
-			MemoryReturn ret = active_hart->mmu.translate(active_hart, AccessType::LOAD, address, &address);
-			if(!ret.is_success)
+			uint64_t phys = address;
+
+			if(active_hart->satp.fields.mode != 0)
 			{
-				send_packet("E01");
-				return;
+				MemoryReturn ret = active_hart->mmu.translate(
+					active_hart,
+					AccessType::LOAD,
+					address,
+					&phys);
+
+				if(!ret.is_success)
+				{
+					send_packet("E01");
+					return;
+				}
 			}
+
+			uint64_t chunk = size;
+
+			if(active_hart->satp.fields.mode != 0)
+			{
+				chunk = std::min(
+					size,
+					PAGE_SIZE - (address & (PAGE_SIZE - 1)));
+			}
+
+			for(uint64_t i = 0; i < chunk; i++)
+			{
+				uint8_t val = 0;
+
+				MemoryReturn out = active_hart->mmio->read(
+					*active_hart,
+					phys + i,
+					MemorySize::Byte,
+					&val, true);
+
+				if(!out.is_success)
+				{
+					send_packet("E01");
+					return;
+				}
+
+				resp += std::format("{:02x}", val);
+			}
+
+			address += chunk;
+			size -= chunk;
 		}
 
-		for(uint64_t i = 0; i < size; i++)
-		{
-			uint8_t val		 = 0;
-			MemoryReturn out = active_hart->mmio->read(*active_hart, address + i, MemorySize::Byte, &val);
-			if(!out.is_success)
-			{
-				send_packet("E01");
-				return;
-			}
-			resp += std::format("{:02x}", val);
-		}
 		send_packet(resp);
 		return;
 	}
