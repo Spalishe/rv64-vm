@@ -317,6 +317,11 @@ void Machine::GDBStub::start(uint16_t port)
 	int op	  = 1;
 	setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &op, sizeof(op));
 
+	struct linger sl;
+	sl.l_onoff	= 1; // Enable lingering
+	sl.l_linger = 0;
+	setsockopt(server_fd, SOL_SOCKET, SO_LINGER, &sl, sizeof(sl));
+
 	// Automatically target the first CPU core (hart 0) as default debugger context
 	if(!machine_ctx->harts.empty())
 	{
