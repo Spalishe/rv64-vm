@@ -93,7 +93,7 @@ AR_VERSION := $(shell $(AR) --version | head -n 1)
 
 #  -fsanitize=address and -fno-omit-frame-pointer for detailed debugging(ASAN)
 LIBS := -latomic -pthread 
-CXXFLAGS := -std=c++20 -std=gnu++20 $(LIBS) -O2 -g -march=native -flto -MMD -MP -Iinclude
+CXXFLAGS := -std=c++20 -std=gnu++20 $(LIBS) -O3 -g -march=native -flto -MMD -MP -Iinclude
 
 CXXFLAGS += $(foreach v,$(USE_VARS),$(if $(filter-out 0,$($(v))),-D$(v)=$($(v))))
 

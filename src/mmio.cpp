@@ -24,6 +24,15 @@ namespace rv64vm::runner
 
 	MemoryReturn MMIO::write(Hart& h, uint64_t addr, MemorySize size, uint64_t val, bool isphys)
 	{
+		if(addr == 0x3ff7ffed50)
+		{
+			printf(
+				"WATCH STORE: pc=%016llx va=%016llx value=%016llx size=%llu\n",
+				h.pc,
+				addr,
+				val,
+				size);
+		}
 		uint64_t paddr = 0;
 		if(!isphys) [[likely]]
 		{
@@ -63,7 +72,7 @@ namespace rv64vm::runner
 		// Looking up for devices in this range
 		for(const auto& dev : devs)
 		{
-			if(paddr >= dev->start && paddr < (dev->start + dev->size - (int)size))
+			if(paddr >= dev->start && paddr <= (dev->start + dev->size - (int)size))
 			{
 				// found a device
 				// mmap->store(vaddr, (int)size * 8, val); // unnecessary
@@ -122,7 +131,7 @@ namespace rv64vm::runner
 		// Looking up for devices in this range
 		for(const auto& dev : devs)
 		{
-			if(paddr >= dev->start && paddr < (dev->start + dev->size - (int)size))
+			if(paddr >= dev->start && paddr <= (dev->start + dev->size - (int)size))
 			{
 				// found a device
 				// out = mmap->load(paddr, (int)size * 8); // unnecessary
@@ -151,6 +160,15 @@ namespace rv64vm::runner
 			case MemorySize::Long:
 				*(uint64_t*)val = out;
 				break;
+		}
+		if(addr == 0x3ff7ffed50)
+		{
+			printf(
+				"LOAD TRACE: VA=%016lx PA=%016lx size=%lu value=%016lx\n",
+				addr,
+				paddr,
+				size,
+				*(uint64_t*)val);
 		}
 		return { true, 0, 0 };
 	}

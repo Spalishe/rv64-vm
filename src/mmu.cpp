@@ -20,7 +20,7 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::runner
 {
-	static constexpr char AccessType_to_Fault[6] = {
+	static constexpr char AccessType_to_Fault[3] = {
 		EXC_LOAD_PAGE_FAULT,
 		EXC_STORE_PAGE_FAULT,
 		EXC_INST_PAGE_FAULT
@@ -150,21 +150,16 @@ namespace rv64vm::runner
 
 		if(pte.fields.A == 0 || (type == AccessType::STORE && pte.fields.D == 0))
 		{
-			// TODO: PMP check write PTE → access-fault
 			typename SvMode::PTE current;
 			current.raw = mmap->load(addr, SvMode::PTESIZE * 8);
 
-			if(current.raw == pte.raw)
+			bool need_update = (pte.fields.A == 0) || (type == AccessType::STORE && pte.fields.D == 0);
+			if(need_update)
 			{
 				pte.fields.A = 1;
 				if(type == AccessType::STORE)
 					pte.fields.D = 1;
 				mmap->store(addr, SvMode::PTESIZE * 8, pte.raw);
-			}
-			else
-			{
-				*pa = 0;
-				return { false, AccessType_to_Fault[(uint8_t)type], raw_va };
 			}
 		}
 

@@ -92,7 +92,7 @@ MemoryReturn AMO64(Hart& hart, uint64_t va, uint64_t rs2, uint64_t (*func)(uint6
 {
 	uint64_t pa;
 
-	auto ret = hart.get_mmu().translate(&hart, AccessType::LOAD, va, &pa);
+	auto ret = hart.get_mmu().translate(&hart, AccessType::STORE, va, &pa);
 
 	if(!ret.is_success)
 		return ret;
@@ -204,7 +204,7 @@ MemoryReturn AMO32(Hart& hart, uint64_t va, uint32_t rs2, uint32_t (*func)(uint3
 {
 	uint64_t pa;
 
-	auto ret = hart.get_mmu().translate(&hart, AccessType::LOAD, va, &pa);
+	auto ret = hart.get_mmu().translate(&hart, AccessType::STORE, va, &pa);
 
 	if(!ret.is_success)
 		return ret;

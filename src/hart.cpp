@@ -135,8 +135,6 @@ namespace rv64vm::runner
 		}
 		else
 		{
-			printf("INST ACCESS FAULT PCV: 0x%llx PCP: 0x%llx\n", pc, phys_pc);
-			fflush(stdout);
 			trap(EXC_INST_ACCESS_FAULT, pc, false);
 		}
 		// if(!out1.is_success) [[unlikely]]
@@ -263,12 +261,13 @@ namespace rv64vm::runner
 				delegate_to_s = (medeleg >> cause) & 1ULL;
 		}
 
+		status.fields.MPRV = 0;
 		if(delegate_to_s)
 		{
 			// Supervisor
 			mode			   = PrivilegeMode::Supervisor;
-			uint64_t vector	   = (((csrs[CSR_STVEC] & 1) == 1 && interrupt) ? 4 * cause : 0);
-			pc				   = (csrs[CSR_STVEC] & ~1) + vector;
+			uint64_t vector	   = (((csrs[CSR_STVEC] & 3ULL) == 1 && interrupt) ? 4 * cause : 0);
+			pc				   = (csrs[CSR_STVEC] & ~3ULL) + vector;
 			csrs[CSR_SEPC]	   = trap_pc;
 			csrs[CSR_SCAUSE]   = ((interrupt ? (1ULL << 63) : 0) | cause);
 			csrs[CSR_STVAL]	   = tval;
@@ -280,8 +279,8 @@ namespace rv64vm::runner
 		{
 			// Machine
 			mode			   = PrivilegeMode::Machine;
-			uint64_t vector	   = (((csrs[CSR_MTVEC] & 1) == 1 && interrupt) ? 4 * cause : 0);
-			pc				   = (csrs[CSR_MTVEC] & ~1) + vector;
+			uint64_t vector	   = (((csrs[CSR_MTVEC] & 3ULL) == 1 && interrupt) ? 4 * cause : 0);
+			pc				   = (csrs[CSR_MTVEC] & ~3ULL) + vector;
 			csrs[CSR_MEPC]	   = trap_pc;
 			csrs[CSR_MCAUSE]   = ((interrupt ? (1ULL << 63) : 0) | cause);
 			csrs[CSR_MTVAL]	   = tval;
