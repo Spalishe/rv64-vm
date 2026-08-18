@@ -236,7 +236,7 @@ Value stored in memory
 inline void store(uint64_t addr, uint64_t size, uint64_t value)
 ```
 
-Defined in include/memory_map.hpp:234
+Defined in include/memory_map.hpp:246
 
 Stores value to guest memory.
 
@@ -260,7 +260,7 @@ Stores value to guest memory.
 inline MemoryRegion * find_region(uint64_t addr)
 ```
 
-Defined in include/memory_map.hpp:268
+Defined in include/memory_map.hpp:289
 
 Finds region by specidied guest address.
 
