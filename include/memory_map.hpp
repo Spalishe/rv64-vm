@@ -222,8 +222,20 @@ namespace rv64vm::runner
 					return val;
 				}
 				default:
-					throw std::invalid_argument("Invalid load size");
+					break;
+					// throw std::invalid_argument("Invalid load size");
 			}
+			if(size == 0 || size > 64 || (size & 7))
+				throw std::invalid_argument("Invalid load size");
+
+			const uint64_t bytes = size >> 3;
+
+			uint64_t value = 0;
+
+			for(uint64_t i = 0; i < bytes; ++i)
+				value |= (uint64_t)p[i] << (i * 8);
+
+			return value;
 		}
 		/**
 		 * @brief Stores value to guest memory
@@ -239,24 +251,33 @@ namespace rv64vm::runner
 			{
 				case 8:
 					p[0] = (uint8_t)value;
-					break;
+					return;
 				case 16:
 					p[0] = (uint8_t)value;
 					p[1] = (uint8_t)(value >> 8);
-					break;
+					return;
 				case 32:
 					p[0] = (uint8_t)value;
 					p[1] = (uint8_t)(value >> 8);
 					p[2] = (uint8_t)(value >> 16);
 					p[3] = (uint8_t)(value >> 24);
-					break;
+					return;
 				case 64:
 					for(int i = 0; i < 8; i++)
 						p[i] = (uint8_t)(value >> (i * 8));
-					break;
+					return;
 				default:
-					throw std::invalid_argument("Invalid store size");
+					break;
+					// throw std::invalid_argument("Invalid store size");
 			}
+
+			if(size == 0 || size > 64 || (size & 7))
+				throw std::invalid_argument("Invalid store size");
+
+			const uint64_t bytes = size >> 3;
+
+			for(uint64_t i = 0; i < bytes; ++i)
+				p[i] = (uint8_t)(value >> (i * 8));
 		}
 
 		/**

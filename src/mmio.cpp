@@ -22,154 +22,451 @@ namespace rv64vm::runner
 {
 	MMIO::MMIO(MemoryMap* mmap, uint64_t mem_size) : mmap(mmap), memsize(mem_size) {};
 
-	MemoryReturn MMIO::write(Hart& h, uint64_t addr, MemorySize size, uint64_t val, bool isphys)
+	MemoryReturn MMIO::write(
+		Hart& h,
+		uint64_t addr,
+		MemorySize size,
+		uint64_t val,
+		bool isphys)
 	{
-		if(addr == 0x3ff7ffed50)
-		{
-			printf(
-				"WATCH STORE: pc=%016llx va=%016llx value=%016llx size=%llu\n",
-				h.pc,
-				addr,
-				val,
-				size);
-		}
-		uint64_t paddr = 0;
-		if(!isphys) [[likely]]
-		{
-			auto res = h.get_mmu().translate(&h, AccessType::STORE, addr, &paddr);
-			if(!res.is_success)
-			{
-				return res;
-			}
-		}
-		else
-			paddr = addr;
+		const uint64_t access_size = (uint64_t)size;
 
-		uint64_t end = 0x80000000ULL + memsize;
-		if(paddr >= 0x80000000ULL && (paddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
+		const bool paging = !isphys && h.satp.fields.mode != 0;
+
+		const bool cross_page = paging && ((addr & 0xFFFULL) + access_size > 0x1000ULL);
+
+		// fast path
+		if(!cross_page)
 		{
-			// DRAM
-			h.amo_check_reservation(paddr);
-			mmap->store(paddr, (int)size * 8, val);
+			uint64_t paddr;
+
+			if(!isphys) [[likely]]
+			{
+				auto res = h.get_mmu().translate(
+					&h,
+					AccessType::STORE,
+					addr,
+					&paddr);
+
+				if(!res.is_success)
+					return res;
+			}
+			else
+			{
+				paddr = addr;
+			}
+
+			const uint64_t end = 0x80000000ULL + memsize;
+
+			if(paddr >= 0x80000000ULL && paddr <= end - access_size) [[likely]]
+			{
+				// DRAM
+				h.amo_check_reservation(paddr);
+				mmap->store(
+					paddr,
+					(int)access_size * 8,
+					val);
+
+#ifdef USE_JIT
+				auto* jctx = h.get_jctx();
+
+				const uint64_t ram_offset = paddr - 0x80000000ULL;
+
+				const size_t first_page = ram_offset >> 12;
+
+				const size_t last_page = (ram_offset + access_size - 1) >> 12;
+
+				for(size_t page = first_page;
+					page <= last_page;
+					++page)
+				{
+					if(jctx->jit_page_bitmap[page])
+						++jctx->page_verion_bitmap[page];
+				}
+#endif
+				return { true, 0, 0 };
+			}
+
+			// Looking up for devices in this range
+			for(const auto& dev : devs)
+			{
+				if(paddr >= dev->start && paddr <= dev->start + dev->size - access_size)
+				{
+					h.amo_check_reservation(paddr);
+					dev->write(
+						paddr,
+						size,
+						val);
+
+					return { true, 0, 0 };
+				}
+			}
+
+			return { false, EXC_STORE_ACCESS_FAULT, addr };
+		}
+
+		// cross-page access
+		const uint64_t first_size = 0x1000ULL - (addr & 0xFFFULL);
+
+		const uint64_t second_size = access_size - first_size;
+
+		uint64_t first_paddr;
+		auto first_res = h.get_mmu().translate(
+			&h,
+			AccessType::STORE,
+			addr,
+			&first_paddr);
+
+		if(!first_res.is_success)
+			return first_res;
+
+		uint64_t second_paddr;
+		auto second_res = h.get_mmu().translate(
+			&h,
+			AccessType::STORE,
+			addr + first_size,
+			&second_paddr);
+
+		if(!second_res.is_success)
+			return second_res;
+
+		// first physical fragment, low bytes of val belong to the first page
+		const uint64_t first_val = val & ((1ULL << (first_size * 8)) - 1ULL);
+
+		const uint64_t first_end = 0x80000000ULL + memsize;
+
+		if(first_paddr >= 0x80000000ULL && first_paddr <= first_end - first_size)
+		{
+			h.amo_check_reservation(first_paddr);
+
+			mmap->store(
+				first_paddr,
+				(int)first_size * 8,
+				first_val);
+
 #ifdef USE_JIT
 			auto* jctx = h.get_jctx();
 
-			const uint64_t ram_offset = paddr - 0x80000000ULL;
+			const uint64_t ram_offset = first_paddr - 0x80000000ULL;
 
 			const size_t first_page = ram_offset >> 12;
-			const size_t last_page	= (ram_offset + static_cast<uint64_t>(size) - 1) >> 12;
 
-			for(size_t page = first_page; page <= last_page; ++page)
+			const size_t last_page = (ram_offset + first_size - 1) >> 12;
+
+			for(size_t page = first_page;
+				page <= last_page;
+				++page)
 			{
 				if(jctx->jit_page_bitmap[page])
-				{
 					++jctx->page_verion_bitmap[page];
-				}
 			}
 #endif
-			return { true, 0, 0 };
 		}
-		// Looking up for devices in this range
-		for(const auto& dev : devs)
+		else
 		{
-			if(paddr >= dev->start && paddr <= (dev->start + dev->size - (int)size))
+			bool handled = false;
+
+			for(const auto& dev : devs)
 			{
-				// found a device
-				// mmap->store(vaddr, (int)size * 8, val); // unnecessary
-				h.amo_check_reservation(paddr);
-				dev->write(paddr, size, val);
-				return { true, 0, 0 };
+				if(first_paddr >= dev->start && first_paddr <= dev->start + dev->size - first_size)
+				{
+					h.amo_check_reservation(first_paddr);
+
+					dev->write(
+						first_paddr,
+						(MemorySize)first_size,
+						first_val);
+
+					handled = true;
+					break;
+				}
 			}
+
+			if(!handled)
+				return { false, EXC_STORE_ACCESS_FAULT, addr };
 		}
 
-		// We hit none of the existing regions
-		// h.trap(EXC_STORE_ACCESS_FAULT, vaddr, false);
-		return { false, EXC_STORE_ACCESS_FAULT, addr };
+		// second physical fragment, remaining high bytes of val belong to the next page
+		const uint64_t second_val = val >> (first_size * 8);
+
+		if(second_paddr >= 0x80000000ULL && second_paddr <= first_end - second_size)
+		{
+			h.amo_check_reservation(second_paddr);
+
+			mmap->store(
+				second_paddr,
+				(int)second_size * 8,
+				second_val);
+
+#ifdef USE_JIT
+			auto* jctx = h.get_jctx();
+
+			const uint64_t ram_offset = second_paddr - 0x80000000ULL;
+
+			const size_t page = ram_offset >> 12;
+
+			if(jctx->jit_page_bitmap[page])
+				++jctx->page_verion_bitmap[page];
+#endif
+		}
+		else
+		{
+			bool handled = false;
+
+			for(const auto& dev : devs)
+			{
+				if(second_paddr >= dev->start && second_paddr <= dev->start + dev->size - second_size)
+				{
+					h.amo_check_reservation(second_paddr);
+
+					dev->write(
+						second_paddr,
+						(MemorySize)second_size,
+						second_val);
+
+					handled = true;
+					break;
+				}
+			}
+
+			if(!handled)
+				return {
+					false,
+					EXC_STORE_ACCESS_FAULT,
+					addr + first_size
+				};
+		}
+
+		return { true, 0, 0 };
 	}
-	inline uint64_t MMIO::read_dram_fast(uint64_t paddr, MemorySize size)
+
+	inline uint64_t MMIO::read_dram_fast(
+		uint64_t paddr,
+		MemorySize size)
 	{
 		if(direct_ram == nullptr)
 			direct_ram = mmap->get_ram_direct()->get_data();
+
 		unsigned char* ptr = direct_ram + (paddr - 0x80000000ULL);
+
 		switch(size)
 		{
 			case MemorySize::Byte:
 				return *(uint8_t*)ptr;
+
 			case MemorySize::Short:
 				return *(uint16_t*)ptr;
+
 			case MemorySize::Int:
 				return *(uint32_t*)ptr;
+
 			case MemorySize::Long:
 				return *(uint64_t*)ptr;
 		}
+
 		return 0;
 	}
-	MemoryReturn MMIO::read(Hart& h, uint64_t addr, MemorySize size, void* val, bool isphys)
+
+	MemoryReturn MMIO::read(
+		Hart& h,
+		uint64_t addr,
+		MemorySize size,
+		void* val,
+		bool isphys)
 	{
-		uint64_t paddr = 0;
-		if(!isphys) [[likely]]
+		const uint64_t access_size = (uint64_t)size;
+
+		const bool paging = !isphys && h.satp.fields.mode != 0;
+
+		const bool cross_page = paging && ((addr & 0xFFFULL) + access_size > 0x1000ULL);
+
+		// fast path
+		if(!cross_page)
 		{
-			auto res = h.get_mmu().translate(&h, AccessType::LOAD, addr, &paddr);
-			if(!res.is_success)
+			uint64_t paddr;
+
+			if(!isphys) [[likely]]
 			{
-				return res;
+				auto res = h.get_mmu().translate(
+					&h,
+					AccessType::LOAD,
+					addr,
+					&paddr);
+
+				if(!res.is_success)
+					return res;
 			}
-		}
-		else
-			paddr = addr;
-
-		uint64_t out;
-
-		uint64_t end = 0x80000000ULL + memsize;
-		if(paddr >= 0x80000000ULL && (paddr + (uint64_t)size) <= end) [[likely]] // We subtracting by size to exclude chance of buffer overflow
-		{
-			// DRAM
-			// out = mmap->load(paddr, (int)size * 8);
-			out = read_dram_fast(paddr, size);
-			goto success;
-		}
-		// Looking up for devices in this range
-		for(const auto& dev : devs)
-		{
-			if(paddr >= dev->start && paddr <= (dev->start + dev->size - (int)size))
+			else
 			{
-				// found a device
-				// out = mmap->load(paddr, (int)size * 8); // unnecessary
-				out = dev->read(paddr, size);
+				paddr = addr;
+			}
+
+			uint64_t out;
+
+			const uint64_t end = 0x80000000ULL + memsize;
+
+			if(paddr >= 0x80000000ULL && paddr <= end - access_size) [[likely]]
+			{
+				out = read_dram_fast(
+					paddr,
+					size);
+
 				goto success;
 			}
+
+			for(const auto& dev : devs)
+			{
+				if(paddr >= dev->start && paddr <= dev->start + dev->size - access_size)
+				{
+					out = dev->read(
+						paddr,
+						size);
+
+					goto success;
+				}
+			}
+
+			return { false, EXC_LOAD_ACCESS_FAULT, addr };
+
+		success:
+			switch(size)
+			{
+				case MemorySize::Byte:
+					*(uint8_t*)val = out;
+					break;
+
+				case MemorySize::Short:
+					*(uint16_t*)val = out;
+					break;
+
+				case MemorySize::Int:
+					*(uint32_t*)val = out;
+					break;
+
+				case MemorySize::Long:
+					*(uint64_t*)val = out;
+					break;
+			}
+
+			return { true, 0, 0 };
 		}
 
-		// We hit none of the existing regions
-		// h.trap(EXC_LOAD_ACCESS_FAULT, paddr, false);
-		return { false, EXC_LOAD_ACCESS_FAULT, addr };
+		// cross-page access
+		const uint64_t first_size = 0x1000ULL - (addr & 0xFFFULL);
 
-	success:
-		// write out to val
+		const uint64_t second_size = access_size - first_size;
+
+		uint64_t first_paddr;
+
+		auto first_res = h.get_mmu().translate(
+			&h,
+			AccessType::LOAD,
+			addr,
+			&first_paddr);
+
+		if(!first_res.is_success)
+			return first_res;
+
+		uint64_t second_paddr;
+
+		auto second_res = h.get_mmu().translate(
+			&h,
+			AccessType::LOAD,
+			addr + first_size,
+			&second_paddr);
+
+		if(!second_res.is_success)
+			return second_res;
+
+		uint64_t first_out;
+		uint64_t second_out;
+
+		const uint64_t end = 0x80000000ULL + memsize;
+
+		// first fragment
+		if(first_paddr >= 0x80000000ULL && first_paddr <= end - first_size)
+		{
+			first_out = read_dram_fast(
+				first_paddr,
+				(MemorySize)first_size);
+		}
+		else
+		{
+			bool handled = false;
+
+			for(const auto& dev : devs)
+			{
+				if(first_paddr >= dev->start && first_paddr <= dev->start + dev->size - first_size)
+				{
+					first_out = dev->read(
+						first_paddr,
+						(MemorySize)first_size);
+
+					handled = true;
+					break;
+				}
+			}
+
+			if(!handled)
+				return { false, EXC_LOAD_ACCESS_FAULT, addr };
+		}
+
+		// second fragment
+		if(second_paddr >= 0x80000000ULL && second_paddr <= end - second_size)
+		{
+			second_out = read_dram_fast(
+				second_paddr,
+				(MemorySize)second_size);
+		}
+		else
+		{
+			bool handled = false;
+
+			for(const auto& dev : devs)
+			{
+				if(second_paddr >= dev->start && second_paddr <= dev->start + dev->size - second_size)
+				{
+					second_out = dev->read(
+						second_paddr,
+						(MemorySize)second_size);
+
+					handled = true;
+					break;
+				}
+			}
+
+			if(!handled)
+			{
+				return {
+					false,
+					EXC_LOAD_ACCESS_FAULT,
+					addr + first_size
+				};
+			}
+		}
+
+		// reassemble result
+		const uint64_t out = first_out | (second_out << (first_size * 8));
+
 		switch(size)
 		{
 			case MemorySize::Byte:
 				*(uint8_t*)val = out;
 				break;
+
 			case MemorySize::Short:
 				*(uint16_t*)val = out;
 				break;
+
 			case MemorySize::Int:
 				*(uint32_t*)val = out;
 				break;
+
 			case MemorySize::Long:
 				*(uint64_t*)val = out;
 				break;
 		}
-		if(addr == 0x3ff7ffed50)
-		{
-			printf(
-				"LOAD TRACE: VA=%016lx PA=%016lx size=%lu value=%016lx\n",
-				addr,
-				paddr,
-				size,
-				*(uint64_t*)val);
-		}
+
 		return { true, 0, 0 };
 	}
 }

@@ -164,11 +164,9 @@ namespace rv64vm::runner
 		}
 
 		uint64_t bit_off = 12 + i * 9;
+		uint64_t vmask	 = (1ULL << bit_off) - 1; // offset inside page/superpage
 
-		uint64_t vmask = (1ULL << bit_off) - 1;		  // offset inside page/superpage
-		uint64_t pmask = ~vmask & ((1ULL << 56) - 1); // PA mask
-
-		*pa = ((pte.raw << 2) & pmask) | (raw_va & vmask);
+		*pa = (pte.get_solid_ppn() << 12) | (raw_va & vmask);
 		return { true, 0, 0 };
 	}
 }
