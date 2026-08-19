@@ -53,16 +53,15 @@ ExecReturn exec_SRET(Hart& hart, InstructionData& inst)
 	{
 		return { false, false, 0, EXC_ILLEGAL_INSTRUCTION, inst.inst };
 	}
-	hart.pc = hart.csr_read(CSR_SEPC);
+	hart.pc					= hart.csr_read(CSR_SEPC);
+	hart.status.fields.MPRV = 0;
 	switch(hart.status.fields.SPP)
 	{
 		case 0b0:
 			hart.mode = PrivilegeMode::User;
 			break;
 		case 0b1:
-			// If SPP != M-mode, SRET also sets MPRV=0.
-			hart.status.fields.MPRV = 0;
-			hart.mode				= PrivilegeMode::Supervisor;
+			hart.mode = PrivilegeMode::Supervisor;
 			break;
 	}
 	// Read a previous interrupt-enable bit for supervisor mode (SPIE,5), and set a global interrupt-enable bit for supervisor mode (SIE, 1) to it.

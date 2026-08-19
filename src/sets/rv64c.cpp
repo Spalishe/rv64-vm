@@ -34,7 +34,7 @@ ExecReturn exec_C_LW(Hart& hart, InstructionData& inst)
 	MemoryReturn success = hart.get_mmio()->read(hart, hart.GPR[8 + rs1] + inst.imm, MemorySize::Int, &val);
 	if(success.is_success)
 	{
-		hart.GPR[8 + rd] = (uint64_t)val;
+		hart.GPR[8 + rd] = (int64_t)val;
 	}
 	return {
 		success.is_success,
@@ -240,7 +240,7 @@ ExecReturn exec_C_LWSP(Hart& hart, InstructionData& inst)
 	MemoryReturn success = hart.get_mmio()->read(hart, hart.GPR[2] + inst.imm, MemorySize::Int, &val);
 	if(success.is_success)
 	{
-		hart.GPR[inst.rd] = (uint64_t)val;
+		hart.GPR[inst.rd] = (int64_t)val;
 	}
 	return {
 		success.is_success,
