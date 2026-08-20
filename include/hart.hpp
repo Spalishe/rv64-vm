@@ -256,7 +256,6 @@ namespace rv64vm::runner
 		void init(uint64_t dtb_pos_at_memory, uint64_t entry_pc);
 		void tick();
 		ExecReturn single_inst(InstructionCache& cache);
-		uint32_t fetch(uint64_t inst_pc);
 		bool int_local_pending();
 		bool check_ints();
 

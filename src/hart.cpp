@@ -51,17 +51,6 @@ namespace rv64vm::runner
 #endif
 	}
 
-	uint32_t Hart::fetch(uint64_t inst_pc)
-	{
-		uint32_t val	 = 0;
-		MemoryReturn out = mmio->read(*this, inst_pc, MemorySize::Int, &val);
-
-		if(!out.is_success) [[unlikely]]
-			trap(EXC_INST_ACCESS_FAULT, out.tval, false);
-
-		return val;
-	}
-
 	ExecReturn Hart::single_inst(InstructionCache& cache)
 	{
 		ExecReturn out = cache.inst->func(*this, cache.data);
@@ -114,7 +103,6 @@ namespace rv64vm::runner
 			}
 		}
 #endif
-		uint32_t inst	 = 0;
 		// MemoryReturn out1 = mmio->read(*this, pc, MemorySize::Int, &inst);
 		uint64_t phys_pc = 0;
 
@@ -125,17 +113,44 @@ namespace rv64vm::runner
 			trap(ret.exc_code, ret.tval, false);
 			return;
 		}
-		if(phys_pc >= 0x80000000ULL && phys_pc <= 0x80000000ULL + memsize - sizeof(uint32_t))
+
+		if(direct_ram == nullptr)
+			direct_ram = mmap->get_ram_direct()->get_data();
+
+		if(phys_pc < 0x80000000ULL || phys_pc > 0x80000000ULL + memsize - 2) [[unlikely]]
 		{
-			if(direct_ram == nullptr)
-			{
-				direct_ram = mmap->get_ram_direct()->get_data();
-			}
+			trap(EXC_INST_ACCESS_FAULT, pc, false);
+			return;
+		}
+
+		uint16_t lo = *(uint16_t*)(direct_ram + (phys_pc - 0x80000000ULL));
+		uint32_t inst;
+
+		if((lo & 0x3) != 0x3)
+		{
+			inst = lo;
+		}
+		else if((pc & 0xFFFULL) <= 0xFFCULL) [[likely]]
+		{
+			// Full 4-byte instruction
 			inst = *(uint32_t*)(direct_ram + (phys_pc - 0x80000000ULL));
 		}
 		else
 		{
-			trap(EXC_INST_ACCESS_FAULT, pc, false);
+			uint64_t phys_pc2 = 0;
+			MemoryReturn ret2 = mmu.translate(this, AccessType::EXEC, pc + 2, &phys_pc2);
+			if(!ret2.is_success)
+			{
+				trap(ret2.exc_code, ret2.tval, false);
+				return;
+			}
+			if(phys_pc2 < 0x80000000ULL || phys_pc2 > 0x80000000ULL + memsize - 2)
+			{
+				trap(EXC_INST_ACCESS_FAULT, pc + 2, false);
+				return;
+			}
+			uint16_t hi = *(uint16_t*)(direct_ram + (phys_pc2 - 0x80000000ULL));
+			inst		= (uint32_t)lo | ((uint32_t)hi << 16);
 		}
 		// if(!out1.is_success) [[unlikely]]
 		//	trap(EXC_INST_ACCESS_FAULT, out1.tval, false);
@@ -243,8 +258,6 @@ namespace rv64vm::runner
 
 	void Hart::trap(uint64_t cause, uint64_t tval, bool interrupt)
 	{
-		if(!interrupt && cause != 9) printf("TRAP: cause=0x%lx, tval=0x%lx, interrupt=%d, pc=0x%lx, mode=%d\n",
-											cause, tval, interrupt, pc, (int)mode);
 		reservation.valid		= false;
 		WFI						= false;
 		uint64_t trap_pc		= pc;
