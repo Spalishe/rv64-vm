@@ -34,7 +34,6 @@ Copyright 2026 Spalishe
 
 /*
  *		   TODO:
- *			-MMU
  *			-PMP
  *			-SPMP
  *		    -JIT:
