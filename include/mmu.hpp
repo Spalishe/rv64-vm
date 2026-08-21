@@ -16,14 +16,17 @@ Copyright 2026 Spalishe
 */
 
 #pragma once
+#include "defines/csr.hpp"
 #include "defines/traps.hpp"
 #include "memory_map.hpp"
+#include "tlb.hpp"
 #include <cstdint>
 #include <stdexcept>
 
 namespace rv64vm::runner
 {
-	struct Hart;
+	class Hart;
+
 	/**
 	 * @ingroup RV64VM-API
 	 * @brief RISC-V Memory Management Unit
@@ -34,7 +37,9 @@ namespace rv64vm::runner
 		/**
 		 * @brief MMU Constructor
 		 */
-		MMU() {}
+		MMU()
+		{
+		}
 		/**
 		 * @brief MMU Destructor
 		 */
@@ -52,6 +57,13 @@ namespace rv64vm::runner
 			Sv48 = 9,  /** Sv48 Protection mode */
 			Sv57 = 10, /** Sv57 Protection mode */
 		};
+
+		/**
+		 * @brief Returns TLB reference
+		 * @see TLB
+		 * @return TLB reference
+		 */
+		inline TLB& get_tlb() { return tlb; }
 
 		/**
 		 * @brief Sv39 Protection mode namespace
@@ -167,9 +179,14 @@ namespace rv64vm::runner
 		MemoryReturn translate(Hart* hart, AccessType type, uint64_t va, uint64_t* pa);
 
 	  private:
+		[[noreturn]] void unsupported_mode(uint64_t raw_mode)
+		{
+			throw std::logic_error("Unsupported MMU mode: " + std::to_string(raw_mode));
+		}
 		template <typename SvMode>
 		MemoryReturn translate_impl(Hart* hart, AccessType type, uint64_t va, uint64_t* pa);
 
+		TLB tlb;
 		MemoryMap* mmap;
 		friend class Hart;
 	};

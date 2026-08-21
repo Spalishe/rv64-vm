@@ -86,6 +86,16 @@ ExecReturn exec_SFENCE_VMA(Hart& hart, InstructionData& inst)
 		return { false, false, 0, EXC_ILLEGAL_INSTRUCTION, inst.inst };
 	}
 	// tlb_flush(hart.mmio->mmu->tlb);
+	TLB& tlb = hart.get_mmu().get_tlb();
+	if(inst.rs1 == 0 && inst.rs2 == 0)
+		tlb.flush_all();
+	else if(inst.rs1 == 0)
+		tlb.flush_asid((uint16_t)hart.GPR[inst.rs2]);
+	else if(inst.rs2 == 0)
+		tlb.flush_addr(hart.GPR[inst.rs1]);
+	else
+		tlb.flush_addr_asid(hart.GPR[inst.rs1], (uint16_t)hart.GPR[inst.rs2]);
+
 	return { true, false, 4, 0, 0 };
 }
 ExecReturn exec_WFI(Hart& hart, InstructionData& inst)

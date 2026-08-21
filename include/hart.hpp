@@ -262,3 +262,5 @@ namespace rv64vm::runner
 		friend class Machine;
 	};
 }
+
+#include "mmu.inl"
