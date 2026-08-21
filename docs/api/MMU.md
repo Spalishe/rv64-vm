@@ -8,7 +8,7 @@
 class MMU
 ```
 
-Defined in include/mmu.hpp:31
+Defined in include/mmu.hpp:34
 
 RISC-V Memory Management Unit.
 
@@ -18,6 +18,7 @@ RISC-V Memory Management Unit.
 |------|------|-------|
 | [`MMU`](#mmu) | `function` | Declared here |
 | [`~MMU`](#~mmu) | `function` | Declared here |
+| [`get_tlb`](#get_tlb) | `function` | Declared here |
 | [`translate`](#translate) | `function` | Declared here |
 | [`SatpMode`](#satpmode) | `enum` | Declared here |
 
@@ -27,6 +28,7 @@ RISC-V Memory Management Unit.
 |--------|------|-------------|
 |  | [`MMU`](#mmu) `inline` | [MMU](#mmu) Constructor. |
 |  | [`~MMU`](#~mmu) `inline` | [MMU](#mmu) Destructor. |
+| `TLB &` | [`get_tlb`](#get_tlb) `inline` | Returns [TLB](TLB.md#tlb) reference. |
 | `MemoryReturn` | [`translate`](#translate)  | Translates Virtual address to Physical address. |
 
 ---
@@ -41,7 +43,7 @@ RISC-V Memory Management Unit.
 inline MMU()
 ```
 
-Defined in include/mmu.hpp:37
+Defined in include/mmu.hpp:40
 
 [MMU](#mmu) Constructor.
 
@@ -57,9 +59,30 @@ Defined in include/mmu.hpp:37
 inline ~MMU()
 ```
 
-Defined in include/mmu.hpp:41
+Defined in include/mmu.hpp:46
 
 [MMU](#mmu) Destructor.
+
+---
+
+
+
+### get_tlb
+
+`inline`
+
+```cpp
+inline TLB & get_tlb()
+```
+
+Defined in include/mmu.hpp:66
+
+Returns [TLB](TLB.md#tlb) reference.
+
+**See also**: [TLB](TLB.md)
+
+#### Returns
+[TLB](TLB.md#tlb) reference
 
 ---
 
@@ -71,7 +94,7 @@ Defined in include/mmu.hpp:41
 MemoryReturn translate(Hart * hart, AccessType type, uint64_t va, uint64_t * pa)
 ```
 
-Defined in include/mmu.hpp:167
+Defined in include/mmu.hpp:179
 
 Translates Virtual address to Physical address.
 
@@ -106,7 +129,7 @@ Memory operation result
 enum SatpMode
 ```
 
-Defined in include/mmu.hpp:48
+Defined in include/mmu.hpp:53
 
 SATP Mode.
 

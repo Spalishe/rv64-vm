@@ -10,7 +10,7 @@
 union PTE
 ```
 
-Defined in include/mmu.hpp:113
+Defined in include/mmu.hpp:125
 
 [Sv39](Sv39.md#sv39) Page table entry structure.
 

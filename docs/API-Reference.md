@@ -66,6 +66,7 @@ This document contains all Exported API objects.
 * **[MMU](api/MMU.md)**
   * [MMU](api/MMU.md#mmu)
   * [~MMU](api/MMU.md#~mmu)
+  * [get_tlb](api/MMU.md#get_tlb)
   * [translate](api/MMU.md#translate)
   * [SatpMode](api/MMU.md#satpmode)
   * **[Sv39](api/Sv39.md)**
@@ -115,4 +116,7 @@ This document contains all Exported API objects.
     * [ptr](api/MemoryRegion.md#ptr)
     * [MemoryRegion](api/MemoryRegion.md#memoryregion)
     * [~MemoryRegion](api/MemoryRegion.md#~memoryregion)
+* **[TLB](api/TLB.md)**
+  * [TLB](api/TLB.md#tlb)
+  * [~TLB](api/TLB.md#~tlb)
 
