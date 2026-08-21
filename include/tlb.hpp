@@ -60,14 +60,51 @@ namespace rv64vm::runner
 		};
 		static constexpr size_t SIZE = 1024;
 
+		/**
+		 * @brief Looks up in cache for TLB entry
+		 * @param va Virtual Address
+		 * @param type Access type
+		 * @param asid ASID
+		 * @param mode Privilage Mode casted to integer
+		 * @param mxr Hart Status MXR bit
+		 * @param sum Hart Status SUM bit
+		 * @param pa Physical Address pointer
+		 * @see MMU
+		 * @see Hart
+		 * @return Is success?
+		 */
 		bool lookup(uint64_t va, AccessType type, uint16_t asid, int mode, bool mxr, bool sum, uint64_t* pa);
 
+		/**
+		 * @brief Inserts new TLB entry in cache
+		 * @param va Virtual Address
+		 * @param page_bits Size of PPN page bits
+		 * @param perm Permissions bit set
+		 * @param asid Entry ASID
+		 * @param global Entry G bit
+		 * @see MMU
+		 */
 		void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global);
 
+		/**
+		 * @brief Flushes all TLB entries
+		 */
 		void flush_all() { ++generation; }
 
+		/**
+		 * @brief Flushes all TLB entries by address
+		 * @note Currently does nothing; calls flush_all
+		 */
 		void flush_addr(uint64_t) { flush_all(); }
+		/**
+		 * @brief Flushes all TLB entries by ASID
+		 * @note Currently does nothing; calls flush_all
+		 */
 		void flush_asid(uint16_t) { flush_all(); }
+		/**
+		 * @brief Flushes all TLB entries by address and ASID
+		 * @note Currently does nothing; calls flush_all
+		 */
 		void flush_addr_asid(uint64_t, uint16_t) { flush_all(); }
 
 	  private:
