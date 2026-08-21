@@ -119,4 +119,10 @@ This document contains all Exported API objects.
 * **[TLB](api/TLB.md)**
   * [TLB](api/TLB.md#tlb)
   * [~TLB](api/TLB.md#~tlb)
+  * [lookup](api/TLB.md#lookup)
+  * [insert](api/TLB.md#insert)
+  * [flush_all](api/TLB.md#flush_all)
+  * [flush_addr](api/TLB.md#flush_addr)
+  * [flush_asid](api/TLB.md#flush_asid)
+  * [flush_addr_asid](api/TLB.md#flush_addr_asid)
 
