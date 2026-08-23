@@ -95,7 +95,6 @@ ExecReturn exec_SFENCE_VMA(Hart& hart, InstructionData& inst)
 		tlb.flush_addr(hart.GPR[inst.rs1]);
 	else
 		tlb.flush_addr_asid(hart.GPR[inst.rs1], (uint16_t)hart.GPR[inst.rs2]);
-
 	return { true, false, 4, 0, 0 };
 }
 ExecReturn exec_WFI(Hart& hart, InstructionData& inst)

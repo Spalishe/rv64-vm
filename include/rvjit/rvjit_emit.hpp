@@ -127,6 +127,7 @@ namespace rv64vm::jit
 		std::vector<Link> outgoing_links;
 		uint8_t prologue_offs = 0;
 
+		uint64_t va_pc = 0;
 		uint64_t pc;
 		uint64_t size  = 0;
 		uint64_t count = 0;

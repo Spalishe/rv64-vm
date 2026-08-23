@@ -14,130 +14,112 @@ Copyright 2026 Spalishe
    limitations under the License.
 
 */
+#include <sys/types.h>
 #ifdef USE_JIT
-#include "../../include/rvjit/rvjit.hpp"
 #include "../../include/hart.hpp"
+#include "../../include/rvjit/rvjit.hpp"
 #include "../../include/rvjit/rvjit_emit.hpp"
 #include "../../include/rvjit/rvjit_x86_64.hpp"
 #include <cassert>
 
 namespace rv64vm::jit
 {
-	void JIT_Context::handleInstruction(rv64vm::runner::Hart& h, rv64vm::runner::InstructionCache& cache, uint64_t prev_pc)
+	bool JIT_Context::compileBlock(Hart& h, uint64_t start_va)
 	{
-		uint64_t pc = prev_pc;
-		if(prev_pc < 0x80000000) return;
+		uint64_t phys_pc		= 0;
+		InstructionCache* cache = nullptr;
 
-		JIT_Function& entry = jits[jit_index(pc)];
+		if(!h.fetchInstruction(start_va, phys_pc, cache).is_success)
+			return false;
 
-		if(entry.valid && entry.pc == pc)
-			return;
+		auto jc = cache->inst->jit_func;
+		if(jc == nullptr)
+			return false;
 
-		auto jc = cache.inst->jit_func;
+		const uint64_t page = (phys_pc - 0x80000000ULL) >> 12;
 
-		if(block_c)
+		block.byte_pos = 0;
+		block.valid	   = true;
+		block.va_pc	   = start_va;
+		block.pc	   = phys_pc;
+		block.size	   = 0;
+		block.count	   = 0;
+		block.jmp_labels.clear();
+		block.prologue_offs = 0;
+		block.outgoing_links.clear();
+
+		emitter.reset();
+		emitter.rvjit_emit_prologue(block);
+
+		uint64_t va = start_va;
+
+		for(;;)
 		{
-			if(jc == nullptr || block.count >= RVJIT_MAX_INSTRUCTIONS || pc > block.pc + block.size)
-			{
-				goto end_block_gen;
-				return;
-			}
-			if(!(pc < block.pc + block.size))
-			{
-				bool stop = jc(h, cache.data, block, emitter);
-				block.size += cache.inst->size;
-				block.count++;
-				if(stop)
-					goto end_block_gen;
-			}
+			bool stop = jc(h, cache->data, block, emitter);
+			block.size += cache->inst->size;
+			block.count++;
 
-			if(block.count >= RVJIT_MAX_INSTRUCTIONS || pc > block.pc + block.size)
-			{
-				goto end_block_gen;
-				return;
-			}
-			return;
+			if(stop) break;
+			if(block.count >= RVJIT_MAX_INSTRUCTIONS) break;
+
+			va += cache->inst->size;
+
+			uint64_t next_phys			 = 0;
+			InstructionCache* next_cache = nullptr;
+
+			if(!h.fetchInstruction(va, next_phys, next_cache).is_success)
+				break;
+
+			const uint64_t next_page = (next_phys - 0x80000000ULL) >> 12;
+			if(next_page != page)
+				break;
+
+			auto next_jc = next_cache->inst->jit_func;
+			if(next_jc == nullptr)
+				break;
+
+			cache = next_cache;
+			jc	  = next_jc;
 		}
 
-		// Check if there any reference of this instruction in decoder
+		if(block.count < RVJIT_MIN_INSTRUCTIONS)
 		{
-			// If not block creating rn
-			if(jc == nullptr) return;
-
-			block_c		   = true;
-			// memset(block.bytes, 0, block.byte_pos);
-			// memset(&block.inst_addr_jmp, 0xFF, sizeof(block.inst_addr_jmp));
-			block.byte_pos = 0;
-			block.valid	   = true;
-			block.pc	   = pc;
-			block.size	   = 0;
-			block.count	   = 0;
-			block.jmp_labels.clear();
-			block.prologue_offs = 0;
-			block.outgoing_links.clear();
-
-			emitter.reset();
-			emitter.rvjit_emit_prologue(block);
-
-			bool stop	= jc(h, cache.data, block, emitter);
-			block.size	= cache.inst->size;
-			block.count = 1;
-			if(stop)
-				goto end_block_gen;
+			block.valid = false;
+			return false;
 		}
-		return;
 
-	end_block_gen:
-		block_c = false;
-		if(block.count >= RVJIT_MIN_INSTRUCTIONS)
-		{
-			// Check if our arena is overfilled
-			if(arenas[last_arena].used_size + RVJIT_FUNC_SIZE > arenas[last_arena].size)
-			{
-				// Create new arena
-				createNewArena();
-			}
-			auto& arena = arenas[last_arena];
-
-			emitter.rvjit_emit_epilogue(block);
-			emitter.link_out(block, this);
-
-			/*char name[64];
-			snprintf(name, 64, "/tmp/jit_0x%lx.bin", block.pc);
-			FILEhttps://i.ibb.co/7dCCzgMS/image.png* f = fopen(name, "wb");
-			fwrite(block.bytes, 1, block.byte_pos, f);
-			fclose(f);
-			printf("jit: 0x%lx\n", block.pc);*/
-
-			// We built block sized enough. Go go gadget w^x allocations
-			JIT_Function func = arena.push_function(block.bytes, block.byte_pos, last_arena);
-			func.inst_size	  = block.size;
-			func.pc			  = block.pc;
-
-			const uint64_t block_start = block.pc - 0x80000000ULL;
-			const uint64_t block_end   = block_start + block.size - 1;
-
-			const size_t first_page = block_start >> 12;
-			const size_t last_page	= block_end >> 12;
-
-			for(size_t page = first_page; page <= last_page; ++page)
-				jit_page_bitmap[page] = 1;
-
-			func.page_version  = page_verion_bitmap[(block.pc - 0x80000000) >> 12];
-			func.prologue_offs = block.prologue_offs;
-			emitter.link_waiting(&func, this);
-			uint32_t slot = jit::jit_index(block.pc);
-			jits[slot]	  = std::move(func);
-			arenas[last_arena].function_slots.push_back(slot);
-			count++;
-		}
+		finalizeBlock(page, h.satp.fields.asid);
+		return true;
 	}
-	void JIT_Context::stopBlock()
+	void JIT_Context::finalizeBlock(uint64_t page, uint64_t asid)
 	{
-		if(block_c)
-		{
-			block_c = false;
-		}
+		if(arenas[last_arena].used_size + RVJIT_FUNC_SIZE > arenas[last_arena].size)
+			createNewArena();
+
+		auto& arena = arenas[last_arena];
+
+		emitter.rvjit_emit_epilogue(block);
+		emitter.link_out(block, this);
+
+		JIT_Function func = arena.push_function(block.bytes, block.byte_pos, last_arena);
+		func.inst_size	  = block.size;
+		func.pc			  = block.pc;
+		func.asid		  = asid;
+
+		jit_page_bitmap[page]			  = 1;
+		jit_page_bitmap_asid[page].valid  = 1;
+		jit_page_bitmap_asid[page].asid	  = asid;
+		jit_page_bitmap_asid[page].global = asid == UINT64_MAX;
+
+		func.page_version  = page_verion_bitmap[page];
+		func.prologue_offs = block.prologue_offs;
+
+		emitter.link_waiting(&func, this);
+
+		uint32_t slot = jit::jit_index(block.pc);
+		jits[slot]	  = std::move(func);
+		arenas[last_arena].function_slots.push_back(slot);
+		count++;
 	}
 
 	void JIT_Function::cleanup(JIT_Context* ctx)

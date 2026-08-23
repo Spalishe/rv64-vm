@@ -44,6 +44,14 @@ namespace rv64vm::jit
 
 	using JITCompilatedFunc = void (*)(JIT_HartContext*);
 
+	struct ASIDCtx
+	{
+		ASIDCtx() {}
+		uint8_t valid  = 0;
+		uint16_t asid  = 0;
+		uint8_t global = 0;
+	};
+
 	struct JIT_Function
 	{
 		JITCompilatedFunc func = nullptr;
@@ -55,6 +63,7 @@ namespace rv64vm::jit
 		uint64_t page_version  = 0; // at which page version this function was created
 		uint64_t arena_index   = 0;
 		uint8_t prologue_offs  = 0;
+		uint64_t asid		   = 0;
 
 		std::vector<IncomingLink> linked;
 		void cleanup(JIT_Context* ctx);
@@ -216,6 +225,7 @@ namespace rv64vm::jit
 			jits			   = new JIT_Function[JIT_CACHE_SIZE];
 			page_verion_bitmap = new uint64_t[memory_size >> 12]{};
 			jit_page_bitmap.resize(memory_size >> 12, 0);
+			jit_page_bitmap_asid.resize(memory_size >> 12);
 
 			page_size = sysconf(_SC_PAGESIZE);
 			createNewArena();
@@ -271,17 +281,19 @@ namespace rv64vm::jit
 		size_t page_size;
 		uint64_t* page_verion_bitmap;
 		std::vector<uint8_t> jit_page_bitmap;
+		std::vector<ASIDCtx> jit_page_bitmap_asid;
 
 		uint64_t last_arena	 = 0;
 		uint64_t count		 = 0;
 		uint64_t memory_size = 0;
 
 		JIT_Emitter emitter;
-
-		void handleInstruction(::rv64vm::runner::Hart& h, ::rv64vm::runner::InstructionCache& cache, uint64_t prev_pc);
-
-		void stopBlock();
 		void createNewArena();
+
+		bool compileBlock(runner::Hart& h, uint64_t start_va);
+
+	  private:
+		void finalizeBlock(uint64_t page, uint64_t asid);
 	};
 
 	void init_jit_rv64i();

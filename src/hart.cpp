@@ -57,6 +57,50 @@ namespace rv64vm::runner
 		return out;
 	}
 
+	MemoryReturn Hart::fetchInstruction(uint64_t va, uint64_t& phys_pc, InstructionCache*& out_cache)
+	{
+		MemoryReturn ret = mmu.translate(this, AccessType::EXEC, va, &phys_pc);
+		if(!ret.is_success)
+			return ret; // caller decides whether this is a trap or just "stop lookahead"
+
+		if(direct_ram == nullptr)
+			direct_ram = mmap->get_ram_direct()->get_data();
+
+		if(phys_pc < 0x80000000ULL || phys_pc > 0x80000000ULL + memsize - 2) [[unlikely]]
+			return { false, EXC_INST_ACCESS_FAULT, va };
+
+		uint16_t lo = *(uint16_t*)(direct_ram + (phys_pc - 0x80000000ULL));
+		uint32_t inst;
+
+		if((lo & 0x3) != 0x3)
+		{
+			inst = lo;
+		}
+		else if((va & 0xFFFULL) <= 0xFFCULL) [[likely]]
+		{
+			inst = *(uint32_t*)(direct_ram + (phys_pc - 0x80000000ULL));
+		}
+		else
+		{
+			uint64_t phys_pc2 = 0;
+			MemoryReturn ret2 = mmu.translate(this, AccessType::EXEC, va + 2, &phys_pc2);
+			if(!ret2.is_success)
+				return ret2;
+			if(phys_pc2 < 0x80000000ULL || phys_pc2 > 0x80000000ULL + memsize - 2)
+				return { false, EXC_INST_ACCESS_FAULT, va + 2 };
+
+			uint16_t hi = *(uint16_t*)(direct_ram + (phys_pc2 - 0x80000000ULL));
+			inst		= (uint32_t)lo | ((uint32_t)hi << 16);
+		}
+
+		InstructionCache& cache = idec->decode_inst(phys_pc, inst);
+		if(cache.pc == 0)
+			return { false, EXC_ILLEGAL_INSTRUCTION, inst }; // illegal instruction
+
+		out_cache = &cache;
+		return { true, 0, 0 };
+	}
+
 	void Hart::tick()
 	{
 		GPR[0] = 0;
@@ -73,107 +117,54 @@ namespace rv64vm::runner
 
 		uint64_t prevpc = pc;
 #ifdef USE_JIT
-		if(jctx->count != 0)
+		uint64_t physpc	 = 0;
+		MemoryReturn ret = mmu.translate(this, AccessType::EXEC, pc, &physpc);
+
+		if(ret.is_success)
 		{
-			jit::JIT_Function& jit_entry = jctx->jits[jit::jit_index(pc)];
+			jit::JIT_Function& entry = jctx->jits[jit::jit_index(physpc)];
 
-			if(jit_entry.valid && jit_entry.pc == pc) [[likely]]
+			if(!entry.valid || entry.pc != physpc)
 			{
-				if(jit_entry.page_version != jctx->page_verion_bitmap[(pc - 0x80000000) >> 12]) [[unlikely]]
+				jctx->compileBlock(*this, pc);
+			}
+
+			jit::JIT_Function& fresh = jctx->jits[jit::jit_index(physpc)];
+
+			bool asid_ok = fresh.asid == UINT64_MAX || (fresh.asid == satp.fields.asid);
+			if(fresh.valid && fresh.pc == physpc)
+			{
+				if(fresh.page_version != jctx->page_verion_bitmap[(fresh.pc - 0x80000000) >> 12] || !asid_ok) [[unlikely]]
 				{
-					jit_entry.cleanup(jctx);
-					return;
-				}
-
-				hctx.exit_pc	= 0;
-				hctx.loop_count = 1000;
-
-				jit_entry.func(&hctx);
-
-				if(hctx.exit_pc != 0)
-				{
-					pc = hctx.exit_pc;
+					fresh.cleanup(jctx);
 				}
 				else
 				{
-					pc += jit_entry.inst_size;
-				}
+					hctx.exit_pc	= 0;
+					hctx.loop_count = 1000;
+					fresh.func(&hctx);
 
-				return;
+					pc = (hctx.exit_pc != 0) ? hctx.exit_pc : pc + fresh.inst_size;
+					return;
+				}
 			}
 		}
 #endif
 		// MemoryReturn out1 = mmio->read(*this, pc, MemorySize::Int, &inst);
 		uint64_t phys_pc = 0;
 
-		MemoryReturn ret = mmu.translate(this, AccessType::EXEC, pc, &phys_pc);
-
-		if(!ret.is_success)
+		InstructionCache* cache;
+		MemoryReturn outd = fetchInstruction(pc, phys_pc, cache);
+		if(!outd.is_success)
 		{
-			trap(ret.exc_code, ret.tval, false);
-			return;
-		}
-
-		if(direct_ram == nullptr)
-			direct_ram = mmap->get_ram_direct()->get_data();
-
-		if(phys_pc < 0x80000000ULL || phys_pc > 0x80000000ULL + memsize - 2) [[unlikely]]
-		{
-			trap(EXC_INST_ACCESS_FAULT, pc, false);
-			return;
-		}
-
-		uint16_t lo = *(uint16_t*)(direct_ram + (phys_pc - 0x80000000ULL));
-		uint32_t inst;
-
-		if((lo & 0x3) != 0x3)
-		{
-			inst = lo;
-		}
-		else if((pc & 0xFFFULL) <= 0xFFCULL) [[likely]]
-		{
-			// Full 4-byte instruction
-			inst = *(uint32_t*)(direct_ram + (phys_pc - 0x80000000ULL));
-		}
-		else
-		{
-			uint64_t phys_pc2 = 0;
-			MemoryReturn ret2 = mmu.translate(this, AccessType::EXEC, pc + 2, &phys_pc2);
-			if(!ret2.is_success)
-			{
-				trap(ret2.exc_code, ret2.tval, false);
-				return;
-			}
-			if(phys_pc2 < 0x80000000ULL || phys_pc2 > 0x80000000ULL + memsize - 2)
-			{
-				trap(EXC_INST_ACCESS_FAULT, pc + 2, false);
-				return;
-			}
-			uint16_t hi = *(uint16_t*)(direct_ram + (phys_pc2 - 0x80000000ULL));
-			inst		= (uint32_t)lo | ((uint32_t)hi << 16);
-		}
-		// if(!out1.is_success) [[unlikely]]
-		//	trap(EXC_INST_ACCESS_FAULT, out1.tval, false);
-
-		//  uint32_t inst = fetch(pc);
-
-		InstructionCache& cache = idec->decode_inst(phys_pc, inst);
-		if(cache.pc == 0)
-		{
-#ifdef USE_JIT
-			jctx->stopBlock();
-#endif
-			trap(EXC_ILLEGAL_INSTRUCTION, inst, false);
+			trap(outd.exc_code, outd.tval, false);
 			return;
 		}
 
 		// Run single instruction
-		auto out = single_inst(cache);
+		auto out = single_inst(*cache);
 		if(!out.is_success)
 		{
-#ifdef USE_JIT
-			jctx->stopBlock();
-#endif
 			trap(out.cause, out.tval, false);
 			return;
 		}
@@ -182,9 +173,6 @@ namespace rv64vm::runner
 			instret++;
 			pc += out.increase_pc;
 		}
-#ifdef USE_JIT
-		jctx->handleInstruction(*this, cache, prevpc);
-#endif
 	}
 
 	bool Hart::int_local_pending()
@@ -332,7 +320,11 @@ namespace rv64vm::runner
 			{
 				uint64_t old_val = satp.raw;
 				satp.raw		 = val;
-				if((MMU::SatpMode)satp.fields.mode == MMU::SatpMode::Sv48 || (MMU::SatpMode)satp.fields.mode == MMU::SatpMode::Sv57) satp.raw = old_val;
+				if((MMU::SatpMode)satp.fields.mode == MMU::SatpMode::Sv48 || (MMU::SatpMode)satp.fields.mode == MMU::SatpMode::Sv57)
+				{
+					satp.raw = old_val;
+					break;
+				}
 				break;
 			}
 			case CSR_FCSR:

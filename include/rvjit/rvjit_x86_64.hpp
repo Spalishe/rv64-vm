@@ -833,7 +833,7 @@ namespace rv64vm::jit
 	}
 	inline void JIT_Emitter::rvjit_emit_epilogue(JIT_Block& blk)
 	{
-		mov_imm64(blk, REG_RCX, blk.pc + blk.size);
+		mov_imm64(blk, REG_RCX, blk.va_pc + blk.size);
 		mov_mr(blk, REG_RCX, REG_R12, NO_INDEX, 0, offsetof(JIT_HartContext, exit_pc));
 
 		realize_label(blk, "epilogue");

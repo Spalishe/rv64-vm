@@ -254,12 +254,14 @@ namespace rv64vm::runner
 		Reservation reservation;
 
 		void init(uint64_t dtb_pos_at_memory, uint64_t entry_pc);
+		MemoryReturn fetchInstruction(uint64_t va, uint64_t& phys_pc, rv64vm::runner::InstructionCache*& out_cache);
 		void tick();
 		ExecReturn single_inst(InstructionCache& cache);
 		bool int_local_pending();
 		bool check_ints();
 
 		friend class Machine;
+		friend class jit::JIT_Context;
 	};
 }
 
