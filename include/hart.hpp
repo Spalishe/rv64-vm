@@ -25,6 +25,7 @@ Copyright 2026 Spalishe
 #include "rvjit/rvjit.hpp"
 #include "structs/timecmp_st.hpp"
 #include <cstdint>
+#include <sys/types.h>
 namespace rv64vm::runner
 {
 	class MMIO;
@@ -137,6 +138,7 @@ namespace rv64vm::runner
 		satp_t satp;
 		uint64_t cycle;
 		uint64_t instret;
+		uint64_t ctime;
 		bool WFI = false;
 
 		/**
@@ -261,7 +263,9 @@ namespace rv64vm::runner
 		bool check_ints();
 
 		friend class Machine;
+#ifdef USE_JIT
 		friend class jit::JIT_Context;
+#endif
 	};
 }
 

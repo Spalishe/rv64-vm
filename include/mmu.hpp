@@ -104,19 +104,11 @@ namespace rv64vm::runner
 					// if bit 38 == 1, then all other bits will equal 1, but cuz we making static cast to int64_t we result in -1
 					return (shifted == 0 || shifted == -1);
 				}
+
 				const inline uint64_t get_vpn(uint8_t idx) const
 				{
-					switch(idx)
-					{
-						case 0:
-							return fields.VPN_0;
-						case 1:
-							return fields.VPN_1;
-						case 2:
-							return fields.VPN_2;
-						default:
-							throw std::logic_error("Invalid VPN index!");
-					}
+					// 0x1FF = 9 бит. SHIFTS[0]=12, SHIFTS[1]=21, SHIFTS[2]=30
+					return (raw >> SHIFTS[idx]) & 0x1FFULL;
 				}
 			};
 			/**

@@ -105,8 +105,11 @@ namespace rv64vm::runner
 	{
 		GPR[0] = 0;
 		cycle++;
-		if((ip.raw & ie.raw) != 0) [[unlikely]]
-			check_ints();
+		if((instret & 0x2FFF) == 0) [[unlikely]]
+		{
+			if((ip.raw & ie.raw) != 0)
+				check_ints();
+		}
 		if(WFI) [[unlikely]]
 		{
 			// We must continue execution even if we has locally pending interruptions
@@ -177,67 +180,57 @@ namespace rv64vm::runner
 
 	bool Hart::int_local_pending()
 	{
-		if((ip.raw & ie.raw) == 0)
+		uint64_t pending_all = ip.raw & ie.raw;
+		if(!pending_all) [[likely]]
 			return false;
-		uint64_t sip	 = ip.raw & SE_MASK;
-		uint64_t sie	 = ie.raw & SE_MASK;
+
 		uint64_t mideleg = csrs[CSR_MIDELEG];
 
-		uint64_t pending   = ip.raw & ie.raw & ~mideleg;
-		uint64_t pending_s = sip & sie & mideleg;
+		if(pending_all & ~mideleg) [[likely]]
+			return true;
 
-		if(mode > PrivilegeMode::Supervisor) pending_s = 0;
+		if(mode <= PrivilegeMode::Supervisor) [[likely]]
+		{
+			if(pending_all & SE_MASK & mideleg) [[unlikely]]
+				return true;
+		}
 
-		return pending | pending_s;
+		return false;
 	}
 
 	bool Hart::check_ints()
 	{
 		uint64_t pending_all = ip.raw & ie.raw;
+		if(!pending_all) return false;
 
-		if(!pending_all)
-			return false;
-		uint64_t sip	 = ip.raw & SE_MASK;
-		uint64_t sie	 = ie.raw & SE_MASK;
+		// Убедитесь, что csrs - это плоский массив uint64_t[4096], а не std::map!
 		uint64_t mideleg = csrs[CSR_MIDELEG];
 
-		bool m_global = (mode == PrivilegeMode::Machine)
-							? status.fields.MIE
-							: (mode < PrivilegeMode::Machine);
-
-		bool s_global = (mode == PrivilegeMode::Supervisor)
-							? status.fields.SIE
-							: (mode < PrivilegeMode::Supervisor);
-
+		// 1. Проверка Machine mode
+		bool m_global = (mode == PrivilegeMode::Machine) ? status.fields.MIE : (mode < PrivilegeMode::Machine);
 		if(m_global)
 		{
-			uint64_t pending = ip.raw & ie.raw & ~mideleg;
-
-			if(pending)
+			uint64_t pending_m = pending_all & ~mideleg;
+			if(pending_m) [[likely]]
 			{
-				for(int irq : irq_priority)
-				{
-					if(pending & (1ULL << irq))
-					{
-						trap(irq, 0, true);
-						return true;
-					}
-				}
+				// Находим старший установленный бит (высший приоритет).
+				// __builtin_clzll гарантированно безопасен, т.к. pending_m != 0
+				int irq = 63 - __builtin_clzll(pending_m);
+				trap(irq, 0, true);
+				return true;
 			}
 		}
+
+		// 2. Проверка Supervisor mode
+		bool s_global = (mode == PrivilegeMode::Supervisor) ? status.fields.SIE : (mode < PrivilegeMode::Supervisor);
 		if(s_global)
 		{
-			uint64_t pending = (sip & mideleg) & sie;
-			if(pending)
+			uint64_t pending_s = (ip.raw & SE_MASK & mideleg) & (ie.raw & SE_MASK);
+			if(pending_s) [[likely]]
 			{
-				for(int irq : irq_priority)
-				{
-					if(pending & (1ULL << irq))
-					{
-						trap(irq, 0, true);
-						return true;
-					}
-				}
+				int irq = 63 - __builtin_clzll(pending_s);
+				trap(irq, 0, true);
+				return true;
 			}
 		}
 
@@ -325,6 +318,11 @@ namespace rv64vm::runner
 					satp.raw = old_val;
 					break;
 				}
+				if(satp.raw != val)
+				{
+					satp.raw = val;
+					mmu.tlb.flush_all();
+				}
 				break;
 			}
 			case CSR_FCSR:
@@ -389,6 +387,8 @@ namespace rv64vm::runner
 			case CSR_CYCLE:
 			case CSR_MCYCLE:
 				return cycle;
+			case CSR_TIME:
+				return ctime;
 			case CSR_INSTRET:
 			case CSR_MINSTRET:
 				return instret;

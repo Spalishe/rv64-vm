@@ -172,8 +172,8 @@ namespace rv64vm::dev
 		for(int i = 0; i < cpu.get_hart_count(); i++)
 		{
 			runner::Hart& hart = cpu.get_hart(i);
-			hart.csr_write(CSR_TIME, now);
-			uint32_t hart_id = hart.id;
+			hart.ctime		   = now;
+			uint32_t hart_id   = hart.id;
 
 			if(msip[hart_id] & 1)
 				hart.ip.fields.MSIP = 1;

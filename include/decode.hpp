@@ -211,16 +211,16 @@ namespace rv64vm::runner
 		uint8_t victim;
 	};
 
-	static constexpr uint32_t CACHE_SIZE = 65536;
+	static constexpr uint32_t CACHE_SIZE = 2 << 17;
 	struct InstructionDecoder
 	{
 		std::vector<Instruction> instructions;
 
-		static constexpr size_t LUT_SIZE	= 1 << 22;
+		static constexpr size_t LUT_SIZE	= 1 << 23;
 		const Instruction* lut[LUT_SIZE]	= { nullptr };
 		static constexpr uint32_t HASH_MASK = 0xFFF0707F;
 
-		static constexpr size_t LUT_SIZE_16	   = 1 << 16;
+		static constexpr size_t LUT_SIZE_16	   = 1 << 18;
 		const Instruction* lut16[LUT_SIZE_16]  = { nullptr };
 		static constexpr uint32_t HASH_MASK_16 = 0x0000FFFF;
 
@@ -229,26 +229,19 @@ namespace rv64vm::runner
 		// InstructionCache cache[CACHE_SIZE];
 
 		InstructionCache& decode_inst_slow(uint64_t pc, uint32_t inst);
-		inline InstructionCache& decode_inst(uint64_t pc, uint32_t inst)
+		__attribute__((always_inline)) inline InstructionCache& decode_inst(uint64_t pc, uint32_t inst)
 		{
 			size_t idx	  = (pc >> 2) & (CACHE_SIZE - 1);
-			/*if(cache[idx].valid && cache[idx].pc == pc) [[likely]]
-			{
-				return cache[idx];
-			}*/
 			CacheSet& set = cache[idx];
-			if(set.ways[0].cache_gen == cache_generation && set.ways[0].pc == pc) [[likely]]
+
+			if(set.ways[0].pc == pc && set.ways[0].cache_gen == cache_generation) [[likely]]
 			{
-				set.victim = 1;
 				return set.ways[0];
 			}
-
-			if(set.ways[1].cache_gen == cache_generation && set.ways[1].pc == pc)
+			if(set.ways[1].pc == pc && set.ways[1].cache_gen == cache_generation) [[likely]]
 			{
-				set.victim = 0;
 				return set.ways[1];
 			}
-
 			return decode_inst_slow(pc, inst);
 		}
 

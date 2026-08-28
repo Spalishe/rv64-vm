@@ -58,7 +58,7 @@ namespace rv64vm::runner
 			PERM_A = 1u << 4,
 			PERM_D = 1u << 5,
 		};
-		static constexpr size_t SIZE = 1024;
+		static constexpr size_t SIZE = 2 << 11;
 
 		/**
 		 * @brief Looks up in cache for TLB entry
@@ -108,7 +108,7 @@ namespace rv64vm::runner
 		void flush_addr_asid(uint64_t, uint16_t) { flush_all(); }
 
 	  private:
-		static size_t index(uint64_t va) { return (va >> 12) & (SIZE - 1); }
+		static inline const size_t index(uint64_t va) { return (va >> 12) & (SIZE - 1); }
 		__attribute__((always_inline)) inline bool check_perm(uint8_t perm, AccessType type, int mode, bool mxr, bool sum);
 
 		std::array<TlbEntry, SIZE> entries{};

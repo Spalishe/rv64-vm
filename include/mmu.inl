@@ -18,6 +18,7 @@ Copyright 2026 Spalishe
 #pragma once
 
 #include "hart.hpp"
+#include "memory_map.hpp"
 
 using namespace rv64vm::runner;
 inline MemoryReturn MMU::translate(Hart* hart, AccessType type, uint64_t va, uint64_t* pa)
@@ -79,7 +80,24 @@ MemoryReturn MMU::translate_impl(Hart* hart, AccessType type, uint64_t raw_va, u
 	{
 		uint64_t index = va.get_vpn(i);
 		addr		   = a + index * SvMode::PTESIZE;
-		pte.raw		   = mmap->load(addr, SvMode::PTESIZE * 8);
+		// pte.raw		   = mmap->load(addr, SvMode::PTESIZE * 8);
+		auto* ram_ptr  = mmap->get_ram_direct()->get_data() + (addr - 0x80000000);
+		if(ram_ptr) [[likely]]
+		{
+			if constexpr(SvMode::PTESIZE == 8)
+			{
+				pte.raw = *reinterpret_cast<const uint64_t*>(ram_ptr);
+			}
+			else
+			{
+				pte.raw = mmap->load(addr, SvMode::PTESIZE * 8);
+			}
+		}
+		else
+		{
+			pte.raw = mmap->load(addr, SvMode::PTESIZE * 8);
+		}
+
 		// TODO: if PMP violation then raise access fault
 
 		if(pte.fields.V == 0 || (pte.fields.W == 1 and pte.fields.R == 0))
