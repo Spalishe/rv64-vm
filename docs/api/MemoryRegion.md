@@ -29,10 +29,10 @@ A pie in a total cake. Contains raw data to memory.
 
 | Return | Name | Description |
 |--------|------|-------------|
-| `uint64_t` | [`get_base_addr`](#get_base_addr) `const` `inline` | Returns Memory region base address in GUEST ram. |
-| `size_t` | [`get_size`](#get_size) `const` `inline` | Returns Memory region size. |
-| `uint8_t *` | [`get_data`](#get_data) `const` `inline` | Returns Memory region data host pointer. |
-| `uint8_t *` | [`ptr`](#ptr) `inline` | Returns Host pointer to Guest address. |
+| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_base_addr`](#get_base_addr) `const` `inline` | Returns Memory region base address in GUEST ram. |
+| [`size_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_size`](#get_size) `const` `inline` | Returns Memory region size. |
+| [`uint8_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | [`get_data`](#get_data) `const` `inline` | Returns Memory region data host pointer. |
+| [`uint8_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | [`ptr`](#ptr) `inline` | Returns Host pointer to Guest address. |
 |  | [`MemoryRegion`](#memoryregion) `inline` | Memory region constructor. |
 |  | [`~MemoryRegion`](#~memoryregion) `inline` | Memory region destructor. |
 
@@ -119,7 +119,7 @@ Host address
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `addr` | `uint64_t` | Guest address |
+| `addr` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Guest address |
 
 ---
 
@@ -141,8 +141,8 @@ Memory region constructor.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `base` | `uint64_t` | Guest address |
-| `sz` | `size_t` | Memory size |
+| `base` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Guest address |
+| `sz` | [`size_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Memory size |
 
 ---
 

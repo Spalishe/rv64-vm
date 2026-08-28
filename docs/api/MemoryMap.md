@@ -35,14 +35,14 @@ This class implements Main memory storage.
 |--------|------|-------------|
 |  | [`MemoryMap`](#memorymap) `inline` | [MemoryMap](#memorymap) constructor. |
 |  | [`~MemoryMap`](#~memorymap) `inline` | [MemoryMap](#memorymap) destructor. |
-| `std::vector< MemoryRegion * > &` | [`get_regions`](#get_regions) `inline` | Returns all created regions. |
-| `MemoryRegion *` | [`get_ram_direct`](#get_ram_direct) `const` `inline` | Returns pointer to 0x80000000 guest ram region. |
-| `void` | [`add_region`](#add_region) `inline` | Creates new guest region in memory. |
-| `bool` | [`load_file`](#load_file) `inline` | Loads binary or ELF file to guest memory. |
-| `bool` | [`load_buffer`](#load_buffer) `inline` | Loads buffer to guest memory. |
-| `uint64_t` | [`load`](#load) `inline` | Loads value from guest memory. |
-| `void` | [`store`](#store) `inline` | Stores value to guest memory. |
-| `MemoryRegion *` | [`find_region`](#find_region) `inline` | Finds region by specidied guest address. |
+| std::vector< [`MemoryRegion`](MemoryRegion.md#memoryregion) * > & | [`get_regions`](#get_regions) `inline` | Returns all created regions. |
+| [`MemoryRegion`](MemoryRegion.md#memoryregion) * | [`get_ram_direct`](#get_ram_direct) `const` `inline` | Returns pointer to 0x80000000 guest ram region. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`add_region`](#add_region) `inline` | Creates new guest region in memory. |
+| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_file`](#load_file) `inline` | Loads binary or ELF file to guest memory. |
+| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_buffer`](#load_buffer) `inline` | Loads buffer to guest memory. |
+| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load`](#load) `inline` | Loads value from guest memory. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`store`](#store) `inline` | Stores value to guest memory. |
+| [`MemoryRegion`](MemoryRegion.md#memoryregion) * | [`find_region`](#find_region) `inline` | Finds region by specidied guest address. |
 
 ---
 
@@ -140,8 +140,8 @@ Creates new guest region in memory.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `base` | `uint64_t` | Guest base |
-| `size` | `size_t` | Region size |
+| `base` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Guest base |
+| `size` | [`size_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Region size |
 
 ---
 
@@ -166,9 +166,9 @@ Success boolean
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `memory_path` | `uint64_t` | Guest address to put data in |
+| `memory_path` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Guest address to put data in |
 | `path` | `std::string` | Path to file |
-| `entry_pc` | `uint64_t *` | Output program counter readed from ELF [file(if you use elf)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) |
+| `entry_pc` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | Output program counter readed from ELF [file(if you use elf)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) |
 
 ---
 
@@ -193,10 +193,10 @@ Success boolean
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `memory_path` | `uint64_t` | Guest address to put data in |
-| `buffer` | `char *` | Host pointer to buffer |
-| `size` | `uint64_t` | Buffer size |
-| `entry_pc` | `uint64_t *` | Output program counter readed from ELF [file(if you use elf)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) |
+| `memory_path` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Guest address to put data in |
+| `buffer` | [`char`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | Host pointer to buffer |
+| `size` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Buffer size |
+| `entry_pc` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | Output program counter readed from ELF [file(if you use elf)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) |
 
 ---
 
@@ -221,8 +221,8 @@ Value stored in memory
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `addr` | `uint64_t` | Guest address |
-| `size` | `uint64_t` | Data size (bits) |
+| `addr` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Guest address |
+| `size` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Data size (bits) |
 
 ---
 
@@ -244,9 +244,9 @@ Stores value to guest memory.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `addr` | `uint64_t` | Guest address |
-| `size` | `uint64_t` | Data size (bits) |
-| `value` | `uint64_t` | Value to store |
+| `addr` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Guest address |
+| `size` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Data size (bits) |
+| `value` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Value to store |
 
 ---
 
@@ -273,5 +273,5 @@ Memory region
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `addr` | `uint64_t` | Guest addr |
+| `addr` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Guest addr |
 

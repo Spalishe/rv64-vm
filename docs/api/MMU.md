@@ -28,8 +28,8 @@ RISC-V Memory Management Unit.
 |--------|------|-------------|
 |  | [`MMU`](#mmu) `inline` | [MMU](#mmu) Constructor. |
 |  | [`~MMU`](#~mmu) `inline` | [MMU](#mmu) Destructor. |
-| `TLB &` | [`get_tlb`](#get_tlb) `inline` | Returns [TLB](TLB.md#tlb) reference. |
-| `MemoryReturn` | [`translate`](#translate)  | Translates Virtual address to Physical address. |
+| [`TLB`](TLB.md#tlb) & | [`get_tlb`](#get_tlb) `inline` | Returns [TLB](TLB.md#tlb) reference. |
+| [`MemoryReturn`](#structmemoryreturn) | [`translate`](#translate)  | Translates Virtual address to Physical address. |
 
 ---
 
@@ -94,7 +94,7 @@ Returns [TLB](TLB.md#tlb) reference.
 MemoryReturn translate(Hart * hart, AccessType type, uint64_t va, uint64_t * pa)
 ```
 
-Defined in include/mmu.hpp:179
+Defined in include/mmu.hpp:171
 
 Translates Virtual address to Physical address.
 
@@ -109,9 +109,9 @@ Memory operation result
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `type` | `AccessType` | Access type |
-| `va` | `uint64_t` | Virtual address |
-| `pa` | `uint64_t *` | Pointer to Physical address to set |
+| `type` | [`AccessType`](#traps_8hpp_1a36b9a80a5a835ac5371a96e3eed57b9b) | Access type |
+| `va` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Virtual address |
+| `pa` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | Pointer to Physical address to set |
 
 ## Public Types
 

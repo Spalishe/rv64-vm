@@ -47,9 +47,9 @@ Defined in include/devices/clint.hpp:31
 
 | Return | Name | Description |
 |--------|------|-------------|
-| `uint64_t` | [`read`](#read-5) `virtual` | [Device](Device.md#device) read function. |
-| `void` | [`write`](#write-5) `virtual` | [Device](Device.md#device) write function. |
-| `void` | [`tick`](#tick-3) `virtual` | [Device](Device.md#device) tick function. |
+| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`read`](#read-5) `virtual` | [Device](Device.md#device) read function. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`write`](#write-5) `virtual` | [Device](Device.md#device) write function. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`tick`](#tick-3) `virtual` | [Device](Device.md#device) tick function. |
 
 ---
 

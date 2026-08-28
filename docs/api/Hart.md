@@ -8,7 +8,7 @@
 class Hart
 ```
 
-Defined in include/hart.hpp:38
+Defined in include/hart.hpp:39
 
 RISC-V CPU Core.
 
@@ -37,17 +37,17 @@ RISC-V CPU Core.
 |--------|------|-------------|
 |  | [`Hart`](#hart)  | [Hart](#hart) constructor. |
 |  | [`~Hart`](#~hart) `inline` | [Hart](#hart) destructor. |
-| `PrivilegeMode` | [`get_effective_mode`](#get_effective_mode) `const` `inline` | Returns CPU Effective mode for a specific memory access. |
-| `MMIO *` | [`get_mmio`](#get_mmio) `inline` | Returns [MMIO](MMIO.md#mmio) pointer. |
-| `MemoryMap *` | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
-| `Reservation &` | [`get_reservation`](#get_reservation) `inline` | Returns CPU Atomic [Reservation](Reservation.md#reservation). |
-| `MMU &` | [`get_mmu`](#get_mmu) `inline` | Returns CPU Memory Management Unit. |
-| `void` | [`clear_decode_cache`](#clear_decode_cache) `inline` | Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache. |
-| `constuint64_t` | [`get_memsize`](#get_memsize) `const` `inline` | Returns RAM size. |
-| `void` | [`amo_check_reservation`](#amo_check_reservation) `inline` | Clears reservation if defined address is within CPU reservation address. |
-| `uint64_t` | [`csr_read`](#csr_read)  | Returns value stored in CSR. |
-| `void` | [`csr_write`](#csr_write)  | Stores value to CSR. |
-| `void` | [`trap`](#trap)  | CPU Trap function. |
+| [`PrivilegeMode`](#privilegemode) | [`get_effective_mode`](#get_effective_mode) `const` `inline` | Returns CPU Effective mode for a specific memory access. |
+| [`MMIO`](MMIO.md#mmio) * | [`get_mmio`](#get_mmio) `inline` | Returns [MMIO](MMIO.md#mmio) pointer. |
+| [`MemoryMap`](MemoryMap.md#memorymap) * | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
+| [`Reservation`](Reservation.md#reservation) & | [`get_reservation`](#get_reservation) `inline` | Returns CPU Atomic [Reservation](Reservation.md#reservation). |
+| [`MMU`](MMU.md#mmu) & | [`get_mmu`](#get_mmu) `inline` | Returns CPU Memory Management Unit. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`clear_decode_cache`](#clear_decode_cache) `inline` | Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache. |
+| [`const`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)[`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_memsize`](#get_memsize) `const` `inline` | Returns RAM size. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`amo_check_reservation`](#amo_check_reservation) `inline` | Clears reservation if defined address is within CPU reservation address. |
+| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`csr_read`](#csr_read)  | Returns value stored in CSR. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`csr_write`](#csr_write)  | Stores value to CSR. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`trap`](#trap)  | CPU Trap function. |
 
 ---
 
@@ -59,7 +59,7 @@ RISC-V CPU Core.
 Hart(uint8_t id, uint64_t memsize)
 ```
 
-Defined in include/hart.hpp:70
+Defined in include/hart.hpp:71
 
 [Hart](#hart) constructor.
 
@@ -71,8 +71,8 @@ Creates RISC-V core
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `id` | `uint8_t` | Internal [Hart](#hart) ID (starts from 0) |
-| `memsize` | `uint64_t` | Memory size |
+| `id` | [`uint8_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Internal [Hart](#hart) ID (starts from 0) |
+| `memsize` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Memory size |
 
 ---
 
@@ -86,7 +86,7 @@ Creates RISC-V core
 inline ~Hart()
 ```
 
-Defined in include/hart.hpp:77
+Defined in include/hart.hpp:78
 
 [Hart](#hart) destructor.
 
@@ -104,7 +104,7 @@ Destroys RISC-V core
 inline PrivilegeMode get_effective_mode(AccessType access_type) const
 ```
 
-Defined in include/hart.hpp:149
+Defined in include/hart.hpp:151
 
 Returns CPU Effective mode for a specific memory access.
 
@@ -126,7 +126,7 @@ Effective mode
 inline MMIO * get_mmio()
 ```
 
-Defined in include/hart.hpp:162
+Defined in include/hart.hpp:164
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -147,7 +147,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/hart.hpp:168
+Defined in include/hart.hpp:170
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -168,7 +168,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline Reservation & get_reservation()
 ```
 
-Defined in include/hart.hpp:174
+Defined in include/hart.hpp:176
 
 Returns CPU Atomic [Reservation](Reservation.md#reservation).
 
@@ -189,7 +189,7 @@ Returns CPU Atomic [Reservation](Reservation.md#reservation).
 inline MMU & get_mmu()
 ```
 
-Defined in include/hart.hpp:180
+Defined in include/hart.hpp:182
 
 Returns CPU Memory Management Unit.
 
@@ -210,7 +210,7 @@ Returns CPU Memory Management Unit.
 inline void clear_decode_cache()
 ```
 
-Defined in include/hart.hpp:184
+Defined in include/hart.hpp:186
 
 Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 
@@ -226,7 +226,7 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 inline constuint64_t get_memsize() const
 ```
 
-Defined in include/hart.hpp:198
+Defined in include/hart.hpp:200
 
 Returns RAM size.
 
@@ -245,7 +245,7 @@ Memory size in bytes
 inline void amo_check_reservation(uint64_t pa)
 ```
 
-Defined in include/hart.hpp:203
+Defined in include/hart.hpp:205
 
 Clears reservation if defined address is within CPU reservation address.
 
@@ -259,7 +259,7 @@ Clears reservation if defined address is within CPU reservation address.
 uint64_t csr_read(uint16_t csr)
 ```
 
-Defined in include/hart.hpp:222
+Defined in include/hart.hpp:224
 
 Returns value stored in CSR.
 
@@ -270,7 +270,7 @@ CSR value
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `csr` | `uint16_t` | CSR address |
+| `csr` | [`uint16_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | CSR address |
 
 ---
 
@@ -282,7 +282,7 @@ CSR value
 void csr_write(uint16_t csr, uint64_t val)
 ```
 
-Defined in include/hart.hpp:228
+Defined in include/hart.hpp:230
 
 Stores value to CSR.
 
@@ -290,8 +290,8 @@ Stores value to CSR.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `csr` | `uint16_t` | CSR address |
-| `val` | `uint64_t` | Value |
+| `csr` | [`uint16_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | CSR address |
+| `val` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Value |
 
 ---
 
@@ -303,7 +303,7 @@ Stores value to CSR.
 void trap(uint64_t cause, uint64_t tval, bool interrupt)
 ```
 
-Defined in include/hart.hpp:237
+Defined in include/hart.hpp:239
 
 CPU Trap function.
 
@@ -313,9 +313,9 @@ Raises trap in CPU core.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `cause` | `uint64_t` | Trap cause |
-| `tval` | `uint64_t` | Trap value (can be zero) |
-| `interrupt` | `bool` | Is trap will be [interrupt(true)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) of [exception(false)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)? |
+| `cause` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Trap cause |
+| `tval` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Trap value (can be zero) |
+| `interrupt` | [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Is trap will be [interrupt(true)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) of [exception(false)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)? |
 
 ## Public Types
 
@@ -333,7 +333,7 @@ Raises trap in CPU core.
 enum PrivilegeMode
 ```
 
-Defined in include/hart.hpp:45
+Defined in include/hart.hpp:46
 
 CPU PrivilegeMode.
 

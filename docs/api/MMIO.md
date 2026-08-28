@@ -32,7 +32,7 @@ This class implements RISC-V basic [MMIO](#mmio) structure which holds all devic
 
 | Return | Name | Description |
 |--------|------|-------------|
-| `std::vector< std::shared_ptr<::rv64vm::dev::Device > >` | [`devs`](#devs)  | Device list. |
+| std::vector< std::shared_ptr<[`::rv64vm::dev::Device`](Device.md#device) > > | [`devs`](#devs)  | Device list. |
 
 ---
 
@@ -56,12 +56,12 @@ Contains list of all created and using devices in system.
 |--------|------|-------------|
 |  | [`MMIO`](#mmio)  | [MMIO](#mmio) constructor. |
 |  | [`~MMIO`](#~mmio) `inline` | [MMIO](#mmio) destructor. |
-| `MemoryReturn` | [`write`](#write)  | Write operation. |
-| `MemoryReturn` | [`read`](#read)  | Read operation. |
-| `std::shared_ptr< T >` | [`create_device`](#create_device) `inline` | Creates new device. |
-| `std::shared_ptr< T >` | [`create_device_auto`](#create_device_auto) `inline` | Creates new device automatically. |
-| `void` | [`tick_all`](#tick_all) `inline` | Devices tick function. |
-| `std::shared_ptr< T >` | [`get`](#get) `inline` | Device getter function. |
+| [`MemoryReturn`](#structmemoryreturn) | [`write`](#write)  | Write operation. |
+| [`MemoryReturn`](#structmemoryreturn) | [`read`](#read)  | Read operation. |
+| std::shared_ptr< [`T`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) > | [`create_device`](#create_device) `inline` | Creates new device. |
+| std::shared_ptr< [`T`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) > | [`create_device_auto`](#create_device_auto) `inline` | Creates new device automatically. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`tick_all`](#tick_all) `inline` | Devices tick function. |
+| std::shared_ptr< [`T`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) > | [`get`](#get) `inline` | Device getter function. |
 
 ---
 
@@ -123,9 +123,9 @@ Memory operation data
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `h` | `Hart &` | [Hart](Hart.md#hart) reference |
-| `size` | `MemorySize` | Operation data size |
-| `val` | `uint64_t` | Value @data isphys Is address physical or virtual |
+| `h` | [`Hart`](Hart.md#hart) & | [Hart](Hart.md#hart) reference |
+| `size` | [`MemorySize`](#traps_8hpp_1abae976fafb49b2f9df8f4b6468015481) | Operation data size |
+| `val` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Value @data isphys Is address physical or virtual |
 
 ---
 
@@ -153,9 +153,9 @@ Memory operation data
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `h` | `Hart &` | [Hart](Hart.md#hart) reference |
-| `size` | `MemorySize` | Operation data size |
-| `val` | `void *` | Pointer to new value @data isphys Is address physical or virtual |
+| `h` | [`Hart`](Hart.md#hart) & | [Hart](Hart.md#hart) reference |
+| `size` | [`MemorySize`](#traps_8hpp_1abae976fafb49b2f9df8f4b6468015481) | Operation data size |
+| `val` | [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | Pointer to new value @data isphys Is address physical or virtual |
 
 ---
 
