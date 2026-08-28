@@ -46,8 +46,8 @@ Defined in include/devices/uart.hpp:36
 
 | Return | Name | Description |
 |--------|------|-------------|
-| `uint64_t` | [`read`](#read-4) `virtual` | [Device](Device.md#device) read function. |
-| `void` | [`write`](#write-4) `virtual` | [Device](Device.md#device) write function. |
+| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`read`](#read-4) `virtual` | [Device](Device.md#device) read function. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`write`](#write-4) `virtual` | [Device](Device.md#device) write function. |
 
 ---
 

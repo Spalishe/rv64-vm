@@ -49,27 +49,27 @@ This class implements RISC-V emulator machine.
 |--------|------|-------------|
 |  | [`Machine`](#machine)  | [Machine](#machine) constructor. |
 |  | [`~Machine`](#~machine)  | [Machine](#machine) destructor. |
-| `void` | [`start_init`](#start_init) `inline` | Device initialization start. |
-| `void` | [`end_init`](#end_init) `inline` | Device initialization end. |
-| `void` | [`run`](#run)  | Runs machine. |
-| `void` | [`stop`](#stop)  | Stops machine. |
-| `void` | [`reset`](#reset)  | Resets machines. |
-| `void` | [`wait`](#wait)  | Joins machine work thread. |
-| `MMIO *` | [`get_mmio`](#get_mmio) `inline` | Returns [MMIO](MMIO.md#mmio) pointer. |
-| `fdt_node *` | [`get_fdt`](#get_fdt) `inline` | Returns FDT pointer. |
-| `uint64_t` | [`get_timebase`](#get_timebase) `const` `inline` | Returns config specified timer timebase (Hz/S) |
-| `MemoryMap *` | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
-| `MachineState` | [`get_state`](#get_state) `const` `inline` | Returns [Machine](#machine) internal state. |
-| `uint64_t` | [`get_memory_size`](#get_memory_size) `const` `inline` | Returns config specified RAM size. |
-| `uint8_t` | [`get_hart_count`](#get_hart_count) `const` `inline` | Returns config specified [Hart](Hart.md#hart) count. |
-| `Hart &` | [`get_hart`](#get_hart) `inline` | Returns specified [Hart](Hart.md#hart) by index. |
-| `bool` | [`load_image`](#load_image)  | Loads Image file. |
-| `bool` | [`load_bios`](#load_bios)  | Loads Firmware file. |
-| `bool` | [`load_kernel`](#load_kernel)  | Loads Kernel file. |
-| `bool` | [`load_dtb`](#load_dtb)  | Loads DTB file. |
-| `FILE *` | [`get_image`](#get_image)  | Returns FILE pointer to loaded Image file. |
-| `void` | [`set_uart_output`](#set_uart_output)  | Sets UART output stream. |
-| `FILE *` | [`get_uart_output`](#get_uart_output)  | Returns UART output stream. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`start_init`](#start_init) `inline` | Device initialization start. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`end_init`](#end_init) `inline` | Device initialization end. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`run`](#run)  | Runs machine. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`stop`](#stop)  | Stops machine. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`reset`](#reset)  | Resets machines. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`wait`](#wait)  | Joins machine work thread. |
+| [`MMIO`](MMIO.md#mmio) * | [`get_mmio`](#get_mmio) `inline` | Returns [MMIO](MMIO.md#mmio) pointer. |
+| [`fdt_node`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | [`get_fdt`](#get_fdt) `inline` | Returns FDT pointer. |
+| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_timebase`](#get_timebase) `const` `inline` | Returns config specified timer timebase (Hz/S) |
+| [`MemoryMap`](MemoryMap.md#memorymap) * | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
+| [`MachineState`](#machinestate) | [`get_state`](#get_state) `const` `inline` | Returns [Machine](#machine) internal state. |
+| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_memory_size`](#get_memory_size) `const` `inline` | Returns config specified RAM size. |
+| [`uint8_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_hart_count`](#get_hart_count) `const` `inline` | Returns config specified [Hart](Hart.md#hart) count. |
+| [`Hart`](Hart.md#hart) & | [`get_hart`](#get_hart) `inline` | Returns specified [Hart](Hart.md#hart) by index. |
+| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_image`](#load_image)  | Loads Image file. |
+| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_bios`](#load_bios)  | Loads Firmware file. |
+| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_kernel`](#load_kernel)  | Loads Kernel file. |
+| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_dtb`](#load_dtb)  | Loads DTB file. |
+| [`FILE`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | [`get_image`](#get_image)  | Returns FILE pointer to loaded Image file. |
+| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`set_uart_output`](#set_uart_output)  | Sets UART output stream. |
+| [`FILE`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | [`get_uart_output`](#get_uart_output)  | Returns UART output stream. |
 
 ---
 
@@ -93,7 +93,7 @@ Creates RISC-V machine
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `cfg` | `constMachineConfig &` | [Machine](#machine) configuration |
+| `cfg` | [`const`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)[`MachineConfig`](MachineConfig.md#machineconfig) & | [Machine](#machine) configuration |
 
 ---
 
@@ -383,7 +383,7 @@ Returns specified [Hart](Hart.md#hart) by index.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `index` | `size_t` | HART index (not ID!) |
+| `index` | [`size_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | HART index (not ID!) |
 
 ---
 
@@ -406,7 +406,7 @@ Success bool
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `path` | `const std::string &` | Image path |
+| `path` | [`const`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) std::string & | Image path |
 
 ---
 
@@ -429,7 +429,7 @@ Success bool
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `path` | `const std::string &` | Firmware path |
+| `path` | [`const`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) std::string & | Firmware path |
 
 ---
 
@@ -452,7 +452,7 @@ Success bool
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `path` | `const std::string &` | Kernel path |
+| `path` | [`const`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) std::string & | Kernel path |
 
 ---
 
@@ -479,7 +479,7 @@ Success bool
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `path` | `const std::string &` | DTB path |
+| `path` | [`const`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) std::string & | DTB path |
 
 ---
 
@@ -516,7 +516,7 @@ Sets UART output stream.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `stream` | `FILE *` | Output stream |
+| `stream` | [`FILE`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | Output stream |
 
 ---
 
