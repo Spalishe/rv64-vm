@@ -24,14 +24,8 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::runner
 {
-	Hart::Hart(uint8_t id, uint64_t memsize) : id(id), memsize(memsize)
-	{
-#ifdef USE_JIT
-		jctx	  = new jit::JIT_Context(memsize);
-		hctx	  = jit::JIT_HartContext();
-		hctx.hart = this;
-#endif
-	};
+	Hart::Hart(uint8_t id, uint64_t memsize) : id(id), memsize(memsize) {
+											   };
 	void Hart::init(uint64_t dtb_pos_at_memory, uint64_t entry_pc)
 	{
 		pc				  = entry_pc;
@@ -43,12 +37,6 @@ namespace rv64vm::runner
 		status.fields.SXL = 2;
 		status.fields.UXL = 2;
 		mmu.mmap		  = mmap;
-#ifdef USE_JIT
-		hctx.regs	 = GPR;
-		hctx.mmio	 = mmio;
-		hctx.ram	 = mmap->get_ram_direct()->ptr(0x80000000);
-		hctx.memsize = mmap->get_ram_direct()->get_size();
-#endif
 	}
 
 	ExecReturn Hart::single_inst(InstructionCache& cache)
@@ -118,41 +106,7 @@ namespace rv64vm::runner
 			return;
 		}
 
-		uint64_t prevpc = pc;
-#ifdef USE_JIT
-		uint64_t physpc	 = 0;
-		MemoryReturn ret = mmu.translate(this, AccessType::EXEC, pc, &physpc);
-
-		if(ret.is_success)
-		{
-			jit::JIT_Function& entry = jctx->jits[jit::jit_index(physpc)];
-
-			if(!entry.valid || entry.pc != physpc)
-			{
-				jctx->compileBlock(*this, pc);
-			}
-
-			jit::JIT_Function& fresh = jctx->jits[jit::jit_index(physpc)];
-
-			bool asid_ok = fresh.asid == UINT64_MAX || (fresh.asid == satp.fields.asid);
-			if(fresh.valid && fresh.pc == physpc)
-			{
-				if(fresh.page_version != jctx->page_verion_bitmap[(fresh.pc - 0x80000000) >> 12] || !asid_ok) [[unlikely]]
-				{
-					fresh.cleanup(jctx);
-				}
-				else
-				{
-					hctx.exit_pc	= 0;
-					hctx.loop_count = 1000;
-					fresh.func(&hctx);
-
-					pc = (hctx.exit_pc != 0) ? hctx.exit_pc : pc + fresh.inst_size;
-					return;
-				}
-			}
-		}
-#endif
+		uint64_t prevpc	 = pc;
 		// MemoryReturn out1 = mmio->read(*this, pc, MemorySize::Int, &inst);
 		uint64_t phys_pc = 0;
 

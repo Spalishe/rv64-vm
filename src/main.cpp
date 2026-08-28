@@ -36,9 +36,6 @@ Copyright 2026 Spalishe
  *		   TODO:
  *			-PMP
  *			-SPMP
- *		    -JIT:
- *				- MMU support(Software TLB)
- *				- RVC
  *		    -Zawrs
  *		    -Zabha
  *		    -Zacas

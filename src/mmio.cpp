@@ -66,24 +66,6 @@ namespace rv64vm::runner
 					paddr,
 					(int)access_size * 8,
 					val);
-
-#ifdef USE_JIT
-				auto* jctx = h.get_jctx();
-
-				const uint64_t ram_offset = paddr - 0x80000000ULL;
-
-				const size_t first_page = ram_offset >> 12;
-
-				const size_t last_page = (ram_offset + access_size - 1) >> 12;
-
-				for(size_t page = first_page;
-					page <= last_page;
-					++page)
-				{
-					if(jctx->jit_page_bitmap[page])
-						++jctx->page_verion_bitmap[page];
-				}
-#endif
 				return { true, 0, 0 };
 			}
 
@@ -143,24 +125,6 @@ namespace rv64vm::runner
 				first_paddr,
 				(int)first_size * 8,
 				first_val);
-
-#ifdef USE_JIT
-			auto* jctx = h.get_jctx();
-
-			const uint64_t ram_offset = first_paddr - 0x80000000ULL;
-
-			const size_t first_page = ram_offset >> 12;
-
-			const size_t last_page = (ram_offset + first_size - 1) >> 12;
-
-			for(size_t page = first_page;
-				page <= last_page;
-				++page)
-			{
-				if(jctx->jit_page_bitmap[page])
-					++jctx->page_verion_bitmap[page];
-			}
-#endif
 		}
 		else
 		{
@@ -197,17 +161,6 @@ namespace rv64vm::runner
 				second_paddr,
 				(int)second_size * 8,
 				second_val);
-
-#ifdef USE_JIT
-			auto* jctx = h.get_jctx();
-
-			const uint64_t ram_offset = second_paddr - 0x80000000ULL;
-
-			const size_t page = ram_offset >> 12;
-
-			if(jctx->jit_page_bitmap[page])
-				++jctx->page_verion_bitmap[page];
-#endif
 		}
 		else
 		{

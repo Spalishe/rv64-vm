@@ -17,23 +17,11 @@ Copyright 2026 Spalishe
 
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
-#include "../../include/rvjit/rvjit.hpp"
 
 using namespace rv64vm::runner;
 ExecReturn exec_FENCE_I(Hart& hart, InstructionData& inst)
 {
 	hart.clear_decode_cache();
-#ifdef USE_JIT
-	// FIXED: This block is not more in use, now blocks remove themself automatically
-	/*memset(hart.jctx->jits, 0, sizeof(hart.jctx->jits));
-	memset(hart.jctx->ignore_pc, 0, sizeof(hart.jctx->ignore_pc));
-	hart.jctx->arenas.clear();
-	hart.jctx->count   = 0;
-	hart.jctx->block_c = false;
-	__builtin___clear_cache(nullptr, nullptr);
-	hart.jctx->last_arena = 0;
-	hart.jctx->createNewArena();*/
-#endif
 	return { true, false, 4, 0, 0 };
 }
 

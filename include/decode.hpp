@@ -21,9 +21,6 @@ Copyright 2026 Spalishe
 #include <immintrin.h>
 #include <string>
 #include <vector>
-#ifdef USE_JIT
-#include "rvjit/rvjit_emit.hpp"
-#endif
 
 namespace rv64vm::runner
 {
@@ -192,9 +189,6 @@ namespace rv64vm::runner
 		ExecReturn (*func)(Hart& h, InstructionData& data);
 		uint64_t (*imm_decode_func)(uint32_t inst);
 		uint8_t size = 4;
-#ifdef USE_JIT
-		bool (*jit_func)(Hart& h, InstructionData& data, rv64vm::jit::JIT_Block& ctx, rv64vm::jit::JIT_Emitter& emitter) = nullptr;
-#endif
 	};
 
 	struct InstructionCache

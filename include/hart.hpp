@@ -22,7 +22,6 @@ Copyright 2026 Spalishe
 #include "memory_map.hpp"
 #include "mmio.hpp"
 #include "mmu.hpp"
-#include "rvjit/rvjit.hpp"
 #include "structs/timecmp_st.hpp"
 #include <cstdint>
 #include <sys/types.h>
@@ -75,29 +74,16 @@ namespace rv64vm::runner
 		 * @brief Hart destructor
 		 * @details Destroys RISC-V core
 		 */
-		~Hart()
-		{
-#ifdef USE_JIT
-			delete jctx;
-#endif
+		~Hart() {
 		};
 		Hart(Hart&& other) noexcept
 		{
-#ifdef USE_JIT
-			jctx	   = other.jctx;
-			other.jctx = nullptr;
-#endif
 		}
 
 		Hart& operator=(Hart&& other) noexcept
 		{
 			if(this != &other)
 			{
-#ifdef USE_JIT
-				delete jctx;
-				jctx	   = other.jctx;
-				other.jctx = nullptr;
-#endif
 			}
 			return *this;
 		}
@@ -209,13 +195,6 @@ namespace rv64vm::runner
 				reservation.valid = false;
 			}
 		}
-#ifdef USE_JIT
-		/**
-		 * @brief Returns JIT context
-		 * @return JIT context
-		 */
-		inline jit::JIT_Context* get_jctx() { return jctx; }
-#endif
 		/**
 		 * @brief Returns value stored in CSR
 		 * @param csr CSR address
@@ -241,11 +220,6 @@ namespace rv64vm::runner
 	  private:
 		uint64_t csrs[4096];
 
-#ifdef USE_JIT
-		jit::JIT_Context* jctx;
-		jit::JIT_HartContext hctx;
-		uint64_t last_jit_pc_exit = 0;
-#endif
 		InstructionDecoder* idec;
 		MemoryMap* mmap;
 		MMIO* mmio;
@@ -263,9 +237,6 @@ namespace rv64vm::runner
 		bool check_ints();
 
 		friend class Machine;
-#ifdef USE_JIT
-		friend class jit::JIT_Context;
-#endif
 	};
 }
 
