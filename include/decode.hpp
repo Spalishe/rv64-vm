@@ -17,6 +17,7 @@ Copyright 2026 Spalishe
 
 #pragma once
 #include "defines/traps.hpp"
+#include "self_mod.hpp"
 #include <cstdint>
 #include <immintrin.h>
 #include <string>
@@ -197,6 +198,7 @@ namespace rv64vm::runner
 		const Instruction* inst;
 		InstructionData data;
 		uint64_t cache_gen = 0;
+		uint64_t smc_gen	  = 0;
 	};
 
 	struct CacheSet
@@ -228,11 +230,11 @@ namespace rv64vm::runner
 			size_t idx	  = (pc >> 2) & (CACHE_SIZE - 1);
 			CacheSet& set = cache[idx];
 
-			if(set.ways[0].pc == pc && set.ways[0].cache_gen == cache_generation) [[likely]]
+			if(set.ways[0].pc == pc && set.ways[0].data.inst == inst && set.ways[0].cache_gen == cache_generation && set.ways[0].smc_gen == g_smc_epoch.load()) [[likely]]
 			{
 				return set.ways[0];
 			}
-			if(set.ways[1].pc == pc && set.ways[1].cache_gen == cache_generation) [[likely]]
+			if(set.ways[1].pc == pc && set.ways[1].data.inst == inst && set.ways[1].cache_gen == cache_generation && set.ways[1].smc_gen == g_smc_epoch.load()) [[likely]]
 			{
 				return set.ways[1];
 			}

@@ -20,7 +20,6 @@ Copyright 2026 Spalishe
 #include "../include/defines/csr.hpp"
 #include "../include/defines/traps.hpp"
 #include <assert.h>
-#include <cstdio>
 
 namespace rv64vm::runner
 {
@@ -106,8 +105,6 @@ namespace rv64vm::runner
 			return;
 		}
 
-		uint64_t prevpc	 = pc;
-		// MemoryReturn out1 = mmio->read(*this, pc, MemorySize::Int, &inst);
 		uint64_t phys_pc = 0;
 
 		InstructionCache* cache;

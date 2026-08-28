@@ -17,7 +17,9 @@ Copyright 2026 Spalishe
 
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
+#include <atomic>
 #include <cstddef>
+#include <cstdio>
 
 using namespace rv64vm::runner;
 using PrivilegeMode = Hart::PrivilegeMode;
@@ -485,7 +487,6 @@ ExecReturn exec_AUIPC(Hart& hart, InstructionData& inst)
 
 ExecReturn exec_ECALL(Hart& hart, InstructionData& inst)
 {
-
 	switch(hart.mode)
 	{
 		case PrivilegeMode::Machine:

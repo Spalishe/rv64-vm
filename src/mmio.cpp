@@ -62,10 +62,7 @@ namespace rv64vm::runner
 			{
 				// DRAM
 				h.amo_check_reservation(paddr);
-				mmap->store(
-					paddr,
-					(int)access_size * 8,
-					val);
+				write_dram_fast(paddr, size, val);
 				return { true, 0, 0 };
 			}
 
@@ -121,10 +118,7 @@ namespace rv64vm::runner
 		{
 			h.amo_check_reservation(first_paddr);
 
-			mmap->store(
-				first_paddr,
-				(int)first_size * 8,
-				first_val);
+			write_dram_fast(first_paddr, (MemorySize)first_size, first_val);
 		}
 		else
 		{
@@ -157,10 +151,7 @@ namespace rv64vm::runner
 		{
 			h.amo_check_reservation(second_paddr);
 
-			mmap->store(
-				second_paddr,
-				(int)second_size * 8,
-				second_val);
+			write_dram_fast(second_paddr, (MemorySize)second_size, second_val);
 		}
 		else
 		{
@@ -197,7 +188,7 @@ namespace rv64vm::runner
 		uint64_t paddr,
 		MemorySize size)
 	{
-		if(direct_ram == nullptr)
+		if(direct_ram == nullptr) [[unlikely]]
 			direct_ram = mmap->get_ram_direct()->get_data();
 
 		unsigned char* ptr = direct_ram + (paddr - 0x80000000ULL);
@@ -218,6 +209,38 @@ namespace rv64vm::runner
 		}
 
 		return 0;
+	}
+
+	inline void MMIO::write_dram_fast(
+		uint64_t paddr,
+		MemorySize size,
+		uint64_t val)
+	{
+		if(direct_ram == nullptr) [[unlikely]]
+			direct_ram = mmap->get_ram_direct()->get_data();
+
+		smc_store_hit(paddr);
+
+		unsigned char* ptr = direct_ram + (paddr - 0x80000000ULL);
+
+		switch(size)
+		{
+			case MemorySize::Byte:
+				*(uint8_t*)ptr	  = (uint8_t)val;
+				break;
+
+			case MemorySize::Short:
+				*(uint16_t*)ptr	  = (uint16_t)val;
+				break;
+
+			case MemorySize::Int:
+				*(uint32_t*)ptr	  = (uint32_t)val;
+				break;
+
+			case MemorySize::Long:
+				*(uint64_t*)ptr	  = (uint64_t)val;
+				break;
+		}
 	}
 
 	MemoryReturn MMIO::read(

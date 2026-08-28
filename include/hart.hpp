@@ -23,6 +23,7 @@ Copyright 2026 Spalishe
 #include "mmio.hpp"
 #include "mmu.hpp"
 #include "structs/timecmp_st.hpp"
+#include "block_cache.hpp"
 #include <cstdint>
 #include <sys/types.h>
 namespace rv64vm::runner
@@ -235,6 +236,16 @@ namespace rv64vm::runner
 		ExecReturn single_inst(InstructionCache& cache);
 		bool int_local_pending();
 		bool check_ints();
+
+		/**
+		 * @brief Block-chaining fast path (lightweight JIT).
+		 * @details Runs precompiled straight-line blocks of the guest code,
+		 *          bypassing the per-instruction decode probe and MMU
+		 *          translate. Returns the number of instructions executed.
+		 * @see BlockCache
+		 */
+		uint64_t run_blocks(BlockCache& bc, uint64_t max_insts);
+		Block* compile_block(BlockCache& bc, uint64_t start_phys);
 
 		friend class Machine;
 	};

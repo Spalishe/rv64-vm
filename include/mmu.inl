@@ -29,13 +29,20 @@ inline MemoryReturn MMU::translate(Hart* hart, AccessType type, uint64_t va, uin
 	uint16_t asid = satp.fields.asid;
 	bool mxr	  = hart->status.fields.MXR;
 	bool sum	  = hart->status.fields.SUM;
-	if(tlb.lookup(va, type, asid, (int)mode, mxr, sum, pa)) [[likely]]
-		return { true, 0, 0 };
+
+	// Bare/Machine map identity - skip the TLB (stale entries set VA != PA).
 	if(mode == Hart::PrivilegeMode::Machine)
 	{
 		*pa = va;
 		return { true, 0, 0 };
 	}
+	if((SatpMode)satp.fields.mode == SatpMode::Bare)
+	{
+		*pa = va;
+		return { true, 0, 0 };
+	}
+	if(tlb.lookup(va, type, asid, (int)mode, mxr, sum, pa)) [[likely]]
+		return { true, 0, 0 };
 	switch((SatpMode)satp.fields.mode)
 	{
 		case SatpMode::Bare:
@@ -172,16 +179,20 @@ MemoryReturn MMU::translate_impl(Hart* hart, AccessType type, uint64_t raw_va, u
 
 	if(pte.fields.A == 0 || (type == AccessType::STORE && pte.fields.D == 0))
 	{
-		typename SvMode::PTE current;
-		current.raw = mmap->load(addr, SvMode::PTESIZE * 8);
-
 		bool need_update = (pte.fields.A == 0) || (type == AccessType::STORE && pte.fields.D == 0);
-		if(need_update)
+		if(need_update) [[unlikely]]
 		{
 			pte.fields.A = 1;
 			if(type == AccessType::STORE)
 				pte.fields.D = 1;
-			mmap->store(addr, SvMode::PTESIZE * 8, pte.raw);
+			if constexpr(SvMode::PTESIZE == 8)
+			{
+				*reinterpret_cast<uint64_t*>(mmap->get_ram_direct()->get_data() + (addr - 0x80000000)) = pte.raw;
+			}
+			else
+			{
+				mmap->store(addr, SvMode::PTESIZE * 8, pte.raw);
+			}
 		}
 	}
 

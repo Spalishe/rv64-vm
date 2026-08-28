@@ -43,6 +43,7 @@ namespace rv64vm::runner
 			harts.emplace_back(i, config.memory_size);
 		}
 		init_mmap();
+		block_cache = new BlockCache();
 	};
 	Machine::~Machine()
 	{
@@ -57,6 +58,7 @@ namespace rv64vm::runner
 		if(dtb_file) fclose(dtb_file);
 
 		if(fdt) fdt_node_free(fdt);
+		delete block_cache;
 		delete idec;
 	}
 
@@ -331,6 +333,7 @@ namespace rv64vm::runner
 
 				destroy_harts();
 				reset_memory();
+				block_cache->clear();
 #ifdef USE_GDBSTUB
 				if(gdb) gdb_server.stop();
 #endif
@@ -386,16 +389,42 @@ namespace rv64vm::runner
 				continue;
 			}
 			// Update devices
-			dev_tick_time++;
-			if(dev_tick_time == 0x1000)
+			constexpr int INSTR_BATCH = 256;
+#ifdef USE_GDBSTUB
+			const int batch = (gdb && gdb_single_step) ? 1 : INSTR_BATCH;
+#else
+			constexpr int batch = INSTR_BATCH;
+#endif
+			dev_tick_time += batch;
+			if(dev_tick_time >= 0x1000)
 			{
-				dev_tick_time = 0;
+				dev_tick_time -= 0x1000;
 				mmio->tick_all();
 			}
 			// Update harts
 			for(int i = 0; i < config.hart_count; i++)
 			{
-				harts[i].tick();
+#ifdef USE_BLOCK_JIT
+#ifdef USE_GDBSTUB
+				if(!gdb) [[likely]]
+#else
+				if(true) [[likely]]
+#endif
+				{
+					uint64_t count = harts[i].run_blocks(*block_cache, 0x4000);
+					if(count == 0)
+						count = batch; // don't starve devices while a hart idles (WFI)
+					dev_tick_time += count;
+					while(dev_tick_time >= 0x1000)
+					{
+						dev_tick_time -= 0x1000;
+						mmio->tick_all();
+					}
+					continue;
+				}
+#endif
+				for(int t = 0; t < batch; t++)
+					harts[i].tick();
 			}
 
 #ifdef USE_GDBSTUB

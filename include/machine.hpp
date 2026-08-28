@@ -21,6 +21,7 @@ Copyright 2026 Spalishe
 #include "memory_map.hpp"
 #include "mmio.hpp"
 #include "mmu.hpp"
+#include "block_cache.hpp"
 #include <thread>
 #include <vector>
 
@@ -256,6 +257,7 @@ namespace rv64vm::runner
 		MMIO* mmio				 = nullptr;
 		InstructionDecoder* idec = nullptr;
 		fdt_node* fdt			 = nullptr;
+		BlockCache* block_cache	 = nullptr;
 
 		std::vector<Hart> harts;
 		uint16_t dev_tick_time = 0;

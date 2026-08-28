@@ -61,6 +61,7 @@ __attribute__((noinline)) InstructionCache& InstructionDecoder::decode_inst_slow
 		entry.pc		= pc;
 		entry.inst		= dinst;
 		entry.cache_gen = cache_generation;
+		entry.smc_gen	= g_smc_epoch.load();
 		entry.data		= data;
 	}
 	else

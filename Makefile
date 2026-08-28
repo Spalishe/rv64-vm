@@ -173,18 +173,25 @@ help:
 clean:
 	$(call print_info)
 	@rm -rf $(BUILD_DIR)
-	
-$(OBJ_DIR_BIN)/%.o: src/%.cpp
+
+# Rebuild objects whenever the build flags change (e.g. USE_* toggles).
+FORCE:
+FLAGS_FILE := $(BUILD_DIR)/.buildflags
+$(FLAGS_FILE): FORCE
+	@mkdir -p $(dir $@)
+	@bash -c 'flags="$(CXXFLAGS)"; if [ "$$flags" != "$$(cat $@ 2>/dev/null)" ]; then printf "%s" "$$flags" > $@; fi'
+
+$(OBJ_DIR_BIN)/%.o: src/%.cpp $(FLAGS_FILE)
 	@mkdir -p $(dir $@)
 	@echo -e "[$(ANSI_GREEN)CXX$(ANSI_RESET)] $<"
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(OBJ_DIR_SO)/%.o: src/%.cpp
+$(OBJ_DIR_SO)/%.o: src/%.cpp $(FLAGS_FILE)
 	@mkdir -p $(dir $@)
 	@echo -e "[$(ANSI_GREEN)CXX$(ANSI_RESET)] $<"
 	@$(CXX) $(CXXFLAGS) -fPIC -c $< -o $@
 	
-$(OBJ_DIR_A)/%.o: src/%.cpp
+$(OBJ_DIR_A)/%.o: src/%.cpp $(FLAGS_FILE)
 	@mkdir -p $(dir $@)
 	@echo -e "[$(ANSI_GREEN)CXX$(ANSI_RESET)] $<"
 	@$(CXX) $(CXXFLAGS) -c $< -o $@

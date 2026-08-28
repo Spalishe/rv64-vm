@@ -58,7 +58,7 @@ namespace rv64vm::runner
 			PERM_A = 1u << 4,
 			PERM_D = 1u << 5,
 		};
-		static constexpr size_t SIZE = 2 << 11;
+		static constexpr size_t SIZE = 2 << 16;
 
 		/**
 		 * @brief Looks up in cache for TLB entry
