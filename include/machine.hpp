@@ -16,12 +16,12 @@ Copyright 2026 Spalishe
 */
 
 #pragma once
+#include "block_cache.hpp"
 #include "hart.hpp"
 #include "libfdt.h"
 #include "memory_map.hpp"
 #include "mmio.hpp"
 #include "mmu.hpp"
-#include "block_cache.hpp"
 #include <thread>
 #include <vector>
 
@@ -170,11 +170,11 @@ namespace rv64vm::runner
 		Hart& get_hart(size_t index) { return harts.at(index); }
 
 		/**
-		 * @brief Loads Image file
+		 * @brief Loads Image file to VirtIO-Blk
 		 * @param path Image path
 		 * @return Success bool
 		 */
-		bool load_image(const std::string& path);
+		bool load_vd_image(const std::string& path);
 		/**
 		 * @brief Loads Firmware file
 		 * @param path Firmware path
@@ -196,10 +196,11 @@ namespace rv64vm::runner
 		 */
 		bool load_dtb(const std::string& path);
 		/**
-		 * @brief Returns FILE pointer to loaded Image file
+		 * @brief Returns FILE pointer to loaded VirtIO-Blk file
+		 * @param idx Image index
 		 * @return FILE pointer
 		 */
-		FILE* get_image();
+		FILE* get_vd_image(int idx);
 		/**
 		 * @brief Sets UART output stream
 		 * @param stream Output stream
@@ -237,6 +238,13 @@ namespace rv64vm::runner
 		 */
 		void handle_gdb_breakpoints();
 #endif
+		// Literally need to control VIRTIO devices in DTB.
+		// Cuz DTB only supports 8 VirtIO devices defined at the same time
+		/**
+		 * @brief VirtIO devices counter
+		 * @internal
+		 */
+		int virtio_count = 0;
 
 	  private:
 		void init_mmap();
@@ -262,7 +270,8 @@ namespace rv64vm::runner
 		std::vector<Hart> harts;
 		uint16_t dev_tick_time = 0;
 
-		FILE* image_file  = nullptr;
+		// FILE* image_file  = nullptr;
+		std::vector<FILE*> vd_images;
 		FILE* bios_file	  = nullptr;
 		FILE* kernel_file = nullptr;
 		FILE* dtb_file	  = nullptr;

@@ -52,7 +52,6 @@ namespace rv64vm::runner
 		destroy_devices();
 		destroy_mmap();
 
-		if(image_file) fclose(image_file);
 		if(bios_file) fclose(bios_file);
 		if(kernel_file) fclose(kernel_file);
 		if(dtb_file) fclose(dtb_file);
@@ -62,11 +61,15 @@ namespace rv64vm::runner
 		delete idec;
 	}
 
-	bool Machine::load_image(const std::string& path)
+	bool Machine::load_vd_image(const std::string& path)
 	{
-		if(image_file) fclose(image_file);
-		image_file = fopen(path.c_str(), "r+b");
-		return image_file != nullptr;
+		FILE* image_file = fopen(path.c_str(), "r+b");
+		if(image_file == nullptr)
+		{
+			return -1;
+		}
+		vd_images.push_back(image_file);
+		return static_cast<int>(vd_images.size() - 1);
 	}
 
 	bool Machine::load_bios(const std::string& path)
@@ -90,9 +93,9 @@ namespace rv64vm::runner
 		return dtb_file != nullptr;
 	}
 
-	FILE* Machine::get_image()
+	FILE* Machine::get_vd_image(int idx)
 	{
-		return image_file ? image_file : nullptr;
+		return vd_images[idx];
 	}
 
 	void Machine::set_uart_output(FILE* stream)
@@ -262,9 +265,12 @@ namespace rv64vm::runner
 		mmio->create_device_auto<rv64vm::dev::CLINT>(*this);
 		mmio->create_device_auto<rv64vm::dev::SYSCON>(*this);
 		mmio->create_device_auto<rv64vm::dev::I2C>(*this);
-		if(image_file != nullptr)
+		for(auto& dev : vd_images)
 		{
-			mmio->create_device_auto<rv64vm::dev::VirtIO_BLK>(*this);
+			if(dev != nullptr)
+			{
+				mmio->create_device_auto<rv64vm::dev::VirtIO_BLK>(*this);
+			}
 		}
 	}
 

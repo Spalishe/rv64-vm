@@ -159,8 +159,8 @@ int main(int argc, char* argv[])
 		= parser.add<arp::str>("--bios", "File with Machine level program (bootloader)", arp::required, arp::nopos);
 	auto kernel_var
 		= parser.add<arp::str>("--kernel", "File with Supervisor Level program", arp::norequired, arp::nopos);
-	auto image_var = parser.add<arp::str>("--image", "File with Image file that will put on VirtIO-BLK",
-										  arp::norequired, arp::nopos);
+	auto image_var = parser.add_multiple<arp::str>("--virtioblk", "File with Image file that will put on VirtIO-BLK",
+												   arp::norequired, "-vb");
 
 	auto dtb_var
 		= parser.add<arp::str>("--dtb", "Use specified FDT instead of auto-generated", arp::norequired, arp::nopos);
@@ -243,7 +243,12 @@ int main(int argc, char* argv[])
 	if(kernel_var->defined())
 		machine.load_kernel(kernel_var->val().c_str());
 	if(image_var->defined())
-		machine.load_image(image_var->val().c_str());
+	{
+		for(auto& def : image_var->val())
+		{
+			machine.load_vd_image(def.val().c_str());
+		}
+	}
 
 	if(dtb_var->defined())
 		machine.load_dtb(dtb_var->val().c_str());

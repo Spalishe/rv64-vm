@@ -29,17 +29,19 @@ namespace rv64vm::dev
 	{
 		cpu.get_mmap()->add_region(base, size);
 
-		fdt_node* virtio_blk_node = fdt_node_create_reg("virtio_mmio", base);
-		fdt_node_add_prop(virtio_blk_node, "compatible", "virtio,mmio\0", 12);
-		fdt_node_add_prop_reg(virtio_blk_node, "reg", base, size);
-		fdt_node* soc  = fdt_node_find(fdt, "soc");
-		fdt_node* plic = fdt_node_find_reg(soc, "plic", 0x0C000000);
-		fdt_node_add_prop_u32(virtio_blk_node, "interrupt-parent", fdt_node_get_phandle(plic));
-		fdt_node_free(plic);
-		fdt_node_add_prop_u32(virtio_blk_node, "interrupts", irq_num);
-		fdt_node_add_child(soc, virtio_blk_node);
-		fdt_node_free(soc);
-
+		if(fdt != nullptr)
+		{
+			fdt_node* virtio_blk_node = fdt_node_create_reg("virtio_mmio", base);
+			fdt_node_add_prop(virtio_blk_node, "compatible", "virtio,mmio\0", 12);
+			fdt_node_add_prop_reg(virtio_blk_node, "reg", base, size);
+			fdt_node* soc  = fdt_node_find(fdt, "soc");
+			fdt_node* plic = fdt_node_find_reg(soc, "plic", 0x0C000000);
+			fdt_node_add_prop_u32(virtio_blk_node, "interrupt-parent", fdt_node_get_phandle(plic));
+			fdt_node_free(plic);
+			fdt_node_add_prop_u32(virtio_blk_node, "interrupts", irq_num);
+			fdt_node_add_child(soc, virtio_blk_node);
+			fdt_node_free(soc);
+		}
 		// Device features
 		device_features = VIRTIO_F_VERSION_1;
 
@@ -81,7 +83,10 @@ namespace rv64vm::dev
 
 	std::shared_ptr<VirtIO_BLK> VirtIO_BLK::init_auto(runner::Machine& cpu)
 	{
-		return std::make_shared<VirtIO_BLK>(0x10001000, 0x1000, cpu, cpu.get_fdt(), cpu.get_image());
+		cpu.virtio_count++;
+		// TODO: Rework this after PCI will appear since it can contain unlimited devices
+		assert(cpu.virtio_count <= 8 && "You cannot have more than 8 VirtIO devices at the same time!");
+		return std::make_shared<VirtIO_BLK>(0x10000000 + 0x1000 * cpu.virtio_count, 0x1000, cpu, cpu.get_fdt(), cpu.get_vd_image(cpu.virtio_count - 1));
 	}
 
 	// DRAM memory helpers
