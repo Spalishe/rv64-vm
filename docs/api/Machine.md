@@ -8,7 +8,7 @@
 class Machine
 ```
 
-Defined in include/machine.hpp:49
+Defined in include/machine.hpp:50
 
 RV64-VM Main machine class.
 
@@ -18,6 +18,7 @@ This class implements RISC-V emulator machine.
 
 | Name | Kind | Owner |
 |------|------|-------|
+| [`virtio_count`](#virtio_count) | `variable` | Declared here |
 | [`Machine`](#machine) | `function` | Declared here |
 | [`~Machine`](#~machine) | `function` | Declared here |
 | [`start_init`](#start_init) | `function` | Declared here |
@@ -34,14 +35,34 @@ This class implements RISC-V emulator machine.
 | [`get_memory_size`](#get_memory_size) | `function` | Declared here |
 | [`get_hart_count`](#get_hart_count) | `function` | Declared here |
 | [`get_hart`](#get_hart) | `function` | Declared here |
-| [`load_image`](#load_image) | `function` | Declared here |
+| [`load_vd_image`](#load_vd_image) | `function` | Declared here |
 | [`load_bios`](#load_bios) | `function` | Declared here |
 | [`load_kernel`](#load_kernel) | `function` | Declared here |
 | [`load_dtb`](#load_dtb) | `function` | Declared here |
-| [`get_image`](#get_image) | `function` | Declared here |
+| [`get_vd_image`](#get_vd_image) | `function` | Declared here |
 | [`set_uart_output`](#set_uart_output) | `function` | Declared here |
 | [`get_uart_output`](#get_uart_output) | `function` | Declared here |
 | [`MachineState`](#machinestate) | `enum` | Declared here |
+
+## Public Attributes
+
+| Return | Name | Description |
+|--------|------|-------------|
+| [`int`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`virtio_count`](#virtio_count)  | VirtIO devices counter. |
+
+---
+
+
+
+### virtio_count
+
+```cpp
+int virtio_count = 0
+```
+
+Defined in include/machine.hpp:247
+
+VirtIO devices counter.
 
 ## Public Methods
 
@@ -63,11 +84,11 @@ This class implements RISC-V emulator machine.
 | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_memory_size`](#get_memory_size) `const` `inline` | Returns config specified RAM size. |
 | [`uint8_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_hart_count`](#get_hart_count) `const` `inline` | Returns config specified [Hart](Hart.md#hart) count. |
 | [`Hart`](Hart.md#hart) & | [`get_hart`](#get_hart) `inline` | Returns specified [Hart](Hart.md#hart) by index. |
-| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_image`](#load_image)  | Loads Image file. |
+| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_vd_image`](#load_vd_image)  | Loads Image file to VirtIO-Blk. |
 | [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_bios`](#load_bios)  | Loads Firmware file. |
 | [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_kernel`](#load_kernel)  | Loads Kernel file. |
 | [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`load_dtb`](#load_dtb)  | Loads DTB file. |
-| [`FILE`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | [`get_image`](#get_image)  | Returns FILE pointer to loaded Image file. |
+| [`FILE`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | [`get_vd_image`](#get_vd_image)  | Returns FILE pointer to loaded VirtIO-Blk file. |
 | [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`set_uart_output`](#set_uart_output)  | Sets UART output stream. |
 | [`FILE`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | [`get_uart_output`](#get_uart_output)  | Returns UART output stream. |
 
@@ -81,7 +102,7 @@ This class implements RISC-V emulator machine.
 Machine(constMachineConfig & cfg)
 ```
 
-Defined in include/machine.hpp:68
+Defined in include/machine.hpp:69
 
 [Machine](#machine) constructor.
 
@@ -105,7 +126,7 @@ Creates RISC-V machine
 ~Machine()
 ```
 
-Defined in include/machine.hpp:74
+Defined in include/machine.hpp:75
 
 [Machine](#machine) destructor.
 
@@ -125,7 +146,7 @@ Destroys RISC-V machine
 inline void start_init()
 ```
 
-Defined in include/machine.hpp:85
+Defined in include/machine.hpp:86
 
 Device initialization start.
 
@@ -143,7 +164,7 @@ Creates FDT Base for all devices In this block you supposed to create all device
 inline void end_init()
 ```
 
-Defined in include/machine.hpp:95
+Defined in include/machine.hpp:96
 
 Device initialization end.
 
@@ -159,7 +180,7 @@ Writes FDT to memory. This function must be called after you created all devices
 void run()
 ```
 
-Defined in include/machine.hpp:104
+Defined in include/machine.hpp:105
 
 Runs machine.
 
@@ -175,7 +196,7 @@ Starts all [Hart](Hart.md#hart)'s execution loop.
 void stop()
 ```
 
-Defined in include/machine.hpp:110
+Defined in include/machine.hpp:111
 
 Stops machine.
 
@@ -193,7 +214,7 @@ Sends a signal to machine so it could stop and destroy all harts safely.
 void reset()
 ```
 
-Defined in include/machine.hpp:116
+Defined in include/machine.hpp:117
 
 Resets machines.
 
@@ -211,7 +232,7 @@ Sends a signal to machine so it could safely recreate all HART's.
 void wait()
 ```
 
-Defined in include/machine.hpp:120
+Defined in include/machine.hpp:121
 
 Joins machine work thread.
 
@@ -227,7 +248,7 @@ Joins machine work thread.
 inline MMIO * get_mmio()
 ```
 
-Defined in include/machine.hpp:127
+Defined in include/machine.hpp:128
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -248,7 +269,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline fdt_node * get_fdt()
 ```
 
-Defined in include/machine.hpp:133
+Defined in include/machine.hpp:134
 
 Returns FDT pointer.
 
@@ -269,7 +290,7 @@ FDT pointer
 inline uint64_t get_timebase() const
 ```
 
-Defined in include/machine.hpp:138
+Defined in include/machine.hpp:139
 
 Returns config specified timer timebase (Hz/S)
 
@@ -288,7 +309,7 @@ Timebase number
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/machine.hpp:144
+Defined in include/machine.hpp:145
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -309,7 +330,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline MachineState get_state() const
 ```
 
-Defined in include/machine.hpp:151
+Defined in include/machine.hpp:152
 
 Returns [Machine](#machine) internal state.
 
@@ -330,7 +351,7 @@ Returns [Machine](#machine) internal state.
 inline uint64_t get_memory_size() const
 ```
 
-Defined in include/machine.hpp:156
+Defined in include/machine.hpp:157
 
 Returns config specified RAM size.
 
@@ -349,7 +370,7 @@ Memory Size (bytes)
 inline uint8_t get_hart_count() const
 ```
 
-Defined in include/machine.hpp:162
+Defined in include/machine.hpp:163
 
 Returns config specified [Hart](Hart.md#hart) count.
 
@@ -370,7 +391,7 @@ HART count
 inline Hart & get_hart(size_t index)
 ```
 
-Defined in include/machine.hpp:169
+Defined in include/machine.hpp:170
 
 Returns specified [Hart](Hart.md#hart) by index.
 
@@ -389,15 +410,15 @@ Returns specified [Hart](Hart.md#hart) by index.
 
 
 
-### load_image
+### load_vd_image
 
 ```cpp
-bool load_image(const std::string & path)
+bool load_vd_image(const std::string & path)
 ```
 
-Defined in include/machine.hpp:176
+Defined in include/machine.hpp:177
 
-Loads Image file.
+Loads Image file to VirtIO-Blk.
 
 #### Returns
 Success bool
@@ -418,7 +439,7 @@ Success bool
 bool load_bios(const std::string & path)
 ```
 
-Defined in include/machine.hpp:182
+Defined in include/machine.hpp:183
 
 Loads Firmware file.
 
@@ -441,7 +462,7 @@ Success bool
 bool load_kernel(const std::string & path)
 ```
 
-Defined in include/machine.hpp:188
+Defined in include/machine.hpp:189
 
 Loads Kernel file.
 
@@ -464,7 +485,7 @@ Success bool
 bool load_dtb(const std::string & path)
 ```
 
-Defined in include/machine.hpp:196
+Defined in include/machine.hpp:197
 
 Loads DTB file.
 
@@ -485,18 +506,24 @@ Success bool
 
 
 
-### get_image
+### get_vd_image
 
 ```cpp
-FILE * get_image()
+FILE * get_vd_image(int idx)
 ```
 
-Defined in include/machine.hpp:201
+Defined in include/machine.hpp:203
 
-Returns FILE pointer to loaded Image file.
+Returns FILE pointer to loaded VirtIO-Blk file.
 
 #### Returns
 FILE pointer
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `idx` | [`int`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Image index |
 
 ---
 
@@ -508,7 +535,7 @@ FILE pointer
 void set_uart_output(FILE * stream)
 ```
 
-Defined in include/machine.hpp:206
+Defined in include/machine.hpp:208
 
 Sets UART output stream.
 
@@ -528,7 +555,7 @@ Sets UART output stream.
 FILE * get_uart_output()
 ```
 
-Defined in include/machine.hpp:211
+Defined in include/machine.hpp:213
 
 Returns UART output stream.
 
@@ -551,7 +578,7 @@ Output stream
 enum MachineState
 ```
 
-Defined in include/machine.hpp:55
+Defined in include/machine.hpp:56
 
 [Machine](#machine) State enum.
 

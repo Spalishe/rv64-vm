@@ -8,7 +8,7 @@
 struct MachineConfig
 ```
 
-Defined in include/machine.hpp:33
+Defined in include/machine.hpp:34
 
 [Machine](Machine.md#machine) configuration.
 

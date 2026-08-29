@@ -52,6 +52,7 @@ This document contains all Exported API objects.
   * [csr_write](api/Hart.md#csr_write)
   * [trap](api/Hart.md#trap)
   * [PrivilegeMode](api/Hart.md#privilegemode)
+  * [run_blocks](api/Hart.md#run_blocks)
   * **[Reservation](api/Reservation.md)**
 * **[MMIO](api/MMIO.md)**
   * [devs](api/MMIO.md#devs)
@@ -73,6 +74,7 @@ This document contains all Exported API objects.
     * **[PTE](api/PTE.md)**
     * **[VirtualAddress](api/VirtualAddress.md)**
 * **[Machine](api/Machine.md)**
+  * [virtio_count](api/Machine.md#virtio_count)
   * [Machine](api/Machine.md#machine)
   * [~Machine](api/Machine.md#~machine)
   * [start_init](api/Machine.md#start_init)
@@ -89,11 +91,11 @@ This document contains all Exported API objects.
   * [get_memory_size](api/Machine.md#get_memory_size)
   * [get_hart_count](api/Machine.md#get_hart_count)
   * [get_hart](api/Machine.md#get_hart)
-  * [load_image](api/Machine.md#load_image)
+  * [load_vd_image](api/Machine.md#load_vd_image)
   * [load_bios](api/Machine.md#load_bios)
   * [load_kernel](api/Machine.md#load_kernel)
   * [load_dtb](api/Machine.md#load_dtb)
-  * [get_image](api/Machine.md#get_image)
+  * [get_vd_image](api/Machine.md#get_vd_image)
   * [set_uart_output](api/Machine.md#set_uart_output)
   * [get_uart_output](api/Machine.md#get_uart_output)
   * [MachineState](api/Machine.md#machinestate)
