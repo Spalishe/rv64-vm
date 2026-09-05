@@ -8,29 +8,9 @@
 class Hart
 ```
 
-Defined in include/hart.hpp:39
+Defined in include/hart.hpp:46
 
 RISC-V CPU Core.
-
-## List of all members
-
-| Name | Kind | Owner |
-|------|------|-------|
-| [`Hart`](#hart) | `function` | Declared here |
-| [`~Hart`](#~hart) | `function` | Declared here |
-| [`get_effective_mode`](#get_effective_mode) | `function` | Declared here |
-| [`get_mmio`](#get_mmio) | `function` | Declared here |
-| [`get_mmap`](#get_mmap) | `function` | Declared here |
-| [`get_reservation`](#get_reservation) | `function` | Declared here |
-| [`get_mmu`](#get_mmu) | `function` | Declared here |
-| [`clear_decode_cache`](#clear_decode_cache) | `function` | Declared here |
-| [`get_memsize`](#get_memsize) | `function` | Declared here |
-| [`amo_check_reservation`](#amo_check_reservation) | `function` | Declared here |
-| [`csr_read`](#csr_read) | `function` | Declared here |
-| [`csr_write`](#csr_write) | `function` | Declared here |
-| [`trap`](#trap) | `function` | Declared here |
-| [`PrivilegeMode`](#privilegemode) | `enum` | Declared here |
-| [`run_blocks`](#run_blocks) | `function` | Declared here |
 
 ## Public Methods
 
@@ -60,7 +40,7 @@ RISC-V CPU Core.
 Hart(uint8_t id, uint64_t memsize)
 ```
 
-Defined in include/hart.hpp:71
+Defined in include/hart.hpp:78
 
 [Hart](#hart) constructor.
 
@@ -87,7 +67,7 @@ Creates RISC-V core
 inline ~Hart()
 ```
 
-Defined in include/hart.hpp:78
+Defined in include/hart.hpp:85
 
 [Hart](#hart) destructor.
 
@@ -105,7 +85,7 @@ Destroys RISC-V core
 inline PrivilegeMode get_effective_mode(AccessType access_type) const
 ```
 
-Defined in include/hart.hpp:138
+Defined in include/hart.hpp:150
 
 Returns CPU Effective mode for a specific memory access.
 
@@ -127,7 +107,7 @@ Effective mode
 inline MMIO * get_mmio()
 ```
 
-Defined in include/hart.hpp:151
+Defined in include/hart.hpp:163
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -148,7 +128,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/hart.hpp:157
+Defined in include/hart.hpp:169
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -169,7 +149,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline Reservation & get_reservation()
 ```
 
-Defined in include/hart.hpp:163
+Defined in include/hart.hpp:175
 
 Returns CPU Atomic [Reservation](Reservation.md#reservation).
 
@@ -190,7 +170,7 @@ Returns CPU Atomic [Reservation](Reservation.md#reservation).
 inline MMU & get_mmu()
 ```
 
-Defined in include/hart.hpp:169
+Defined in include/hart.hpp:181
 
 Returns CPU Memory Management Unit.
 
@@ -211,7 +191,7 @@ Returns CPU Memory Management Unit.
 inline void clear_decode_cache()
 ```
 
-Defined in include/hart.hpp:173
+Defined in include/hart.hpp:185
 
 Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 
@@ -227,7 +207,7 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 inline constuint64_t get_memsize() const
 ```
 
-Defined in include/hart.hpp:187
+Defined in include/hart.hpp:199
 
 Returns RAM size.
 
@@ -246,7 +226,7 @@ Memory size in bytes
 inline void amo_check_reservation(uint64_t pa)
 ```
 
-Defined in include/hart.hpp:192
+Defined in include/hart.hpp:204
 
 Clears reservation if defined address is within CPU reservation address.
 
@@ -260,7 +240,7 @@ Clears reservation if defined address is within CPU reservation address.
 uint64_t csr_read(uint16_t csr)
 ```
 
-Defined in include/hart.hpp:204
+Defined in include/hart.hpp:216
 
 Returns value stored in CSR.
 
@@ -283,7 +263,7 @@ CSR value
 void csr_write(uint16_t csr, uint64_t val)
 ```
 
-Defined in include/hart.hpp:210
+Defined in include/hart.hpp:222
 
 Stores value to CSR.
 
@@ -304,7 +284,7 @@ Stores value to CSR.
 void trap(uint64_t cause, uint64_t tval, bool interrupt)
 ```
 
-Defined in include/hart.hpp:219
+Defined in include/hart.hpp:231
 
 CPU Trap function.
 
@@ -334,7 +314,7 @@ Raises trap in CPU core.
 enum PrivilegeMode
 ```
 
-Defined in include/hart.hpp:46
+Defined in include/hart.hpp:53
 
 CPU PrivilegeMode.
 
@@ -346,7 +326,6 @@ Current CPU privilege mode.
 | `Supervisor` |  |
 | `Hypervisor` |  |
 | `Machine` |  |
-
 ## Private Methods
 
 | Return | Name | Description |
@@ -363,7 +342,7 @@ Current CPU privilege mode.
 uint64_t run_blocks(BlockCache & bc, uint64_t max_insts)
 ```
 
-Defined in include/hart.hpp:247
+Defined in include/hart.hpp:259
 
 Block-chaining fast path (lightweight JIT).
 

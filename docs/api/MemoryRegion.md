@@ -14,17 +14,6 @@ Memory Region object.
 
 A pie in a total cake. Contains raw data to memory.
 
-## List of all members
-
-| Name | Kind | Owner |
-|------|------|-------|
-| [`get_base_addr`](#get_base_addr) | `function` | Declared here |
-| [`get_size`](#get_size) | `function` | Declared here |
-| [`get_data`](#get_data) | `function` | Declared here |
-| [`ptr`](#ptr) | `function` | Declared here |
-| [`MemoryRegion`](#memoryregion) | `function` | Declared here |
-| [`~MemoryRegion`](#~memoryregion) | `function` | Declared here |
-
 ## Public Methods
 
 | Return | Name | Description |

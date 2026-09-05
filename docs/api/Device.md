@@ -15,20 +15,6 @@ Defined in include/device.hpp:31
 
 [Device](#device) base structure.
 
-## List of all members
-
-| Name | Kind | Owner |
-|------|------|-------|
-| [`mmap`](#mmap) | `variable` | Declared here |
-| [`start`](#start) | `variable` | Declared here |
-| [`size`](#size) | `variable` | Declared here |
-| [`end`](#end) | `variable` | Declared here |
-| [`Device`](#device) | `function` | Declared here |
-| [`read`](#read) | `function` | Declared here |
-| [`write`](#write) | `function` | Declared here |
-| [`tick`](#tick) | `function` | Declared here |
-| [`get`](#get) | `function` | Declared here |
-
 ## Public Attributes
 
 | Return | Name | Description |
@@ -48,6 +34,8 @@ Defined in include/device.hpp:31
 rv64vm::runner::MemoryMap * mmap
 ```
 
+Type: [`rv64vm::runner::MemoryMap`](MemoryMap.md#memorymap) *
+
 Defined in include/device.hpp:45
 
 MMAP pointer.
@@ -64,6 +52,8 @@ MMAP pointer.
 ```cpp
 uint64_t start
 ```
+
+Type: [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)
 
 Defined in include/device.hpp:50
 
@@ -82,6 +72,8 @@ Defined in include/device.hpp:50
 uint64_t size
 ```
 
+Type: [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)
+
 Defined in include/device.hpp:55
 
 [Device](#device) memory size.
@@ -98,6 +90,8 @@ Defined in include/device.hpp:55
 ```cpp
 uint64_t end
 ```
+
+Type: [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)
 
 Defined in include/device.hpp:60
 

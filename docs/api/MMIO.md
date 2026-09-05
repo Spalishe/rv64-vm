@@ -14,20 +14,6 @@ RV64-VM Memory-Mapped Input/Output controller.
 
 This class implements RISC-V basic [MMIO](#mmio) structure which holds all devices
 
-## List of all members
-
-| Name | Kind | Owner |
-|------|------|-------|
-| [`devs`](#devs) | `variable` | Declared here |
-| [`MMIO`](#mmio) | `function` | Declared here |
-| [`~MMIO`](#~mmio) | `function` | Declared here |
-| [`write`](#write) | `function` | Declared here |
-| [`read`](#read) | `function` | Declared here |
-| [`create_device`](#create_device) | `function` | Declared here |
-| [`create_device_auto`](#create_device_auto) | `function` | Declared here |
-| [`tick_all`](#tick_all) | `function` | Declared here |
-| [`get`](#get) | `function` | Declared here |
-
 ## Public Attributes
 
 | Return | Name | Description |
@@ -43,6 +29,8 @@ This class implements RISC-V basic [MMIO](#mmio) structure which holds all devic
 ```cpp
 std::vector< std::shared_ptr<::rv64vm::dev::Device > > devs
 ```
+
+Type: std::vector< std::shared_ptr<[`::rv64vm::dev::Device`](Device.md#device) > >
 
 Defined in include/mmio.hpp:54
 

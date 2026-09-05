@@ -12,16 +12,6 @@ Defined in include/mmu.hpp:34
 
 RISC-V Memory Management Unit.
 
-## List of all members
-
-| Name | Kind | Owner |
-|------|------|-------|
-| [`MMU`](#mmu) | `function` | Declared here |
-| [`~MMU`](#~mmu) | `function` | Declared here |
-| [`get_tlb`](#get_tlb) | `function` | Declared here |
-| [`translate`](#translate) | `function` | Declared here |
-| [`SatpMode`](#satpmode) | `enum` | Declared here |
-
 ## Public Methods
 
 | Return | Name | Description |
@@ -129,6 +119,8 @@ Memory operation result
 enum SatpMode
 ```
 
+Type: [`int`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)
+
 Defined in include/mmu.hpp:53
 
 SATP Mode.
@@ -141,4 +133,3 @@ Defines current SATP CSR register MODE bits
 | `Sv39` | Direct access |
 | `Sv48` | [Sv39](Sv39.md#sv39) Protection mode |
 | `Sv57` | Sv48 Protection mode |
-
