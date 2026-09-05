@@ -19,7 +19,12 @@ Copyright 2026 Spalishe
 #include "../include/decode.hpp"
 #include "../include/defines/csr.hpp"
 #include "../include/defines/traps.hpp"
+#ifdef USE_JIT
+#include "../include/jit/rvjit.hpp"
+#endif
 #include <assert.h>
+#include <cstdlib>
+#include <cstdio>
 
 namespace rv64vm::runner
 {
@@ -36,6 +41,13 @@ namespace rv64vm::runner
 		status.fields.SXL = 2;
 		status.fields.UXL = 2;
 		mmu.mmap		  = mmap;
+#ifdef USE_JIT
+		hctx.regs	 = GPR;
+		hctx.hart	 = this;
+		hctx.mmio	 = mmio;
+		hctx.memsize = memsize;
+		hctx.ram	 = (mmap && mmap->get_ram_direct()) ? mmap->get_ram_direct()->get_data() : nullptr;
+#endif
 	}
 
 	ExecReturn Hart::single_inst(InstructionCache& cache)
@@ -273,6 +285,10 @@ namespace rv64vm::runner
 				{
 					satp.raw = val;
 					mmu.tlb.flush_all();
+#ifdef USE_JIT
+					if(jctx)
+						jctx->invalidate_all();
+#endif
 				}
 				break;
 			}

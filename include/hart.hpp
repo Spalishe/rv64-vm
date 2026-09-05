@@ -16,6 +16,7 @@ Copyright 2026 Spalishe
 */
 #pragma once
 
+#include "block_cache.hpp"
 #include "decode.hpp"
 #include "defines/csr.hpp"
 #include "defines/traps.hpp"
@@ -23,7 +24,13 @@ Copyright 2026 Spalishe
 #include "mmio.hpp"
 #include "mmu.hpp"
 #include "structs/timecmp_st.hpp"
-#include "block_cache.hpp"
+#ifdef USE_JIT
+#include "jit/rvjit_ctx.hpp"
+namespace rv64vm::jit
+{
+	class JIT_Context;
+}
+#endif
 #include <cstdint>
 #include <sys/types.h>
 namespace rv64vm::runner
@@ -127,6 +134,11 @@ namespace rv64vm::runner
 		uint64_t instret;
 		uint64_t ctime;
 		bool WFI = false;
+#ifdef USE_JIT
+		// Native JIT state (set up by Machine; used by run_blocks).
+		jit::JIT_HartContext hctx{};
+		jit::JIT_Context* jctx = nullptr;
+#endif
 
 		/**
 		 * @brief Returns CPU Effective mode for a specific memory access
@@ -248,6 +260,9 @@ namespace rv64vm::runner
 		Block* compile_block(BlockCache& bc, uint64_t start_phys);
 
 		friend class Machine;
+#ifdef USE_JIT
+		friend class jit::JIT_Context;
+#endif
 	};
 }
 

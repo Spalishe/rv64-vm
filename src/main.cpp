@@ -22,9 +22,12 @@ Copyright 2026 Spalishe
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <unistd.h>
 
+#ifdef USE_FRAMEBUFFER
 #include "../include/gui/wayland/wayland.hpp"
 #include "../include/gui/x11.hpp"
+#endif
 
 #include "../include/rv64-vm.hpp"
 

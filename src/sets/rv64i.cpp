@@ -17,6 +17,9 @@ Copyright 2026 Spalishe
 
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
+#ifdef USE_JIT
+#include "../../include/jit/rvjit.hpp"
+#endif
 #include <atomic>
 #include <cstddef>
 #include <cstdio>
@@ -579,4 +582,36 @@ void InstructionDecoder::init_rv64i()
 	register_instr("00000000000100000000000001110011", exec_EBREAK);
 
 	register_instr("0000********00000000000000001111", exec_FENCE, imm_I);
+
+#ifdef USE_JIT
+	// Native JIT translators for every ALU register/immediate op above.
+	inst_add->jit_func	 = &jit::jit_ADD;
+	inst_addw->jit_func	 = &jit::jit_ADDW;
+	inst_sub->jit_func	 = &jit::jit_SUB;
+	inst_subw->jit_func	 = &jit::jit_SUBW;
+	inst_xor->jit_func	 = &jit::jit_XOR;
+	inst_or->jit_func	 = &jit::jit_OR;
+	inst_and->jit_func	 = &jit::jit_AND;
+	inst_sll->jit_func	 = &jit::jit_SLL;
+	inst_sllw->jit_func	 = &jit::jit_SLLW;
+	inst_srl->jit_func	 = &jit::jit_SRL;
+	inst_srlw->jit_func	 = &jit::jit_SRLW;
+	inst_sra->jit_func	 = &jit::jit_SRA;
+	inst_sraw->jit_func	 = &jit::jit_SRAW;
+	inst_slt->jit_func	 = &jit::jit_SLT;
+	inst_sltu->jit_func	 = &jit::jit_SLTU;
+	inst_addi->jit_func	 = &jit::jit_ADDI;
+	inst_addiw->jit_func = &jit::jit_ADDIW;
+	inst_xori->jit_func	 = &jit::jit_XORI;
+	inst_ori->jit_func	 = &jit::jit_ORI;
+	inst_andi->jit_func	 = &jit::jit_ANDI;
+	inst_slli->jit_func	 = &jit::jit_SLLI;
+	inst_slliw->jit_func = &jit::jit_SLLIW;
+	inst_srli->jit_func	 = &jit::jit_SRLI;
+	inst_srliw->jit_func = &jit::jit_SRLIW;
+	inst_srai->jit_func	 = &jit::jit_SRAI;
+	inst_sraiw->jit_func = &jit::jit_SRAIW;
+	inst_slti->jit_func	 = &jit::jit_SLTI;
+	inst_sltiu->jit_func = &jit::jit_SLTIU;
+#endif
 }

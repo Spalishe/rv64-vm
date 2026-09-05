@@ -22,6 +22,12 @@ Copyright 2026 Spalishe
 #include "memory_map.hpp"
 #include "mmio.hpp"
 #include "mmu.hpp"
+#ifdef USE_JIT
+namespace rv64vm::jit
+{
+	class JIT_Context;
+}
+#endif
 #include <thread>
 #include <vector>
 
@@ -41,6 +47,9 @@ namespace rv64vm::runner
 		std::string append;
 		std::string dtb_dump_path;
 		bool init_fdt = true;
+#ifdef USE_JIT
+		bool use_jit = true;
+#endif
 	};
 	/**
 	 * @ingroup RV64VM-API
@@ -266,6 +275,10 @@ namespace rv64vm::runner
 		InstructionDecoder* idec = nullptr;
 		fdt_node* fdt			 = nullptr;
 		BlockCache* block_cache	 = nullptr;
+#ifdef USE_JIT
+		jit::JIT_Context* jctx = nullptr;
+
+#endif
 
 		std::vector<Hart> harts;
 		uint16_t dev_tick_time = 0;

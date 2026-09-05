@@ -23,6 +23,9 @@ Copyright 2026 Spalishe
 #include "../include/devices/syscon.hpp"
 #include "../include/devices/uart.hpp"
 #include "../include/devices/virtio_blk.hpp"
+#ifdef USE_JIT
+#include "../include/jit/rvjit.hpp"
+#endif
 
 #include <atomic>
 #include <cstddef>
@@ -44,6 +47,10 @@ namespace rv64vm::runner
 		}
 		init_mmap();
 		block_cache = new BlockCache();
+#ifdef USE_JIT
+		if(config.use_jit)
+			jctx = new jit::JIT_Context();
+#endif
 	};
 	Machine::~Machine()
 	{
@@ -57,6 +64,9 @@ namespace rv64vm::runner
 		if(dtb_file) fclose(dtb_file);
 
 		if(fdt) fdt_node_free(fdt);
+#ifdef USE_JIT
+		delete jctx;
+#endif
 		delete block_cache;
 		delete idec;
 	}
@@ -312,6 +322,9 @@ namespace rv64vm::runner
 			h.mmap	= mmap;
 			h.mmio	= mmio;
 			h.idec	= idec;
+#ifdef USE_JIT
+			h.jctx = jctx;
+#endif
 
 			h.init(dtb_path_in_memory, local_entry_pc);
 		}
@@ -340,6 +353,9 @@ namespace rv64vm::runner
 				destroy_harts();
 				reset_memory();
 				block_cache->clear();
+#ifdef USE_JIT
+				if(jctx) jctx->invalidate_all();
+#endif
 #ifdef USE_GDBSTUB
 				if(gdb) gdb_server.stop();
 #endif
@@ -367,6 +383,9 @@ namespace rv64vm::runner
 					hart.mmap  = mmap;
 					hart.mmio  = mmio;
 					hart.idec  = idec;
+#ifdef USE_JIT
+					hart.jctx = jctx;
+#endif
 
 					hart.init(dtb_path_in_memory, config.entry_pc);
 				}
@@ -515,6 +534,9 @@ namespace rv64vm::runner
 		{
 			destroy_harts();
 			reset_memory();
+#ifdef USE_JIT
+			if(jctx) jctx->invalidate_all();
+#endif
 
 			auto buffer = read_file(bios_file);
 			mmap->load_buffer(0x80000000, buffer.data(), buffer.size() - 1);
@@ -535,6 +557,9 @@ namespace rv64vm::runner
 				hart.mmap  = mmap;
 				hart.mmio  = mmio;
 				hart.idec  = idec;
+#ifdef USE_JIT
+				hart.jctx = jctx;
+#endif
 
 				hart.init(dtb_path_in_memory, config.entry_pc);
 			}

@@ -17,6 +17,11 @@ Copyright 2026 Spalishe
 
 #include "../include/hart.hpp"
 #include "../include/block_cache.hpp"
+#include <cstdlib>
+#include <cstdio>
+#ifdef USE_JIT
+#include "../include/jit/rvjit.hpp"
+#endif
 
 namespace rv64vm::runner
 {
@@ -187,6 +192,35 @@ namespace rv64vm::runner
 				trap(mr.exc_code, mr.tval, false);
 				break;
 			}
+
+#ifdef USE_JIT
+			// Native JIT fast path. Blocks are keyed by the PHYSICAL pc and the
+			// runner re-translates `pc` (VA) before every dispatch, so aliased
+			// VAs and ASID switches are correct by construction. Lookups also
+			// validate the ASID and self-modifying-code epoch per entry.
+			if(jctx != nullptr && (pc & 0x3) == 0) [[likely]]
+			{
+				jit::JITExec jj = jctx->lookup(phys, satp.fields.asid);
+				if(jj.fn == nullptr && jctx->hot_tick(phys))
+					jj = jctx->compile(*this, pc, phys);
+				if(jj.fn != nullptr)
+				{
+					const uint64_t prev_instret = instret;
+					hctx.entry_pc = pc;
+					jj.fn(&hctx);
+					pc			   = hctx.exit_pc;
+					instret			+= jj.count;
+					cycle			+= jj.count;
+					total			+= jj.count;
+					if((prev_instret & 0x2FFF) + jj.count >= 0x3000) [[unlikely]]
+					{
+						if((ip.raw & ie.raw) != 0 && check_ints())
+							break;
+					}
+					continue;
+				}
+			}
+#endif
 
 			Block* b = bc.lookup(phys);
 			if(b == nullptr)

@@ -15,24 +15,22 @@ Copyright 2026 Spalishe
 
 */
 
-#include "../../include/decode.hpp"
-#include "../../include/hart.hpp"
-#ifdef USE_JIT
-#include "../../include/jit/rvjit.hpp"
-#endif
+#pragma once
 
-using namespace rv64vm::runner;
-ExecReturn exec_FENCE_I(Hart& hart, InstructionData& inst)
+/*
+ * Lightweight forward declarations so decode.hpp can hold the jit_func
+ * member without pulling in the whole JIT implementation.
+ */
+namespace rv64vm::jit
 {
-	hart.clear_decode_cache();
-#ifdef USE_JIT
-	if(hart.jctx) // guest guarantees instruction-fetch sync -> drop all compiled code
-		hart.jctx->invalidate_all();
-#endif
-	return { true, false, 4, 0, 0 };
+	struct JIT_Block;
+	struct JIT_Emitter;
 }
 
-void InstructionDecoder::init_zifencei()
+namespace rv64vm::runner
 {
-	register_instr("*****************001*****0001111", exec_FENCE_I);
+	class Hart;
+	struct InstructionData;
+
+	using JITFunc = bool (*)(Hart&, InstructionData&, jit::JIT_Block&, jit::JIT_Emitter&);
 }

@@ -19,4 +19,4 @@ docs/wiki
 node_modules/
 package-lock.json
 package.json
-.opencode.json
+unused/

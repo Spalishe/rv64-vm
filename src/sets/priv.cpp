@@ -17,6 +17,9 @@ Copyright 2026 Spalishe
 
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
+#ifdef USE_JIT
+#include "../../include/jit/rvjit.hpp"
+#endif
 
 using namespace rv64vm::runner;
 using PrivilegeMode = Hart::PrivilegeMode;
@@ -95,6 +98,12 @@ ExecReturn exec_SFENCE_VMA(Hart& hart, InstructionData& inst)
 		tlb.flush_addr(hart.GPR[inst.rs1]);
 	else
 		tlb.flush_addr_asid(hart.GPR[inst.rs1], (uint16_t)hart.GPR[inst.rs2]);
+#ifdef USE_JIT
+	// Address-based flush may not cover a JIT block's full VA range, so
+	// conservatively drop all compiled code on any SFENCE.VMA.
+	if(hart.jctx)
+		hart.jctx->invalidate_all();
+#endif
 	return { true, false, 4, 0, 0 };
 }
 ExecReturn exec_WFI(Hart& hart, InstructionData& inst)

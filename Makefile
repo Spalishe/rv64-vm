@@ -135,6 +135,9 @@ OBJ_DIR_BIN := $(BUILD_DIR)/obj/bin/
 OBJ_DIR_SO := $(BUILD_DIR)/obj/so/
 OBJ_DIR_A := $(BUILD_DIR)/obj/a/
 SRCS := $(shell find src -name '*.cpp')
+ifeq ($(USE_FRAMEBUFFER),0)
+SRCS := $(filter-out src/misc/xdg-shell-protocol.cpp src/devices/framebuffer.cpp, $(SRCS))
+endif
 SRCS_LIB := $(filter-out src/main.cpp src/argparser.cpp, $(SRCS))
 OBJS_BIN := $(patsubst src/%.cpp,$(OBJ_DIR_BIN)/%.o,$(SRCS))
 OBJS_SO := $(patsubst src/%.cpp,$(OBJ_DIR_SO)/%.o,$(SRCS_LIB))

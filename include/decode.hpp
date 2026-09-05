@@ -18,6 +18,9 @@ Copyright 2026 Spalishe
 #pragma once
 #include "defines/traps.hpp"
 #include "self_mod.hpp"
+#ifdef USE_JIT
+#include "jit/rvjit_fwd.hpp"
+#endif
 #include <cstdint>
 #include <immintrin.h>
 #include <string>
@@ -190,6 +193,10 @@ namespace rv64vm::runner
 		ExecReturn (*func)(Hart& h, InstructionData& data);
 		uint64_t (*imm_decode_func)(uint32_t inst);
 		uint8_t size = 4;
+#ifdef USE_JIT
+		// Native JIT translator, nullptr means "interpret this instruction".
+		JITFunc jit_func = nullptr;
+#endif
 	};
 
 	struct InstructionCache
@@ -198,7 +205,7 @@ namespace rv64vm::runner
 		const Instruction* inst;
 		InstructionData data;
 		uint64_t cache_gen = 0;
-		uint64_t smc_gen	  = 0;
+		uint64_t smc_gen   = 0;
 	};
 
 	struct CacheSet
