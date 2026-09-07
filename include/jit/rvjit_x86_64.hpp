@@ -18,26 +18,14 @@ Copyright 2026 Spalishe
 #pragma once
 
 /*
- * x86-64 host code emitter (the "architecture dependent" layer of the JIT).
- *
- * This file knows nothing about RISC-V: it only knows how to produce
- * x86-64 machine code into a CodeBuf. Guest ISA translation lives in
- * src/jit/isa/ and calls these primitives through JIT_Emitter.
- *
- * The generated functions are leaf functions (they never call host code),
- * so the only registers that must be preserved across the call are the
- * callee-saved ones we pin (R12/R13), plus RBP for the frame set up by
- * emit_prologue(); the prologue saves/restores all of them inside a
- * dedicated rbp frame so the pushes never touch the caller's red zone.
- *
- *  ABI / pinning:
- *    RDI   = JIT_HartContext* on entry   (moved to R12 by the prologue)
- *    R12   = pinned context pointer
- *    R13   = pinned &hart.GPR[0] pointer
- *    RCX   = temporary (shift counts, operand copies)
- *    RAX,RDX,RSI,RDI,R8-R11 = allocatable guest register cache
- *
- * Register numbers are the raw x86-64 encoding values (RAX=0 .. R15=15).
+ * x86-64 host code emitter, independent of RISC-V: produces machine code
+ * into a CodeBuf. Register pinning / ABI:
+ *   RDI = JIT_HartContext* on entry (moved to R12 by the prologue)
+ *   R12 = pinned context pointer
+ *   R13 = pinned &hart.GPR[0]
+ *   RCX = temporary (shift counts, operand copies)
+ *   RAX,RDX,RSI,RDI,R8-R11 = allocator pool
+ * Register numbers are the raw x86-64 encodings (RAX=0 .. R15=15).
  */
 #include "rvjit_cfg.hpp"
 #include <cstddef>
@@ -72,14 +60,11 @@ namespace rv64vm::jit::x86
 		REG_R8, REG_R9, REG_R10, REG_R11
 	};
 
-	// Context field offsets the generated code needs.
-	constexpr uint16_t CTX_OFF_REGS	 = 0;  // offsetof(JIT_HartContext, regs)
-	constexpr uint16_t CTX_OFF_ENTRY = 32; // offsetof(JIT_HartContext, entry_pc)
-	constexpr uint16_t CTX_OFF_EXIT	 = 40; // offsetof(JIT_HartContext, exit_pc)
+	// Context field offsets the generated code addresses.
+	constexpr uint16_t CTX_OFF_REGS	 = 0;
+	constexpr uint16_t CTX_OFF_ENTRY = 32;
+	constexpr uint16_t CTX_OFF_EXIT	 = 40;
 
-	// ------------------------------------------------------------------
-	// Byte buffer
-	// ------------------------------------------------------------------
 	struct CodeBuf
 	{
 		uint8_t bytes[RVJIT_FUNC_SIZE];
@@ -104,45 +89,38 @@ namespace rv64vm::jit::x86
 		}
 	};
 
-	// ------------------------------------------------------------------
-	// Low level encoders
-	// ------------------------------------------------------------------
 	inline void rex(CodeBuf& cb, bool w, bool r, bool x, bool b)
 	{
 		cb.b(0x40 | (w ? 8 : 0) | (r ? 4 : 0) | (x ? 2 : 0) | (b ? 1 : 0));
 	}
-	// modrm with register/direct operand (mod=11)
+
+	// mod=11 register/direct operand.
 	inline void modrm_reg(CodeBuf& cb, uint8_t regfield, uint8_t rm)
 	{
 		cb.b(0xC0 | ((regfield & 7) << 3) | (rm & 7));
 	}
-	// [base + disp32] memory operand (mod=10); emits SIB when base needs it.
+
+	// mod=10 memory operand; RSP/R12 need a mandatory SIB.
 	inline void modrm_mem(CodeBuf& cb, uint8_t regfield, uint8_t base, int32_t disp)
 	{
 		cb.b(0x80 | ((regfield & 7) << 3) | (base & 7));
-		if((base & 7) == 0x4) // RSP/R12 need a mandatory SIB
+		if((base & 7) == 0x4)
 			cb.b(0x24);
 		cb.dw((uint32_t)disp);
 	}
 
-	// ------------------------------------------------------------------
-	// Data movement
-	// ------------------------------------------------------------------
-	// mov r64, r64
 	inline void mov_rr(CodeBuf& cb, uint8_t dst, uint8_t src)
 	{
 		rex(cb, true, src >= 8, false, dst >= 8);
 		cb.b(0x89);
 		modrm_reg(cb, src, dst);
 	}
-	// mov r64, [base + disp]  (load)
 	inline void mov_mr(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
 	{
 		rex(cb, true, dst >= 8, false, base >= 8);
 		cb.b(0x8B);
 		modrm_mem(cb, dst, base, disp);
 	}
-	// mov [base + disp], r64  (store)
 	inline void mov_rm(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t src)
 	{
 		rex(cb, true, src >= 8, false, base >= 8);
@@ -157,14 +135,12 @@ namespace rv64vm::jit::x86
 		modrm_reg(cb, 0, dst);
 		cb.dw((uint32_t)imm);
 	}
-	// mov r64, imm64
 	inline void mov_imm64(CodeBuf& cb, uint8_t dst, uint64_t imm)
 	{
 		rex(cb, true, false, false, dst >= 8);
 		cb.b(0xB8 | (dst & 7));
 		cb.qw(imm);
 	}
-	// movzx r64, r8 (zero extend low byte)
 	inline void movzx_r64_r8(CodeBuf& cb, uint8_t dst, uint8_t src)
 	{
 		rex(cb, true, dst >= 8, false, src >= 8);
@@ -172,15 +148,14 @@ namespace rv64vm::jit::x86
 		cb.b(0xB6);
 		modrm_reg(cb, dst, src);
 	}
-	// movzx ecx, r8   (load low byte of any GP reg into CL)
+	// REX grants SIL/DIL/R8L..R11L access.
 	inline void movzx_ecx_r8(CodeBuf& cb, uint8_t src)
 	{
-		rex(cb, false, false, false, src >= 8); // REX grants sil/dil access
+		rex(cb, false, false, false, src >= 8);
 		cb.b(0x0F);
 		cb.b(0xB6);
 		modrm_reg(cb, REG_RCX, src);
 	}
-	// movsxd r64, r32 (sign extend)
 	inline void movsxd(CodeBuf& cb, uint8_t dst, uint8_t src)
 	{
 		rex(cb, true, dst >= 8, false, src >= 8);
@@ -202,10 +177,7 @@ namespace rv64vm::jit::x86
 		cb.b(0xC3);
 	}
 
-	// ------------------------------------------------------------------
-	// Arithmetic on destination register
-	//   regfield: 0=add 1=or 4=and 5=sub 6=xor 7=cmp
-	// ------------------------------------------------------------------
+	// Arithmetic on a destination register; regfield: 0=add 1=or 4=and 5=sub 6=xor 7=cmp.
 	inline void arith_rr64(CodeBuf& cb, uint8_t regfield, uint8_t dst, uint8_t src)
 	{
 		rex(cb, true, src >= 8, false, dst >= 8);
@@ -232,7 +204,6 @@ namespace rv64vm::jit::x86
 		modrm_reg(cb, regfield, dst);
 		cb.dw((uint32_t)imm);
 	}
-	// Update(rval)
 	inline void add_rr(CodeBuf& cb, uint8_t dst, uint8_t src)
 	{
 		arith_rr64(cb, 0, dst, src);
@@ -302,7 +273,6 @@ namespace rv64vm::jit::x86
 		arith_imm32(cb, 0, dst, imm);
 	}
 
-	// neg
 	inline void neg64(CodeBuf& cb, uint8_t dst)
 	{
 		rex(cb, true, false, false, dst >= 8);
@@ -316,9 +286,7 @@ namespace rv64vm::jit::x86
 		modrm_reg(cb, 3, dst);
 	}
 
-	// ------------------------------------------------------------------
-	// Shifts: regfield 4=shl 5=shr 7=sar
-	// ------------------------------------------------------------------
+	// Shifts; regfield: 4=shl 5=shr 7=sar.
 	inline void shift_r64_imm(CodeBuf& cb, uint8_t regfield, uint8_t dst, uint8_t imm)
 	{
 		rex(cb, true, false, false, dst >= 8);
@@ -346,15 +314,11 @@ namespace rv64vm::jit::x86
 		modrm_reg(cb, regfield, dst);
 	}
 
-	// ------------------------------------------------------------------
-	// Set-on-condition: writes dst's low byte (dst must be a GP register)
-	//   cc byte: 0x92=setb 0x9C=setl 0x94=sete
-	// A REX prefix is mandatory to address SIL/DIL/R8L..R11L, so always
-	// emit one (harmless for AL/DL).
-	// ------------------------------------------------------------------
+	// Set-on-condition; writes dst's low byte. cc: 0x92=setb 0x9C=setl 0x94=sete.
+	// A REX prefix is always emitted (mandatory for SIL/DIL/R8L..R11L).
 	inline void setcc(CodeBuf& cb, uint8_t cc, uint8_t dst)
 	{
-		rex(cb, false, false, false, dst >= 8); // REX enables sil/dil access
+		rex(cb, false, false, false, dst >= 8);
 		cb.b(0x0F);
 		cb.b(cc);
 		modrm_reg(cb, 0, dst);

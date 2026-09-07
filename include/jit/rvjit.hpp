@@ -34,24 +34,20 @@ namespace rv64vm::runner
 
 namespace rv64vm::jit
 {
-	// Executable entry point of a compiled block.
 	using JITCompiledFunc = void (*)(JIT_HartContext*);
 
-	// Code arenas
 	inline constexpr size_t JIT_ARENA_BYTES = RVJIT_ARENA_PAGES * 4096;
 
 	// Result of a JIT dispatch attempt.
 	struct JITExec
 	{
 		JITCompiledFunc fn = nullptr; // nullptr => interpreter fallback
-		uint32_t count	   = 0;		  // guest instructions the block runs
+		uint32_t count	   = 0;
 	};
 
-	// The JIT engine: owns compiled code arenas + the physical-pc cache.
 	class JIT_Context
 	{
 	  public:
-		// Hash index from a physical pc (low 20 bits of pc>>2).
 		static constexpr uint64_t JIT_CACHE_SIZE = 1 << 18;
 
 		JIT_Context() : cache(JIT_CACHE_SIZE), giveup(JIT_CACHE_SIZE) {}
@@ -60,20 +56,17 @@ namespace rv64vm::jit
 		JIT_Context(const JIT_Context&)			   = delete;
 		JIT_Context& operator=(const JIT_Context&) = delete;
 
-		// Compiles `va_pc` (current guest pc) -> phys_pc and returns a block
-		// suitable for immediate execution. Falls back to {nullptr,0} when the
-		// stream is not JIT-able.
+		// Compiles the current guest pc and returns a block ready for
+		// execution; {nullptr,0} when the stream is not JIT-able.
 		JITExec compile(runner::Hart& h, uint64_t va_pc, uint64_t phys_pc);
 
 		// Cache lookup with ASID + SMC-epoch validation.
 		JITExec lookup(uint64_t phys_pc, uint64_t asid);
 
-		// Hotness gate: bumps the per-slot counter and reports whether the
-		// block should be compiled on this dispatch. Cheap: one aligned
-		// fetch_add on the same slot the caller just looked up.
+		// Hotness gate: triggers compilation after RVJIT_HOT_THRESHOLD dispatches.
 		bool hot_tick(uint64_t phys_pc);
 
-		// CPUID: reset cache + throw away all compiled code.
+		// Flush the cache and drop all compiled code.
 		void invalidate_all();
 
 	  private:
@@ -83,13 +76,13 @@ namespace rv64vm::jit
 			uint64_t start_phys		  = 0;
 			uint64_t asid			  = 0;
 			uint64_t smc_epoch		  = 0;
-			std::atomic<uint32_t> hot = 0; // uncompiled dispatch counter
+			std::atomic<uint32_t> hot = 0; // dispatch counter before compiling
 			uint32_t count			  = 0;
 			bool valid				  = false;
 		};
 
-		// Per-slot "compiling this pc is pointless" marker. Kept out of
-		// CachedBlock so a give-up never clobbers a live block's identity.
+		// Per-slot "compiling this pc is pointless" marker, kept separate
+		// from CachedBlock so a give-up never clobbers a live block.
 		struct GiveUpSlot
 		{
 			uint64_t phys = 0;

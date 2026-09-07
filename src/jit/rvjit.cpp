@@ -84,7 +84,7 @@ namespace rv64vm::jit
 		if(fast.fn != nullptr)
 			return fast;
 
-		// ---- decode the guest stream into straight-line ALU ops ----------
+		// Decode the guest stream into a straight-line ALU block
 		JIT_Block blk;
 		blk.start_phys = phys_pc;
 		JIT_Emitter em(&blk);
@@ -117,10 +117,8 @@ namespace rv64vm::jit
 			{
 				break; // not JIT-able (control/mem/system/fence)
 			}
-			// jit_func always emits this guest instruction into the buffer
-			// before returning, so it must be counted even when the function
-			// reports that the buffer is nearly exhausted (a false return
-			// only means "stop the block right after me").
+			// jit_func always emits before returning; count it even when it
+			// reports buffer exhaustion (keep==false just ends the block).
 			const bool keep = cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em);
 			count++;
 			pc_va += 4;
@@ -130,8 +128,7 @@ namespace rv64vm::jit
 
 		if(count < RVJIT_MIN_INSTRUCTIONS)
 		{
-			// The block starts on a non-JIT-able instruction; remember that so
-			// hot_tick() stops asking us to recompile it on every dispatch.
+			// Not a JIT-able starter; make hot_tick() stop retrying it.
 			GiveUpSlot& g = giveup[index_of(phys_pc)];
 			g.phys		  = phys_pc;
 			g.skip		  = true;
@@ -144,7 +141,7 @@ namespace rv64vm::jit
 		blk.asid		= h.satp.fields.asid;
 		blk.smc_epoch	= g_smc_epoch.load();
 
-		// ---- materialize into an executable (writable) arena -------------
+		// Materialize into an executable (writable) arena
 		uint8_t* dst = arena_alloc(blk.code.pos);
 		if(dst == nullptr)
 			return {};

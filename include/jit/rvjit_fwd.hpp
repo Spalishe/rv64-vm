@@ -18,8 +18,8 @@ Copyright 2026 Spalishe
 #pragma once
 
 /*
- * Lightweight forward declarations so decode.hpp can hold the jit_func
- * member without pulling in the whole JIT implementation.
+ * Forward declarations so decode.hpp can hold the jit_func member without
+ * pulling in the whole JIT implementation.
  */
 namespace rv64vm::jit
 {

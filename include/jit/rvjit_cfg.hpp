@@ -25,12 +25,10 @@ namespace rv64vm::jit
 	inline constexpr size_t RVJIT_FUNC_SIZE		   = 0x1000; // host code bytes per block
 	inline constexpr size_t RVJIT_ARENA_PAGES	   = 0x400;	 // host pages per code arena
 	inline constexpr size_t RVJIT_MAX_CACHE_BYTES  = 64 * 1024 * 1024;
-	// encode() may briefly produce more bytes than the guest instruction
-	// semantically needs; stay this far away from the buffer edge.
-	inline constexpr size_t RVJIT_FUNC_MARGIN	   = 256;
+	// encode() may briefly overproduce bytes; this much margin keeps us off the buffer edge.
+	inline constexpr size_t RVJIT_FUNC_MARGIN = 256;
 
-	// A block must be dispatched this many times before the compiler fires.
-	// Cold (once-run) boot code stays in the interpreter, so codegen cost is
-	// only ever paid for loops that will actually amortize it.
+	// Compile a block only after this many dispatches, so codegen cost is
+	// paid only for code that actually gets reused.
 	inline constexpr size_t RVJIT_HOT_THRESHOLD = 2;
 }

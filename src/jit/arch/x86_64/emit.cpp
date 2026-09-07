@@ -16,9 +16,7 @@ Copyright 2026 Spalishe
 */
 
 /*
- * x86-64 implementation of the block emitter / register allocator declared
- * in include/jit/rvjit_emit.hpp. All the host instruction encoding happens
- * here through the x86:: primitives from rvjit_x86_64.hpp.
+ * x86-64 implementation of JIT_Emitter (declared in rvjit_emit.hpp).
  */
 #include "../../../../include/jit/rvjit_emit.hpp"
 
@@ -128,9 +126,7 @@ namespace rv64vm::jit
 
 	void JIT_Emitter::emit_prologue()
 	{
-		// Establish a real frame: the pushes below must never touch the
-		// caller's red-zone/locals (they used to, corrupting whatever the
-		// runner kept just below rsp). rbp isolates everything we push.
+		// rbp frame keeps our pushes out of the caller's red zone.
 		x86::push_r(code(), x86::REG_RBP);
 		x86::mov_rr(code(), x86::REG_RBP, x86::REG_RSP);
 		x86::push_r(code(), x86::REG_R13);
@@ -314,9 +310,7 @@ namespace rv64vm::jit
 				}
 				else
 				{
-					// Save the shift count FIRST: when D aliases S2
-					// (rd == rs2), moving S1 into D below would
-					// overwrite the count before it reaches REG_TMP.
+					// D may alias S2 (rd == rs2): save the count before S1 clobbers it.
 					x86::mov_rr(code(), x86::REG_TMP, S2);
 					if(D != S1) x86::mov_rr(code(), D, S1);
 					if(wVariant)
@@ -336,7 +330,6 @@ namespace rv64vm::jit
 				}
 				else if(!r1)
 				{
-					// 0 <? S2
 					if(D == S2)
 					{
 						x86::xor_rr(code(), x86::REG_TMP, x86::REG_TMP);
@@ -355,7 +348,6 @@ namespace rv64vm::jit
 				}
 				else if(!r2)
 				{
-					// S1 <? 0
 					if(D == S1)
 					{
 						x86::xor_rr(code(), x86::REG_TMP, x86::REG_TMP);
@@ -393,7 +385,7 @@ namespace rv64vm::jit
 		uint8_t D	   = hreg_for_write(dstReg, src1Reg, 0xFFFFFFFFu);
 		switch(op)
 		{
-			case ALUOp::ADD: // ADDI
+			case ALUOp::ADD:
 				if(!r1)
 					x86::mov_imm32(code(), D, (int32_t)imm);
 				else if(D == S1)

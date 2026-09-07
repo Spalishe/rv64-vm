@@ -16,16 +16,9 @@ Copyright 2026 Spalishe
 */
 
 /*
- * RV64I ALU register/immediate translators.
- *
- * Semantics mirror src/sets/rv64i.cpp exactly:
- *  - 64-bit ops: full-width GPR arithmetic, shifts use rs2 & 0x3f.
- *  - W variants: 32-bit wrap and sign-extension to 64 bits.
- *  - x0 writes are dropped (spec).
- *
- * Each function returns true when the block may keep compiling past this
- * instruction and false when the block must stop right after it (buffer
- * nearly exhausted).
+ * RV64I ALU register/immediate translators (semantics mirror src/sets/rv64i.cpp;
+ * x0 writes are dropped). Each returns true when the block may keep compiling
+ * past this instruction, false when it must stop right after it.
  */
 #include "../../../../include/decode.hpp"
 #include "../../../../include/jit/rvjit.hpp"
@@ -36,17 +29,17 @@ namespace rv64vm::jit
 {
 	using namespace rv64vm::runner;
 
-	static inline bool alu_r(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, ALUOp op, bool w)
+	bool alu_r(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, ALUOp op, bool w)
 	{
 		if(d.rd == 0)
-			return !em.eof(); // x0 writes are dropped
+			return !em.eof();
 		em.emit_r_to(d.rd, d.rs1, d.rs2, op, w);
 		return !em.eof();
 	}
 	static inline bool alu_i(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, ALUOp op, bool w)
 	{
 		if(d.rd == 0)
-			return !em.eof(); // x0 writes are dropped
+			return !em.eof();
 		em.emit_i_to(d.rd, d.rs1, (int64_t)d.imm, op, w);
 		return !em.eof();
 	}

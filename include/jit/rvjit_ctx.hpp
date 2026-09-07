@@ -26,24 +26,22 @@ namespace rv64vm::runner
 }
 
 /*
- * Guest state layout shared between the C++ runner (builds/fills it) and
- * the machine code (addressed by fixed offsets from the context pointer).
- *
- * Keep the field order; generated code relies on these offsets.
+ * Guest state layout shared with the generated code, which addresses these
+ * fields by fixed offsets — keep the field order.
  */
 namespace rv64vm::jit
 {
 	struct JIT_HartContext
 	{
-		uint64_t* regs;		// +0  -> hart.GPR[0]
-		uint8_t* ram;		// +8  -> host pointer to guest 0x80000000
-		runner::MMIO* mmio; // +16
-		uint64_t memsize;	// +24
-		uint64_t entry_pc;	// +32 set by the runner before the call
-		uint64_t exit_pc;	// +40 written by the block epilogue
-		runner::Hart* hart; // +48
-		int32_t loop_count; // +56
-		int32_t reserved;	// +60
+		uint64_t* regs;		// &hart.GPR[0]
+		uint8_t* ram;		// host pointer to guest 0x80000000
+		runner::MMIO* mmio;
+		uint64_t memsize;
+		uint64_t entry_pc; // set by the runner before the call
+		uint64_t exit_pc;	// written by the block epilogue
+		runner::Hart* hart;
+		int32_t loop_count;
+		int32_t reserved;
 	};
 
 	static_assert(offsetof(JIT_HartContext, regs) == 0);
