@@ -117,12 +117,15 @@ namespace rv64vm::jit
 			{
 				break; // not JIT-able (control/mem/system/fence)
 			}
-			if(!cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em))
-			{
-				break; // compiled, but the block ends after it
-			}
+			// jit_func always emits this guest instruction into the buffer
+			// before returning, so it must be counted even when the function
+			// reports that the buffer is nearly exhausted (a false return
+			// only means "stop the block right after me").
+			const bool keep = cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em);
 			count++;
 			pc_va += 4;
+			if(!keep)
+				break; // compiled, but the block ends after it
 		}
 
 		if(count < RVJIT_MIN_INSTRUCTIONS)

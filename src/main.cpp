@@ -21,8 +21,8 @@ Copyright 2026 Spalishe
 #include <exception>
 #include <iostream>
 #include <string>
-#include <unordered_map>
 #include <unistd.h>
+#include <unordered_map>
 
 #ifdef USE_FRAMEBUFFER
 #include "../include/gui/wayland/wayland.hpp"
@@ -105,6 +105,7 @@ void cleanup_terminal()
 	tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
 }
 
+#ifdef USE_GDBSTUB
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <random>
@@ -153,6 +154,7 @@ int get_random_port()
 	close(sock);
 	return -1; // Failed to find any available port
 }
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -180,6 +182,9 @@ int main(int argc, char* argv[])
 #ifdef USE_FRAMEBUFFER
 	auto fb_var
 		= parser.add<arp::str>("--framebuffer", "Enables framebuffer with defined size (F.e. 640x480)", arp::norequired, arp::nopos, "-fb");
+#endif
+#ifdef USE_JIT
+	auto nojit_var = parser.add<arp::def>("--nojit", "Disables JIT compiler", arp::norequired, arp::nopos);
 #endif
 
 	parser.parse();
@@ -238,6 +243,9 @@ int main(int argc, char* argv[])
 	cfg.hart_count					  = harts;
 	cfg.MMUMode						  = rv64vm::runner::MMU::SatpMode::Sv39;
 	cfg.memory_size					  = memsize;
+#ifdef USE_JIT
+	cfg.use_jit = !nojit_var->defined();
+#endif
 
 	rv64vm::runner::Machine machine = rv64vm::runner::Machine(cfg);
 
