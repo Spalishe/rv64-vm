@@ -17,6 +17,9 @@ Copyright 2026 Spalishe
 
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
+#ifdef USE_JIT
+#include "../../include/jit/rvjit.hpp"
+#endif
 
 #include <limits>
 using namespace rv64vm::runner;
@@ -185,17 +188,33 @@ ExecReturn exec_REMU(Hart& hart, InstructionData& inst)
 
 void InstructionDecoder::init_rv64m()
 {
-	register_instr("0000001**********000*****0110011", exec_MUL);
-	register_instr("0000001**********000*****0111011", exec_MULW);
-	register_instr("0000001**********001*****0110011", exec_MULH);
-	register_instr("0000001**********010*****0110011", exec_MULHSU);
-	register_instr("0000001**********011*****0110011", exec_MULHU);
-	register_instr("0000001**********100*****0110011", exec_DIV);
-	register_instr("0000001**********101*****0110011", exec_DIVU);
-	register_instr("0000001**********101*****0111011", exec_DIVUW);
-	register_instr("0000001**********100*****0111011", exec_DIVW);
-	register_instr("0000001**********110*****0110011", exec_REM);
-	register_instr("0000001**********111*****0110011", exec_REMU);
-	register_instr("0000001**********111*****0111011", exec_REMUW);
-	register_instr("0000001**********110*****0111011", exec_REMW);
+	auto inst_mul   = register_instr("0000001**********000*****0110011", exec_MUL);
+	auto inst_mulw  = register_instr("0000001**********000*****0111011", exec_MULW);
+	auto inst_mulh  = register_instr("0000001**********001*****0110011", exec_MULH);
+	auto inst_mulhsu = register_instr("0000001**********010*****0110011", exec_MULHSU);
+	auto inst_mulhu = register_instr("0000001**********011*****0110011", exec_MULHU);
+	auto inst_div   = register_instr("0000001**********100*****0110011", exec_DIV);
+	auto inst_divu  = register_instr("0000001**********101*****0110011", exec_DIVU);
+	auto inst_divuw = register_instr("0000001**********101*****0111011", exec_DIVUW);
+	auto inst_divw  = register_instr("0000001**********100*****0111011", exec_DIVW);
+	auto inst_rem   = register_instr("0000001**********110*****0110011", exec_REM);
+	auto inst_remu  = register_instr("0000001**********111*****0110011", exec_REMU);
+	auto inst_remuw = register_instr("0000001**********111*****0111011", exec_REMUW);
+	auto inst_remw  = register_instr("0000001**********110*****0111011", exec_REMW);
+
+#ifdef USE_JIT
+	inst_mul->jit_func	  = &jit::jit_MUL;
+	inst_mulw->jit_func	 = &jit::jit_MULW;
+	inst_mulh->jit_func	 = &jit::jit_MULH;
+	inst_mulhsu->jit_func = &jit::jit_MULHSU;
+	inst_mulhu->jit_func	 = &jit::jit_MULHU;
+	inst_div->jit_func	  = &jit::jit_DIV;
+	inst_divu->jit_func	 = &jit::jit_DIVU;
+	inst_divuw->jit_func = &jit::jit_DIVUW;
+	inst_divw->jit_func	 = &jit::jit_DIVW;
+	inst_rem->jit_func	  = &jit::jit_REM;
+	inst_remu->jit_func	 = &jit::jit_REMU;
+	inst_remuw->jit_func = &jit::jit_REMUW;
+	inst_remw->jit_func	 = &jit::jit_REMW;
+#endif
 }

@@ -23,8 +23,9 @@ Copyright 2026 Spalishe
  *   RDI = JIT_HartContext* on entry (moved to R12 by the prologue)
  *   R12 = pinned context pointer
  *   R13 = pinned &hart.GPR[0]
- *   RCX = temporary (shift counts, operand copies)
- *   RAX,RDX,RSI,RDI,R8-R11 = allocator pool
+ *   RAX,RDX = M-extension multiply/divide accumulator pair (scratch)
+ *   RCX = temporary (shift counts, operand copies, divisors)
+ *   RSI,RDI,R8-R11 = allocator pool
  * Register numbers are the raw x86-64 encodings (RAX=0 .. R15=15).
  */
 #include "rvjit_cfg.hpp"
@@ -52,11 +53,13 @@ namespace rv64vm::jit::x86
 	constexpr uint8_t REG_CTX  = REG_R12;
 	constexpr uint8_t REG_REGS = REG_R13;
 	constexpr uint8_t REG_TMP  = REG_RCX;
+	constexpr uint8_t REG_ACC0 = REG_RAX; // mul/div supported dividend / multiplicand
+	constexpr uint8_t REG_ACC1 = REG_RDX; // mul/div high word / remainder
 
 	// Allocatable guest-register cache.
-	constexpr size_t RVJIT_HOST_REGS						  = 8;
+	constexpr size_t RVJIT_HOST_REGS						  = 6;
 	inline constexpr uint8_t RVJIT_HOST_POOL[RVJIT_HOST_REGS] = {
-		REG_RAX, REG_RDX, REG_RSI, REG_RDI,
+		REG_RSI, REG_RDI,
 		REG_R8, REG_R9, REG_R10, REG_R11
 	};
 
@@ -322,5 +325,104 @@ namespace rv64vm::jit::x86
 		cb.b(0x0F);
 		cb.b(cc);
 		modrm_reg(cb, 0, dst);
+	}
+
+	// mov r32, r32 (zero-extends to r64)
+	inline void mov_rr32(CodeBuf& cb, uint8_t dst, uint8_t src)
+	{
+		rex(cb, false, src >= 8, false, dst >= 8);
+		cb.b(0x89);
+		modrm_reg(cb, src, dst);
+	}
+
+	// MUL: RDX:RAX = RAX * rm (unsigned 128-bit)
+	inline void mul_r(CodeBuf& cb, uint8_t rm)
+	{
+		rex(cb, true, false, false, rm >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 4, rm);
+	}
+	inline void mul_r32(CodeBuf& cb, uint8_t rm)
+	{
+		rex(cb, false, false, false, rm >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 4, rm);
+	}
+	// IMUL: RDX:RAX = RAX * rm (signed 128-bit)
+	inline void imul_r(CodeBuf& cb, uint8_t rm)
+	{
+		rex(cb, true, false, false, rm >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 5, rm);
+	}
+	inline void imul_r32(CodeBuf& cb, uint8_t rm)
+	{
+		rex(cb, false, false, false, rm >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 5, rm);
+	}
+	// imul dst, src: dst = dst * src (low half)
+	inline void imul_rr(CodeBuf& cb, uint8_t dst, uint8_t src)
+	{
+		rex(cb, true, dst >= 8, false, src >= 8);
+		cb.b(0x0F);
+		cb.b(0xAF);
+		modrm_reg(cb, dst, src);
+	}
+	inline void imul_rr32(CodeBuf& cb, uint8_t dst, uint8_t src)
+	{
+		rex(cb, false, dst >= 8, false, src >= 8);
+		cb.b(0x0F);
+		cb.b(0xAF);
+		modrm_reg(cb, dst, src);
+	}
+	// DIV: RAX = RDX:RAX / rm, RDX = remainder (unsigned). Signed = IDIV (/7).
+	inline void div_r(CodeBuf& cb, uint8_t rm)
+	{
+		rex(cb, true, false, false, rm >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 6, rm);
+	}
+	inline void div_r32(CodeBuf& cb, uint8_t rm)
+	{
+		rex(cb, false, false, false, rm >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 6, rm);
+	}
+	inline void idiv_r(CodeBuf& cb, uint8_t rm)
+	{
+		rex(cb, true, false, false, rm >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 7, rm);
+	}
+	inline void idiv_r32(CodeBuf& cb, uint8_t rm)
+	{
+		rex(cb, false, false, false, rm >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 7, rm);
+	}
+	// Sign-extend RAX into RDX: cqo = 64-bit, cdq = 32-bit.
+	inline void cqo(CodeBuf& cb)
+	{
+		rex(cb, true, false, false, false);
+		cb.b(0x99);
+	}
+	inline void cdq(CodeBuf& cb)
+	{
+		cb.b(0x99);
+	}
+
+	// rel8 conditional jump / jump; returns the index of the rel8 byte so the
+	// caller can patch it (see patch_rel8) once the target position is known.
+	inline uint32_t jcc8(CodeBuf& cb, uint8_t opcode)
+	{
+		cb.b(opcode);
+		const uint32_t rel = cb.pos;
+		cb.b(0);
+		return rel;
+	}
+	inline void patch_rel8(CodeBuf& cb, uint32_t rel, uint32_t target)
+	{
+		cb.bytes[rel] = (uint8_t)(target - (rel + 1));
 	}
 }

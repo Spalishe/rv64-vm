@@ -378,6 +378,270 @@ namespace rv64vm::jit
 			x86::movsxd(code(), D, D);
 	}
 
+	void JIT_Emitter::emit_m_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, MOp op, bool wVariant)
+	{
+		const bool r1	 = (src1Reg != 0), r2 = (src2Reg != 0);
+		const bool mulF	 = (op == MOp::MUL || op == MOp::MULH || op == MOp::MULHU || op == MOp::MULHSU);
+		const bool rem	 = (op == MOp::REM || op == MOp::REMU);
+		const bool signed_ = (op == MOp::MULH || op == MOp::MULHSU || op == MOp::DIV || op == MOp::REM);
+		x86::CodeBuf& cb = code();
+
+		// x0 shortcuts: rs2 == 0 wins over rs1 == 0 (matches the interpreter's
+		// DIV-by-zero precedence). The mul/dividend zero cases both yield 0.
+		if(!r2)
+		{
+			if(mulF)
+			{
+				uint8_t D = hreg_for_write(dstReg, src1Reg, 0xFFFFFFFFu);
+				x86::xor_rr(cb, D, D);
+			}
+			else if(!rem)
+			{
+				// DIV by zero: quotient = all ones.
+				uint8_t D = hreg_for_write(dstReg, src1Reg, 0xFFFFFFFFu);
+				x86::mov_imm32(cb, D, -1);
+			}
+			else
+			{
+				// REM by zero: remainder = dividend (REMW: sext(int32 rs1)).
+				uint8_t S1 = hreg_for_read(src1Reg);
+				uint8_t D  = hreg_for_write(dstReg, src1Reg, 0xFFFFFFFFu);
+				if(op == MOp::REM && wVariant)
+				{
+					if(D != S1) x86::mov_rr32(cb, D, S1);
+					x86::movsxd(cb, D, D);
+				}
+				else if(D != S1)
+				{
+					x86::mov_rr(cb, D, S1);
+				}
+			}
+			vr[dstReg].dirty = true;
+			return;
+		}
+		if(!r1 && (mulF || rem))
+		{
+			// 0 * y = 0 and 0 % y = 0 regardless of y's value (y==0 yields
+			// dividend==0, still 0). DIV needs the runtime divisor check, so
+			// it falls through to the general path with a zero dividend.
+			uint8_t D = hreg_for_write(dstReg, src1Reg, 0xFFFFFFFFu);
+			x86::xor_rr(cb, D, D);
+			vr[dstReg].dirty = true;
+			return;
+		}
+
+		// Both operands live: load them first, then allocate the destination
+		// with both sources protected (S1/S2 slots stay valid throughout).
+		uint8_t S1 = hreg_for_read(src1Reg);
+		uint8_t S2 = (src2Reg == src1Reg) ? S1 : hreg_for_read(src2Reg, src1Reg);
+		uint8_t D  = hreg_for_write(dstReg, src1Reg, src2Reg);
+
+		if(op == MOp::MUL)
+		{
+			// Low half of the product (MUL is commutative, so the aliasing
+			// shifts the multiply to whichever operand's slot D shares).
+			if(D == S1)
+			{
+				if(wVariant) { x86::imul_rr32(cb, D, S2); x86::movsxd(cb, D, D); }
+				else x86::imul_rr(cb, D, S2);
+			}
+			else if(D == S2)
+			{
+				if(wVariant) { x86::imul_rr32(cb, D, S1); x86::movsxd(cb, D, D); }
+				else x86::imul_rr(cb, D, S1);
+			}
+			else
+			{
+				if(wVariant)
+				{
+					if(D != S1) x86::mov_rr32(cb, D, S1);
+					x86::imul_rr32(cb, D, S2);
+					x86::movsxd(cb, D, D);
+				}
+				else
+				{
+					if(D != S1) x86::mov_rr(cb, D, S1);
+					x86::imul_rr(cb, D, S2);
+				}
+			}
+			vr[dstReg].dirty = true;
+			return;
+		}
+
+		if(mulF)
+		{
+			// High half via RDX:RAX. S1 is never RAX/RDX/RCX (pool excludes
+			// them), so the moves below cannot clobber a live operand.
+			x86::mov_rr(cb, x86::REG_ACC0, S1);
+			if(op == MOp::MULHSU)
+			{
+				x86::mul_r(cb, S2); // unsigned product; high in RDX
+				// signed(x)*unsigned(y) high = high_un - (x<0 ? y : 0)
+				x86::mov_rr(cb, x86::REG_TMP, S1);
+				x86::shift_r64_imm(cb, 7, x86::REG_TMP, 63);
+				x86::and_rr(cb, x86::REG_TMP, S2);
+				x86::sub_rr(cb, x86::REG_ACC1, x86::REG_TMP);
+			}
+			else
+			{
+				if(op == MOp::MULH)
+					x86::imul_r(cb, S2); // signed 128-bit
+				else
+					x86::mul_r(cb, S2); // unsigned 128-bit
+			}
+			if(D != x86::REG_ACC1)
+				x86::mov_rr(cb, D, x86::REG_ACC1);
+			vr[dstReg].dirty = true;
+			return;
+		}
+
+		// Division / remainder. RAX = dividend, RDX = hi dividend, RCX = divisor.
+		if(wVariant)
+		{
+			if(signed_)
+			{
+				x86::movsxd(cb, x86::REG_TMP, S2);
+				x86::movsxd(cb, x86::REG_ACC0, S1);
+			}
+			else
+			{
+				x86::mov_rr32(cb, x86::REG_TMP, S2);
+				x86::mov_rr32(cb, x86::REG_ACC0, S1);
+			}
+		}
+		else
+		{
+			x86::mov_rr(cb, x86::REG_TMP, S2);
+			x86::mov_rr(cb, x86::REG_ACC0, S1);
+		}
+
+		// RISC-V DIV/REM by zero never faults: quotient = -1, remainder =
+		// dividend. x86 DIV/IDIV would raise #DE, so guard explicitly.
+		x86::or_rr(cb, x86::REG_TMP, x86::REG_TMP);
+		uint32_t fix_nz = x86::jcc8(cb, 0x75); // jne -> real division
+		if(rem)
+		{
+			if(op == MOp::REMU && wVariant)
+			{
+				// REMUW by zero returns the full rs1 value.
+				if(D != S1) x86::mov_rr(cb, D, S1);
+			}
+			else if(op == MOp::REM && wVariant)
+			{
+				x86::mov_rr(cb, D, x86::REG_ACC0); // already sext(int32 rs1)
+			}
+			else if(D != x86::REG_ACC0)
+			{
+				x86::mov_rr(cb, D, x86::REG_ACC0);
+			}
+		}
+		else
+		{
+			x86::mov_imm32(cb, D, -1);
+		}
+		uint32_t fix_done0 = x86::jcc8(cb, 0xEB); // jmp -> done
+
+		const uint32_t label_div = cb.pos;
+		x86::patch_rel8(cb, fix_nz, label_div);
+
+		if(signed_)
+		{
+			// IDIV faults on MIN / -1 too; handle that pair separately.
+			x86::cmp_imm(cb, x86::REG_TMP, -1);
+			uint32_t fix_n1 = x86::jcc8(cb, 0x75); // jne -> idiv
+			if(rem)
+			{
+				x86::xor_rr(cb, D, D);
+			}
+			else
+			{
+				if(wVariant)
+				{
+					x86::neg32(cb, x86::REG_ACC0);
+					x86::movsxd(cb, x86::REG_ACC0, x86::REG_ACC0);
+				}
+				else
+				{
+					x86::neg64(cb, x86::REG_ACC0);
+				}
+				if(D != x86::REG_ACC0)
+					x86::mov_rr(cb, D, x86::REG_ACC0);
+			}
+			uint32_t fix_done1	 = x86::jcc8(cb, 0xEB);
+			const uint32_t label_idiv = cb.pos;
+			x86::patch_rel8(cb, fix_n1, label_idiv);
+
+			if(wVariant)
+			{
+				x86::cdq(cb);
+				x86::idiv_r32(cb, x86::REG_TMP);
+			}
+			else
+			{
+				x86::cqo(cb);
+				x86::idiv_r(cb, x86::REG_TMP);
+			}
+			if(rem)
+			{
+				if(wVariant)
+				{
+					x86::mov_rr32(cb, D, x86::REG_ACC1);
+					x86::movsxd(cb, D, D);
+				}
+				else
+				{
+					if(D != x86::REG_ACC1) x86::mov_rr(cb, D, x86::REG_ACC1);
+				}
+			}
+			else
+			{
+				if(wVariant)
+				{
+					x86::mov_rr32(cb, D, x86::REG_ACC0);
+					x86::movsxd(cb, D, D);
+				}
+				else
+				{
+					if(D != x86::REG_ACC0) x86::mov_rr(cb, D, x86::REG_ACC0);
+				}
+			}
+			x86::patch_rel8(cb, fix_done1, cb.pos);
+			x86::patch_rel8(cb, fix_done0, cb.pos);
+		}
+		else
+		{
+			x86::xor_rr(cb, x86::REG_ACC1, x86::REG_ACC1);
+			if(wVariant)
+			{
+				x86::div_r32(cb, x86::REG_TMP);
+				if(rem)
+				{
+					x86::mov_rr32(cb, D, x86::REG_ACC1);
+					x86::movsxd(cb, D, D);
+				}
+				else
+				{
+					x86::mov_rr32(cb, D, x86::REG_ACC0);
+					x86::movsxd(cb, D, D);
+				}
+			}
+			else
+			{
+				x86::div_r(cb, x86::REG_TMP);
+				if(rem)
+				{
+					if(D != x86::REG_ACC1) x86::mov_rr(cb, D, x86::REG_ACC1);
+				}
+				else
+				{
+					if(D != x86::REG_ACC0) x86::mov_rr(cb, D, x86::REG_ACC0);
+				}
+			}
+			x86::patch_rel8(cb, fix_done0, cb.pos);
+		}
+		vr[dstReg].dirty = true;
+	}
+
 	void JIT_Emitter::emit_i_to(uint8_t dstReg, uint8_t src1Reg, int64_t imm, ALUOp op, bool wVariant)
 	{
 		const bool r1 = (src1Reg != 0);

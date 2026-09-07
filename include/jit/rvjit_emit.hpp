@@ -61,6 +61,19 @@ namespace rv64vm::jit
 		SLTU
 	};
 
+	// RV64M register-form operations (MULW/DIVW/etc. are the wVariant).
+	enum class MOp
+	{
+		MUL,
+		MULH,
+		MULHU,
+		MULHSU,
+		DIV,
+		DIVU,
+		REM,
+		REMU
+	};
+
 	/*
 	 * Block emitter / register allocator.
 	 *
@@ -69,6 +82,9 @@ namespace rv64vm::jit
 	 * otherwise an ALU op silently computes on a stale register. The R-type
 	 * shifts take the variable count from src2Reg; the I-type shifts from an
 	 * immediate in emit_i_to.
+	 *
+	 * RAX/RDX/RCX are dedicated scratch (never in the allocator pool); the
+	 * M-extension ops use RAX/RDX as the multiply/divide accumulator pair.
 	 */
 	struct JIT_Emitter
 	{
@@ -104,5 +120,6 @@ namespace rv64vm::jit
 
 		void emit_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, ALUOp op, bool wVariant);
 		void emit_i_to(uint8_t dstReg, uint8_t src1Reg, int64_t imm, ALUOp op, bool wVariant);
+		void emit_m_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, MOp op, bool wVariant);
 	};
 }
