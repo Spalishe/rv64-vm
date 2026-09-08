@@ -20,7 +20,7 @@ Copyright 2026 Spalishe
 #undef HOST_TARGET_X86_64
 #undef HOST_TARGET_AARCH64
 
-#if defined(__x86_64__)
+#if defined(__x86_64) || defined(__x86_64__) || defined(_M_X64)
 #define HOST_TARGET_X86_64 1
 #endif
 #if defined(__aarch64__) || defined(__arm64__)
