@@ -46,14 +46,23 @@ endef
 define print_help
 	@echo -e "[$(ANSI_BLUE)INFO$(ANSI_RESET)] Available useflags:"
 	@$(foreach var,$(USE_VARS),echo "  $(var)=$($(var))";)
+	@echo "  USE_LTO=1        Enable Link-Time Optimization (slower builds)"
+	@echo "  USE_CCACHE=1     Enable ccache for faster rebuilds"
 
 	@echo
 	@echo -e "[$(ANSI_BLUE)INFO$(ANSI_RESET)] Available commands:"
-	@echo -e "  $(ANSI_GREEN)all$(ANSI_RESET)			Build target"
-	@echo -e "  $(ANSI_GREEN)lib$(ANSI_RESET)           Build target to dynamic library"
-	@echo -e "  $(ANSI_GREEN)slib$(ANSI_RESET)           Build target to static library"
-	@echo -e "  $(ANSI_GREEN)help$(ANSI_RESET)			Shows this menu"
-	@echo -e "  $(ANSI_GREEN)clean$(ANSI_RESET)			Clean the build directory"
+	@echo -e "  $(ANSI_GREEN)all$(ANSI_RESET)          Build target"
+	@echo -e "  $(ANSI_GREEN)lib$(ANSI_RESET)          Build target to dynamic library"
+	@echo -e "  $(ANSI_GREEN)slib$(ANSI_RESET)         Build target to static library"
+	@echo -e "  $(ANSI_GREEN)debug$(ANSI_RESET)        Build with -O0 for debugging"
+	@echo -e "  $(ANSI_GREEN)help$(ANSI_RESET)         Shows this menu"
+	@echo -e "  $(ANSI_GREEN)clean$(ANSI_RESET)        Clean the build directory"
+	@echo
+	@echo -e "[$(ANSI_BLUE)INFO$(ANSI_RESET)] Examples:"
+	@echo "  make -j$(shell nproc)                          Parallel build"
+	@echo "  make -j$(shell nproc) USE_LTO=1                Build with LTO"
+	@echo "  make -j$(shell nproc) USE_CCACHE=1             Build with ccache"
+	@echo "  make -j$(shell nproc) debug                    Debug build (-O0)"
 endef
 
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
@@ -94,11 +103,20 @@ AR_VERSION := $(shell $(AR) --version | head -n 1)
 
 #  -fsanitize=address and -fno-omit-frame-pointer for detailed debugging(ASAN)
 LIBS := -latomic -pthread 
-CXXFLAGS := -std=gnu++20 $(LIBS) -O3 -g -march=native -flto -MMD -MP -Iinclude
+CXXFLAGS := -std=gnu++20 $(LIBS) $(OPT_LEVEL) -g -march=native -MMD -MP -Iinclude
 
 CXXFLAGS += $(foreach v,$(USE_VARS),$(if $(filter-out 0,$($(v))),-D$(v)=$($(v))))
 
 CXXFLAGS += -DRVEM_VERSION='"rv64-vm; git-$(GIT_HASH_SHORT)"'
+
+ifdef USE_LTO
+    CXXFLAGS += -flto
+    LDFLAGS += -flto
+endif
+
+ifdef USE_CCACHE
+    CXX := ccache $(CXX)
+endif
 
 ifneq ($(findstring mingw,$(TRIPLET_WORDS)),)
     EXE_EXT := .exe
@@ -147,29 +165,23 @@ TARGET_BIN := $(BUILD_DIR)/release_$(TRIPLET_ARCH)$(EXE_EXT)
 TARGET_SO := $(BUILD_DIR)/lib_$(TRIPLET_ARCH)$(LIB_EXT)
 TARGET_A := $(BUILD_DIR)/slib_$(TRIPLET_ARCH)$(STATIC_EXT)
 
-all:
+all: | $(BUILD_DIR)
 	$(call print_info)
-	
-	@mkdir -p $(BUILD_DIR) 
-	@mkdir -p $(OBJ_DIR_BIN) 
-	
 	@$(MAKE) --no-print-directory $(TARGET_BIN)
 
-lib:
+lib: | $(BUILD_DIR)
 	$(call print_info)
-	@mkdir -p $(BUILD_DIR) 
-	@mkdir -p $(OBJ_DIR_SO) 
-
 	@$(MAKE) --no-print-directory $(TARGET_SO)
 
 slib: LIBS += -static
 slib: CXXFLAGS += -static
-slib:
+slib: | $(BUILD_DIR)
 	$(call print_info)
-	@mkdir -p $(BUILD_DIR) 
-	@mkdir -p $(OBJ_DIR_SO) 
-
 	@$(MAKE) --no-print-directory $(TARGET_A)
+
+debug: | $(BUILD_DIR)
+	$(call print_info)
+	@$(MAKE) --no-print-directory OPT_LEVEL=-O0 $(TARGET_BIN)
 
 help:
 	$(call print_info)
@@ -184,6 +196,12 @@ FLAGS_FILE := $(BUILD_DIR)/.buildflags
 $(FLAGS_FILE): FORCE
 	@mkdir -p $(dir $@)
 	@bash -c 'flags="$(CXXFLAGS)"; if [ "$$flags" != "$$(cat $@ 2>/dev/null)" ]; then printf "%s" "$$flags" > $@; fi'
+
+$(BUILD_DIR):
+	@mkdir -p $@
+
+$(OBJ_DIR_BIN) $(OBJ_DIR_SO) $(OBJ_DIR_A):
+	@mkdir -p $@
 
 $(OBJ_DIR_BIN)/%.o: src/%.cpp $(FLAGS_FILE)
 	@mkdir -p $(dir $@)
