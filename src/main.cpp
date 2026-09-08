@@ -15,7 +15,7 @@ Copyright 2026 Spalishe
 
 */
 
-#include "argparser.cpp"
+#include "../include/argparser.cpp"
 #include <atomic>
 #include <cstdio>
 #include <exception>

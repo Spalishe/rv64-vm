@@ -371,4 +371,22 @@ namespace arp
 		bool m_is_parsed = false;
 	};
 
+	std::ostream& operator<<(std::ostream& os, const arp::Argparser& ap)
+	{
+		os << "Argparser dump:\n";
+		size_t i = 0;
+		for(auto& arg : ap.m_conf)
+		{
+			i++;
+			os << i << ": "
+			   << arg.second->getName() << " is [" << arg.second->type() << "] and is "
+			   << (arg.second->defined() ? "[defined] " : "[undefined] ");
+			if(arg.second->defined())
+			{
+				os << "and equal to [" << arg.second->tostring() << "]";
+			}
+			os << "\n";
+		}
+		return os;
+	};
 } // namespace arp
