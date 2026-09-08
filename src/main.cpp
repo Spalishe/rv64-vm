@@ -317,6 +317,9 @@ int main(int argc, char* argv[])
 
 	uart = machine.get_mmio()->get<rv64vm::dev::UART>();
 
+	// USB
+	auto ehci = machine.get_mmio()->create_device_auto<rv64vm::dev::XHCI>(machine);
+
 #ifdef USE_FRAMEBUFFER
 	AppWindow window;
 	VkInstance instance;

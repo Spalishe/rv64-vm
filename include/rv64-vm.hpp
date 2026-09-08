@@ -61,6 +61,8 @@ namespace rv64vm
 #endif
 		struct HIDOverI2C;
 		struct HID_Keyboard;
+
+		class XHCI;
 	}
 }
 
@@ -74,6 +76,7 @@ namespace rv64vm
 #include "devices/plic.hpp"				// IWYU pragma: export
 #include "devices/syscon.hpp"			// IWYU pragma: export
 #include "devices/uart.hpp"				// IWYU pragma: export
+#include "devices/usb/xhci.hpp"			// IWYU pragma: export
 #include "devices/virtio_blk.hpp"		// IWYU pragma: export
 #include "hart.hpp"						// IWYU pragma: export
 #include "machine.hpp"					// IWYU pragma: export
