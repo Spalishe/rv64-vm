@@ -28,6 +28,7 @@ endef
 
 export banner
 
+SHELL := /bin/bash
 ANSI_GREEN := \x1b[32m
 ANSI_BLUE := \x1b[34m
 ANSI_RESET := \x1b[0m
