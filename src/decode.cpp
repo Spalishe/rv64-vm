@@ -21,6 +21,34 @@ Copyright 2026 Spalishe
 #include <cstdio>
 
 using namespace rv64vm::runner;
+inline uint32_t pext_u32(uint32_t val, const uint32_t mask) {
+#ifdef HOST_TARGET_X86_64
+    return _pext_u32(val, mask);
+#elif defined(HOST_TARGET_AARCH64)
+    uint32_t m = mask;
+    val &= m;
+
+    uint32_t low = m & 0x55555555U;
+    val = (val & low) | ((val & ~low) >> 1);
+    m = low | (m >> 1);
+
+    low = m & 0x33333333U;
+    val = (val & low) | ((val & ~low) >> 2);
+    m = low | (m >> 2);
+
+    low = m & 0x0F0F0F0FU;
+    val = (val & low) | ((val & ~low) >> 4);
+    m = low | (m >> 4);
+
+    low = m & 0x00FF00FFU;
+    val = (val & low) | ((val & ~low) >> 8);
+    m = low | (m >> 8);
+
+    low = m & 0x0000FFFFU;
+    return (val & low) | ((val & ~low) >> 16);
+#endif
+}
+
 __attribute__((noinline)) InstructionCache& InstructionDecoder::decode_inst_slow(uint64_t pc, uint32_t inst)
 {
 	size_t idx = (pc >> 2) & (CACHE_SIZE - 1);
@@ -29,13 +57,13 @@ __attribute__((noinline)) InstructionCache& InstructionDecoder::decode_inst_slow
 
 	if((inst & 0x3) != 0x3)
 	{
-		uint32_t lut_idx = _pext_u32(inst & 0xFFFF, HASH_MASK_16);
+		uint32_t lut_idx = pext_u32(inst & 0xFFFF, HASH_MASK_16);
 		dinst			 = lut16[lut_idx];
 	}
 
 	if(!dinst)
 	{
-		uint32_t lut_idx = _pext_u32(inst, HASH_MASK);
+		uint32_t lut_idx = pext_u32(inst, HASH_MASK);
 		dinst			 = lut[lut_idx];
 	}
 
