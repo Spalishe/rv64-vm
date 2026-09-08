@@ -34,6 +34,9 @@ This document contains all Exported API objects.
 * **[VirtIO_BLK](api/VirtIO_BLK.md)**
   * [read](api/VirtIO_BLK.md#read)
   * [write](api/VirtIO_BLK.md#write)
+* **[XHCI](api/XHCI.md)**
+  * [read](api/XHCI.md#read)
+  * [write](api/XHCI.md#write)
 
 ## Namespace `rv64vm::runner`
 
