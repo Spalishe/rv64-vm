@@ -109,12 +109,12 @@ CXXFLAGS += $(foreach v,$(USE_VARS),$(if $(filter-out 0,$($(v))),-D$(v)=$($(v)))
 
 CXXFLAGS += -DRVEM_VERSION='"rv64-vm; git-$(GIT_HASH_SHORT)"'
 
-ifdef USE_LTO
-    CXXFLAGS += -flto
+ifneq ($(strip $(filter-out 0,$(USE_LTO))),)
+	CXXFLAGS += -flto
     LDFLAGS += -flto
 endif
 
-ifdef USE_CCACHE
+ifneq ($(strip $(filter-out 0,$(USE_CCACHE))),)
     CXX := ccache $(CXX)
 endif
 
