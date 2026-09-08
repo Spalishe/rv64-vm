@@ -36,27 +36,23 @@ namespace rv64vm::runner
 #if defined(HOST_TARGET_X86_64)
 		return _pext_u32(val, mask);
 #elif defined(HOST_TARGET_AARCH64)
-		uint32_t m = mask;
-		val &= m;
-
-		uint32_t low = m & 0x55555555U;
-		val			 = (val & low) | ((val & ~low) >> 1);
-		m			 = low | (m >> 1);
-
-		low = m & 0x33333333U;
-		val = (val & low) | ((val & ~low) >> 2);
-		m	= low | (m >> 2);
-
-		low = m & 0x0F0F0F0FU;
-		val = (val & low) | ((val & ~low) >> 4);
-		m	= low | (m >> 4);
-
-		low = m & 0x00FF00FFU;
-		val = (val & low) | ((val & ~low) >> 8);
-		m	= low | (m >> 8);
-
-		low = m & 0x0000FFFFU;
-		return (val & low) | ((val & ~low) >> 16);
+		uint32_t x	= val & mask;
+		uint32_t m	= mask;
+		uint32_t mk = ~m << 1;
+		for(int i = 0; i < 5; i++)
+		{
+			uint32_t mp = mk ^ (mk << 1);
+			mp ^= mp << 2;
+			mp ^= mp << 4;
+			mp ^= mp << 8;
+			mp ^= mp << 16;
+			uint32_t mv = mp & m;
+			m			= (m ^ mv) | (mv >> (1 << i));
+			uint32_t t	= x & mv;
+			x			= (x ^ t) | (t >> (1 << i));
+			mk &= ~mp;
+		}
+		return x;
 #endif
 	}
 
