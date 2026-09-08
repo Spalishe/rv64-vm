@@ -226,7 +226,7 @@ namespace rv64vm::runner
 		size_t dtb_size				= fdt_size(fdt);
 		void* buffer				= malloc(dtb_size);
 
-		size_t size = fdt_serialize(fdt, buffer, 0x1000, 0);
+		size_t size = fdt_serialize(fdt, buffer, dtb_size, 0);
 
 		if(!config.dtb_dump_path.empty())
 		{
