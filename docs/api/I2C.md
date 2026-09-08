@@ -47,9 +47,9 @@ Defined in include/devices/i2c/i2c-core.hpp:69
 
 | Return | Name | Description |
 |--------|------|-------------|
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`tick`](#tick) `virtual` | [Device](Device.md#device) tick function. |
-| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`read`](#~read) `virtual` | [Device](Device.md#device) read function. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`write`](#~write) `virtual` | [Device](Device.md#device) write function. |
+| `void` | [`tick`](#tick) `virtual` | [Device](Device.md#device) tick function. |
+| `uint64_t` | [`read`](#~read) `virtual` | [Device](Device.md#device) read function. |
+| `void` | [`write`](#~write) `virtual` | [Device](Device.md#device) write function. |
 
 ---
 
@@ -67,7 +67,7 @@ Defined in include/devices/i2c/i2c-core.hpp:109
 
 [Device](Device.md#device) tick function.
 
-This function would call [almost(optimization)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) every tick
+This function would call almost(optimization) every tick
 
 #### Reimplements
 

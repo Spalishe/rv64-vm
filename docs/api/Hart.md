@@ -23,12 +23,12 @@ RISC-V CPU Core.
 | [`MemoryMap`](MemoryMap.md#memorymap) * | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
 | [`Reservation`](Reservation.md#reservation) & | [`get_reservation`](#get_reservation) `inline` | Returns CPU Atomic [Reservation](Reservation.md#reservation). |
 | [`MMU`](MMU.md#mmu) & | [`get_mmu`](#get_mmu) `inline` | Returns CPU Memory Management Unit. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`clear_decode_cache`](#clear_decode_cache) `inline` | Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache. |
-| [`const`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)[`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`get_memsize`](#get_memsize) `const` `inline` | Returns RAM size. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`amo_check_reservation`](#amo_check_reservation) `inline` | Clears reservation if defined address is within CPU reservation address. |
-| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`csr_read`](#csr_read)  | Returns value stored in CSR. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`csr_write`](#csr_write)  | Stores value to CSR. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`trap`](#trap)  | CPU Trap function. |
+| `void` | [`clear_decode_cache`](#clear_decode_cache) `inline` | Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache. |
+| `const uint64_t` | [`get_memsize`](#get_memsize) `const` `inline` | Returns RAM size. |
+| `void` | [`amo_check_reservation`](#amo_check_reservation) `inline` | Clears reservation if defined address is within CPU reservation address. |
+| `uint64_t` | [`csr_read`](#csr_read)  | Returns value stored in CSR. |
+| `void` | [`csr_write`](#csr_write)  | Stores value to CSR. |
+| `void` | [`trap`](#trap)  | CPU Trap function. |
 
 ---
 
@@ -52,8 +52,8 @@ Creates RISC-V core
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `id` | [`uint8_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Internal [Hart](#hart) ID (starts from 0) |
-| `memsize` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Memory size |
+| `id` | `uint8_t` | Internal [Hart](#hart) ID (starts from 0) |
+| `memsize` | `uint64_t` | Memory size |
 
 ---
 
@@ -204,7 +204,7 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 `const` `inline`
 
 ```cpp
-inline constuint64_t get_memsize() const
+inline const uint64_t get_memsize() const
 ```
 
 Defined in include/hart.hpp:199
@@ -251,7 +251,7 @@ CSR value
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `csr` | [`uint16_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | CSR address |
+| `csr` | `uint16_t` | CSR address |
 
 ---
 
@@ -271,8 +271,8 @@ Stores value to CSR.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `csr` | [`uint16_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | CSR address |
-| `val` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Value |
+| `csr` | `uint16_t` | CSR address |
+| `val` | `uint64_t` | Value |
 
 ---
 
@@ -294,9 +294,9 @@ Raises trap in CPU core.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `cause` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Trap cause |
-| `tval` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Trap value (can be zero) |
-| `interrupt` | [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Is trap will be [interrupt(true)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) of [exception(false)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)? |
+| `cause` | `uint64_t` | Trap cause |
+| `tval` | `uint64_t` | Trap value (can be zero) |
+| `interrupt` | `bool` | Is trap will be interrupt(true) of exception(false)? |
 
 ## Public Types
 
@@ -330,7 +330,7 @@ Current CPU privilege mode.
 
 | Return | Name | Description |
 |--------|------|-------------|
-| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`run_blocks`](#run_blocks)  | Block-chaining fast path (lightweight JIT). |
+| `uint64_t` | [`run_blocks`](#run_blocks)  | Block-chaining fast path (lightweight JIT). |
 
 ---
 

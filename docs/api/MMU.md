@@ -100,8 +100,8 @@ Memory operation result
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `type` | [`AccessType`](#traps_8hpp_1a36b9a80a5a835ac5371a96e3eed57b9b) | Access type |
-| `va` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Virtual address |
-| `pa` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | Pointer to Physical address to set |
+| `va` | `uint64_t` | Virtual address |
+| `pa` | `uint64_t *` | Pointer to Physical address to set |
 
 ## Public Types
 
@@ -118,8 +118,6 @@ Memory operation result
 ```cpp
 enum SatpMode
 ```
-
-Type: [`int`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)
 
 Defined in include/mmu.hpp:53
 

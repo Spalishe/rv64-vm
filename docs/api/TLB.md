@@ -18,12 +18,12 @@ RISC-V Translation Lookaside Buffer.
 |--------|------|-------------|
 |  | [`TLB`](#tlb) `inline` | [TLB](#tlb) Constructor. |
 |  | [`~TLB`](#~tlb) `inline` | [TLB](#tlb) Destructor. |
-| [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`lookup`](#lookup)  | Looks up in cache for [TLB](#tlb) entry. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`insert`](#insert)  | Inserts new [TLB](#tlb) entry in cache. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`flush_all`](#flush_all) `inline` | Flushes all [TLB](#tlb) entries. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`flush_addr`](#flush_addr) `inline` | Flushes all [TLB](#tlb) entries by address. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`flush_asid`](#flush_asid) `inline` | Flushes all [TLB](#tlb) entries by ASID. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`flush_addr_asid`](#flush_addr_asid) `inline` | Flushes all [TLB](#tlb) entries by address and ASID. |
+| `bool` | [`lookup`](#lookup)  | Looks up in cache for [TLB](#tlb) entry. |
+| `void` | [`insert`](#insert)  | Inserts new [TLB](#tlb) entry in cache. |
+| `void` | [`flush_all`](#flush_all) `inline` | Flushes all [TLB](#tlb) entries. |
+| `void` | [`flush_addr`](#flush_addr) `inline` | Flushes all [TLB](#tlb) entries by address. |
+| `void` | [`flush_asid`](#flush_asid) `inline` | Flushes all [TLB](#tlb) entries by ASID. |
+| `void` | [`flush_addr_asid`](#flush_addr_asid) `inline` | Flushes all [TLB](#tlb) entries by address and ASID. |
 
 ---
 
@@ -82,13 +82,13 @@ Is success?
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `va` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Virtual Address |
+| `va` | `uint64_t` | Virtual Address |
 | `type` | [`AccessType`](#traps_8hpp_1a36b9a80a5a835ac5371a96e3eed57b9b) | Access type |
-| `asid` | [`uint16_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | ASID |
-| `mode` | [`int`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Privilage Mode casted to integer |
-| `mxr` | [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [Hart](Hart.md#hart) Status MXR bit |
-| `sum` | [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [Hart](Hart.md#hart) Status SUM bit |
-| `pa` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) * | Physical Address pointer |
+| `asid` | `uint16_t` | ASID |
+| `mode` | `int` | Privilage Mode casted to integer |
+| `mxr` | `bool` | [Hart](Hart.md#hart) Status MXR bit |
+| `sum` | `bool` | [Hart](Hart.md#hart) Status SUM bit |
+| `pa` | `uint64_t *` | Physical Address pointer |
 
 ---
 
@@ -110,11 +110,11 @@ Inserts new [TLB](#tlb) entry in cache.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `va` | [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Virtual Address |
-| `page_bits` | [`uint8_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Size of PPN page bits |
-| `perm` | [`uint8_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Permissions bit set |
-| `asid` | [`uint16_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Entry ASID |
-| `global` | [`bool`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | Entry G bit |
+| `va` | `uint64_t` | Virtual Address |
+| `page_bits` | `uint8_t` | Size of PPN page bits |
+| `perm` | `uint8_t` | Permissions bit set |
+| `asid` | `uint16_t` | Entry ASID |
+| `global` | `bool` | Entry G bit |
 
 ---
 

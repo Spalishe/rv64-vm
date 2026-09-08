@@ -20,9 +20,9 @@ Defined in include/device.hpp:31
 | Return | Name | Description |
 |--------|------|-------------|
 | [`rv64vm::runner::MemoryMap`](MemoryMap.md#memorymap) * | [`mmap`](#mmap)  | MMAP pointer. |
-| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`start`](#start)  | [Device](#device) memory start address. |
-| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`size`](#size)  | [Device](#device) memory size. |
-| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`end`](#end)  | [Device](#device) memory end address. |
+| `uint64_t` | [`start`](#start)  | [Device](#device) memory start address. |
+| `uint64_t` | [`size`](#size)  | [Device](#device) memory size. |
+| `uint64_t` | [`end`](#end)  | [Device](#device) memory end address. |
 
 ---
 
@@ -53,8 +53,6 @@ MMAP pointer.
 uint64_t start
 ```
 
-Type: [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)
-
 Defined in include/device.hpp:50
 
 [Device](#device) memory start address.
@@ -71,8 +69,6 @@ Defined in include/device.hpp:50
 ```cpp
 uint64_t size
 ```
-
-Type: [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)
 
 Defined in include/device.hpp:55
 
@@ -91,8 +87,6 @@ Defined in include/device.hpp:55
 uint64_t end
 ```
 
-Type: [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df)
-
 Defined in include/device.hpp:60
 
 [Device](#device) memory end address.
@@ -105,10 +99,10 @@ Defined in include/device.hpp:60
 | Return | Name | Description |
 |--------|------|-------------|
 |  | [`Device`](#device) `inline` | [Device](#device) constructor. |
-| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`read`](#read) `virtual` `inline` | [Device](#device) read function. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`write`](#write) `virtual` `inline` | [Device](#device) write function. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`tick`](#tick) `virtual` `inline` | [Device](#device) tick function. |
-| std::shared_ptr< [`T`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) > | [`get`](#get) `inline` | Returns device. |
+| `uint64_t` | [`read`](#read) `virtual` `inline` | [Device](#device) read function. |
+| `void` | [`write`](#write) `virtual` `inline` | [Device](#device) write function. |
+| `void` | [`tick`](#tick) `virtual` `inline` | [Device](#device) tick function. |
+| `std::shared_ptr< T >` | [`get`](#get) `inline` | Returns device. |
 
 ---
 
@@ -195,7 +189,7 @@ Defined in include/device.hpp:74
 
 [Device](#device) tick function.
 
-This function would call [almost(optimization)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) every tick
+This function would call almost(optimization) every tick
 
 #### Reimplemented by
 
@@ -212,7 +206,7 @@ This function would call [almost(optimization)](#virtio__blk_8hpp_1a0e89cf6b9f6c
 `inline`
 
 ```cpp
-template<typenameT> inline std::shared_ptr< T > get()
+template<typename T> inline std::shared_ptr< T > get()
 ```
 
 Defined in include/device.hpp:81

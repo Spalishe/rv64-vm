@@ -47,9 +47,9 @@ Defined in include/devices/plic.hpp:27
 
 | Return | Name | Description |
 |--------|------|-------------|
-| [`uint64_t`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`read`](#read-3) `virtual` | [Device](Device.md#device) read function. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`write`](#write-3) `virtual` | [Device](Device.md#device) write function. |
-| [`void`](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) | [`tick`](#~tick) `virtual` | [Device](Device.md#device) tick function. |
+| `uint64_t` | [`read`](#read-3) `virtual` | [Device](Device.md#device) read function. |
+| `void` | [`write`](#write-3) `virtual` | [Device](Device.md#device) write function. |
+| `void` | [`tick`](#~tick) `virtual` | [Device](Device.md#device) tick function. |
 
 ---
 
@@ -107,7 +107,7 @@ Defined in include/devices/plic.hpp:36
 
 [Device](Device.md#device) tick function.
 
-This function would call [almost(optimization)](#virtio__blk_8hpp_1a0e89cf6b9f6cd3125470b1bed2b823df) every tick
+This function would call almost(optimization) every tick
 
 #### Reimplements
 
