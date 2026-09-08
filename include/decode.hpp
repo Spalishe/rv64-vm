@@ -22,12 +22,40 @@ Copyright 2026 Spalishe
 #include "jit/rvjit_fwd.hpp"
 #endif
 #include <cstdint>
-#include <immintrin.h>
 #include <string>
 #include <vector>
 
 namespace rv64vm::runner
 {
+inline uint32_t pext_u32(uint32_t val, const uint32_t mask) {
+#ifdef HOST_TARGET_X86_64
+    #include <immintrin.h>
+    return _pext_u32(val, mask);
+#elif defined(HOST_TARGET_AARCH64)
+    uint32_t m = mask;
+    val &= m;
+
+    uint32_t low = m & 0x55555555U;
+    val = (val & low) | ((val & ~low) >> 1);
+    m = low | (m >> 1);
+
+    low = m & 0x33333333U;
+    val = (val & low) | ((val & ~low) >> 2);
+    m = low | (m >> 2);
+
+    low = m & 0x0F0F0F0FU;
+    val = (val & low) | ((val & ~low) >> 4);
+    m = low | (m >> 4);
+
+    low = m & 0x00FF00FFU;
+    val = (val & low) | ((val & ~low) >> 8);
+    m = low | (m >> 8);
+
+    low = m & 0x0000FFFFU;
+    return (val & low) | ((val & ~low) >> 16);
+#endif
+}
+
 #define FORCE_INLINE __attribute__((always_inline)) inline
 	FORCE_INLINE int32_t sext(uint32_t val, int bits)
 	{
@@ -253,11 +281,11 @@ namespace rv64vm::runner
 		Instruction* register_instr(std::string mask, ExecReturn (*func)(Hart&, InstructionData&), uint64_t (*imm_decode_func)(uint32_t inst) = NULL);
 		static inline uint32_t get_lut_index(uint32_t inst)
 		{
-			return _pext_u32(inst, HASH_MASK);
+			return pext_u32(inst, HASH_MASK);
 		}
 		static inline uint32_t get_lut_index16(uint32_t inst)
 		{
-			return _pext_u32(inst, HASH_MASK_16);
+			return pext_u32(inst, HASH_MASK_16);
 		}
 		// This function will call on init, calling all sets functions to initialize
 		void init_all_instrs();
