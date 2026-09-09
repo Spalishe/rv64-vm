@@ -16,8 +16,8 @@ Defined in include/devices/virtio_blk.hpp:142
 
 | Name | Kind | Owner |
 |------|------|-------|
-| [`read`](#read-7) | `function` | Declared here |
-| [`write`](#write-7) | `function` | Declared here |
+| [`read`](#read-8) | `function` | Declared here |
+| [`write`](#write-8) | `function` | Declared here |
 | [`mmap`](Device.md#mmap) | `variable` | Inherited from [`Device`](Device.md#device) |
 | [`start`](Device.md#start) | `variable` | Inherited from [`Device`](Device.md#device) |
 | [`size`](Device.md#size) | `variable` | Inherited from [`Device`](Device.md#device) |
@@ -46,8 +46,8 @@ Defined in include/devices/virtio_blk.hpp:142
 
 | Return | Name | Description |
 |--------|------|-------------|
-| `uint64_t` | [`read`](#read-7) `virtual` | [Device](Device.md#device) read function. |
-| `void` | [`write`](#write-7) `virtual` | [Device](Device.md#device) write function. |
+| `uint64_t` | [`read`](#read-8) `virtual` | [Device](Device.md#device) read function. |
+| `void` | [`write`](#write-8) `virtual` | [Device](Device.md#device) write function. |
 
 ---
 

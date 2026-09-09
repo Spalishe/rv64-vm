@@ -11,7 +11,7 @@ struct Device
 Defined in include/device.hpp:31
 
 > **Inherits:** `enable_shared_from_this< Device >`
-> **Subclassed by:** [`CLINT`](CLINT.md#clint), [`I2C`](I2C.md#i2c), [`PLIC`](PLIC.md#plic), [`SYSCON`](SYSCON.md#syscon), [`UART`](UART.md#uart), [`VirtIO_BLK`](VirtIO_BLK.md#virtio_blk)
+> **Subclassed by:** [`CLINT`](CLINT.md#clint), [`I2C`](I2C.md#i2c), [`PLIC`](PLIC.md#plic), [`SYSCON`](SYSCON.md#syscon), [`UART`](UART.md#uart), [`VirtIO_BLK`](VirtIO_BLK.md#virtio_blk), [`XHCI`](XHCI.md#xhci)
 
 [Device](#device) base structure.
 
@@ -141,12 +141,13 @@ Defined in include/device.hpp:65
 
 #### Reimplemented by
 
-- [`read`](CLINT.md#read-5)
+- [`read`](CLINT.md#read-6)
 - [`read`](I2C.md#read-2)
 - [`read`](PLIC.md#read-3)
-- [`read`](SYSCON.md#read-6)
+- [`read`](SYSCON.md#read-7)
 - [`read`](UART.md#read-4)
-- [`read`](VirtIO_BLK.md#read-7)
+- [`read`](XHCI.md#read-5)
+- [`read`](VirtIO_BLK.md#read-8)
 
 ---
 
@@ -166,11 +167,12 @@ Defined in include/device.hpp:69
 
 #### Reimplemented by
 
-- [`write`](CLINT.md#write-5)
+- [`write`](CLINT.md#write-6)
 - [`write`](I2C.md#write-2)
 - [`write`](PLIC.md#write-3)
-- [`write`](SYSCON.md#write-6)
-- [`write`](VirtIO_BLK.md#write-7)
+- [`write`](SYSCON.md#write-7)
+- [`write`](XHCI.md#write-5)
+- [`write`](VirtIO_BLK.md#write-8)
 - [`write`](UART.md#write-4)
 
 ---
