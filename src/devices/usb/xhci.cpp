@@ -28,6 +28,7 @@ namespace rv64vm::dev
 	{
 		write_config_fast<uint8_t>(0x0A, 0x03); // Subclass
 		write_config_fast<uint8_t>(0x09, 0x30); // Programming Interface (XHCI)
+		write_config_fast<uint8_t>(0x3D, 0x01); // INTA#
 
 		uint64_t xhci_mmio_size = 0x00010000;
 		init_bar(0, xhci_mmio_size, 0x02);
@@ -87,9 +88,12 @@ namespace rv64vm::dev
 					return 0;
 				case 0x0C: // HCSPARAMS3
 					return 0;
-				case 0x10:	  // HCCPARAMS1 (64-bit addressing, CSZ=1)
-					return 1; // (1 << 2) for CSZ
-				case 0x14:	  // DBOFF
+				case 0x10:
+				{ // HCCPARAMS1 (64-bit addressing, CSZ=1)
+					constexpr uint32_t ecp_offset_dwords = 0x8000 / 4;
+					return 1 | (ecp_offset_dwords << 16); // (1 << 2) for CSZ
+				}
+				case 0x14: // DBOFF
 					return XHCI_DBOFF;
 				case 0x18: // RTSOFF
 					return XHCI_RTSOFF;
@@ -171,6 +175,25 @@ namespace rv64vm::dev
 			return 0;
 		}
 
+		if(offs >= 0x8000 && offs < 0x8000 + 16)
+		{
+			uint32_t local = offs - 0x8000;
+			switch(local)
+			{
+				case 0x00:
+					// ID=0x02 (Supported Protocol), Next=0 (last capability),
+					// Minor Rev=0x00, Major Rev=0x02 (USB 2.0)
+					return 0x02 | (0x00 << 8) | (0x00 << 16) | (0x02 << 24);
+				case 0x04:
+					return 0x20425355; // ASCII "USB " little-endian
+				case 0x08:
+					// Compatible Port Offset=1, Compatible Port Count=XHCI_MAX_PORTS,
+					// PSIC=0, Protocol Slot Type=0
+					return 1 | (static_cast<uint32_t>(XHCI_MAX_PORTS) << 8);
+				default:
+					return 0;
+			}
+		}
 		return 0;
 	}
 	void XHCI::write_mmio(uint64_t offs, MemorySize size, uint64_t val)
@@ -476,9 +499,6 @@ namespace rv64vm::dev
 		while(trb_dma_addr != 0)
 		{
 			trb_t trb = read_trb(trb_dma_addr);
-			fprintf(stderr, "[XHCI] EP0 trb addr=0x%llx pcs=%u flags=0x%x type=%u cycle=%u\n",
-					(unsigned long long)trb_dma_addr, slots[slot_id]->ep0_pcs,
-					trb.control.fields.flags, (unsigned int)trb.get_type(), trb.control.fields.cycle);
 
 			// Проверка флага цикла (Cycle Bit)
 			if(trb.control.fields.cycle != slots[slot_id]->ep0_pcs) break;
@@ -512,10 +532,6 @@ namespace rv64vm::dev
 						auto resp		   = dev->handle_control_request(setup_pkt);
 						uint32_t requested = std::min<uint32_t>(setup_pkt.wLength, trb_buf_len);
 						uint32_t to_copy   = std::min<uint32_t>(resp.size(), requested);
-
-						fprintf(stderr, "[XHCI] DATA-IN req=0x%02x bReq=0x%02x wVal=0x%04x wLen=%u trbLen=%u resp=%zu copy=%u\n",
-								setup_pkt.bmRequestType, setup_pkt.bRequest, setup_pkt.wValue, setup_pkt.wLength,
-								trb_buf_len, resp.size(), to_copy);
 
 						if(to_copy > 0)
 							write_dma(trb.parameter, resp.data(), to_copy);
@@ -577,7 +593,7 @@ namespace rv64vm::dev
 			read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &slot_dc_ptr, sizeof(slot_dc_ptr));
 			if(!slot_dc_ptr) return;
 
-			uint64_t ep_ctx_ptr = slot_dc_ptr + ((ep_index + 1) * 32); // device ctx index
+			uint64_t ep_ctx_ptr = slot_dc_ptr + ((ep_index + 1) * 32);
 			uint64_t deq		= 0;
 			read_dma(ep_ctx_ptr + 0x08, &deq, sizeof(deq));
 
@@ -605,19 +621,22 @@ namespace rv64vm::dev
 			{
 				uint32_t len = trb.status & 0x1FFFF;
 				std::vector<uint8_t> data;
-				if(dev->get_interrupt_report(data) && !data.empty())
+				if(!dev->get_interrupt_report(data) || data.empty())
 				{
-					uint32_t copy = std::min<uint32_t>(len, data.size());
-					if(copy) write_dma(trb.parameter, data.data(), copy);
 
-					uint32_t residual = len - copy;
-					trb_t evt{};
-					evt.parameter			   = trb_dma_addr;
-					evt.status				   = residual | (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
-					evt.control.fields.type	   = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
-					evt.control.fields.control = (slot_id << 8) | ((ep_index + 1) & 0x1F);
-					push_event(evt);
+					break;
 				}
+
+				uint32_t copy = std::min<uint32_t>(len, data.size());
+				if(copy) write_dma(trb.parameter, data.data(), copy);
+				uint32_t residual = len - copy;
+
+				trb_t evt{};
+				evt.parameter			   = trb_dma_addr;
+				evt.status				   = residual | (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
+				evt.control.fields.type	   = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
+				evt.control.fields.control = (slot_id << 8) | ((ep_index + 1) & 0x1F);
+				push_event(evt);
 			}
 
 			trb_dma_addr += sizeof(trb_t);
@@ -646,8 +665,6 @@ namespace rv64vm::dev
 			evt.parameter			= crcr_dequeue;
 			evt.status				= (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
 			evt.control.fields.type = static_cast<uint32_t>(TRBType::CMD_COMPLETION_EVENT);
-
-			fprintf(stderr, "[XHCI] CMD type=%u slot=%u param=0x%llx\n", (unsigned int)trb.get_type(), trb.get_slot_id(), (unsigned long long)trb.parameter);
 
 			switch(trb.get_type())
 			{
@@ -690,7 +707,6 @@ namespace rv64vm::dev
 						uint32_t raw_add = 0, raw_drop = 0;
 						read_dma(input_ctx_addr + 4, &raw_add, 4);
 						read_dma(input_ctx_addr, &raw_drop, 4);
-						fprintf(stderr, "[XHCI] ADDR_DEV add=0x%08x drop=0x%08x\n", raw_add, raw_drop);
 
 						// Slot Context goes right after Input Control Context
 						uint64_t slot_ctx_addr = input_ctx_addr + ctx_size;
@@ -727,7 +743,6 @@ namespace rv64vm::dev
 					uint32_t add_flags = 0, drop_flags = 0;
 					read_dma(input_ctx_addr, &drop_flags, 4);
 					read_dma(input_ctx_addr + 4, &add_flags, 4);
-					fprintf(stderr, "[XHCI] CONFIG/EVAL slot=%u add_flags=0x%08x drop_flags=0x%08x\n", slot_id, add_flags, drop_flags);
 					if(add_flags)
 					{
 						for(unsigned int i = 1; i <= 31; ++i)

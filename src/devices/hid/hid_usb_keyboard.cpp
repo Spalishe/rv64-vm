@@ -48,7 +48,6 @@ namespace rv64vm::dev
 			return;
 		}
 
-		std::vector<uint8_t> report(8, 0x00);
 		report[0] = modifiers;
 		report[1] = 0x00; // Reserved
 
@@ -68,5 +67,10 @@ namespace rv64vm::dev
 		}
 
 		push_report(report);
+	}
+	bool HID_USB_Keyboard::get_interrupt_report(std::vector<uint8_t>& out)
+	{
+		out = report;
+		return true;
 	}
 }

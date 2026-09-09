@@ -16,11 +16,12 @@ Copyright 2026 Spalishe
 */
 
 #include "../../include/devices/pci/pci-host-ecam-generic.hpp"
+#include "../../include/devices/plic.hpp"
 #include "../../include/machine.hpp"
 namespace rv64vm::dev
 {
 	PCI_HEG::PCI_HEG(uint64_t base, runner::Machine& cpu, fdt_node* fdt)
-		: Device(base, 0x08000000, fdt, cpu.get_mmap()), cpu(cpu)
+		: Device(base, 0x08000000, fdt, cpu.get_mmap()), cpu(cpu), plic(cpu.get_mmio()->get<PLIC>().get())
 	{
 		cpu.get_mmap()->add_region(start, size);
 
@@ -42,6 +43,27 @@ namespace rv64vm::dev
 			fdt_node_add_prop_u32(pci_fdt, "#size-cells", 2);
 			fdt_node_add_prop_u32(pci_fdt, "#interrupt-cells", 1);
 			fdt_node_add_prop_cells(pci_fdt, "bus-range", { 0, 0 }, 2);
+			fdt_node* soc	 = fdt_node_find(fdt, "soc");
+			fdt_node* plicfd = fdt_node_find_reg(soc, "plic", 0x0C000000);
+			uint32_t phandle = fdt_node_get_phandle(plicfd);
+			fdt_node_add_prop_u32(pci_fdt, "interrupt-parent", phandle);
+			fdt_node_free(plicfd);
+
+			std::vector<uint32_t> interrupt_map_mask = { 0xf800, 0x0, 0x0, 0x7 };
+			fdt_node_add_prop_cells(pci_fdt, "interrupt-map-mask", interrupt_map_mask, interrupt_map_mask.size());
+
+			std::vector<uint32_t> interrupt_map;
+			for(uint32_t slot = 0; slot < 32; slot++)
+			{
+				uint32_t devfn_addr = (slot << 11); // PCI address encoding: bus=0, device=slot, func=0 -> bits [15:11]=devno
+				uint32_t irq_num	= plic->last_irq();
+
+				interrupt_map.insert(interrupt_map.end(), { devfn_addr, 0x0, 0x0, // PCI unit address
+															0x1,				  // INTA#
+															phandle,
+															irq_num });
+			}
+			fdt_node_add_prop_cells(pci_fdt, "interrupt-map", interrupt_map, interrupt_map.size());
 
 			std::vector<uint32_t> dynamic_ranges = {
 				// IO Window
@@ -63,7 +85,6 @@ namespace rv64vm::dev
 			};
 
 			fdt_node_add_prop_cells(pci_fdt, "ranges", dynamic_ranges, dynamic_ranges.size());
-			fdt_node* soc = fdt_node_find(fdt, "soc");
 			fdt_node_add_child(soc, pci_fdt);
 			fdt_node_free(soc);
 		}

@@ -19,6 +19,7 @@ Copyright 2026 Spalishe
 #include "../../fwd.hpp"
 #include "../../utils/hid_report_descriptor.hpp"
 #include "hid-over-usb.hpp"
+#include <vector>
 
 namespace rv64vm::dev
 {
@@ -64,5 +65,8 @@ namespace rv64vm::dev
 
 		void handle_output_report(uint8_t report_id, const std::vector<uint8_t>& data) override;
 		void on_led_state_change(uint8_t leds);
+		bool get_interrupt_report(std::vector<uint8_t>& out) override;
+
+		std::vector<uint8_t> report = std::vector<uint8_t>(8, 0x00);
 	};
 }
