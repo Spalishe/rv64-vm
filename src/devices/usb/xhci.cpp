@@ -48,10 +48,18 @@ namespace rv64vm::dev
 
 		for(uint32_t i = 0; i < XHCI_MAX_PORTS; ++i)
 		{
-			port_sc[i].raw			= 0;
-			port_sc[i].fields.pp	= 1; // Power on
-			port_sc[i].fields.speed = 4; // SuperSpeed
-			port_sc[i].fields.pls	= 5; // RxDetect
+			port_sc[i].raw		  = 0;
+			port_sc[i].fields.pp  = 1; // Power on
+			port_sc[i].fields.pls = 5; // RxDetect
+
+			if(ports[i])
+			{
+				port_sc[i].fields.ccs = 1; // Device connected
+			}
+			else
+			{
+				port_sc[i].fields.speed = 4; // SuperSpeed
+			}
 		}
 
 		interrupters[0] = {};
@@ -102,25 +110,32 @@ namespace rv64vm::dev
 					return sts.raw;
 				case 0x08: // PAGESIZE (4KB)
 					return 1;
-				case 0x18: // CRCR (Low 32)
+				case 0x18: // CRCR (Low 32 / full 64-bit)
+					if(size == MemorySize::Long)
+						return crcr_base;
 					return static_cast<uint32_t>(crcr_base);
 				case 0x1C: // CRCR (High 32)
 					return static_cast<uint32_t>(crcr_base >> 32);
-				case 0x30: // DCBAAP (Low 32)
+				case 0x30: // DCBAAP (Low 32 / full 64-bit)
+					if(size == MemorySize::Long)
+						return dcbaap;
 					return static_cast<uint32_t>(dcbaap);
 				case 0x34: // DCBAAP (High 32)
 					return static_cast<uint32_t>(dcbaap >> 32);
 				case 0x38: // CONFIG
 					return config_reg;
 				default:
-					// PORTSC array (Base + 0x400)
-					if(op >= 0x400 && op < 0x400 + (XHCI_MAX_PORTS * 0x10))
-					{
-						uint32_t idx = (op - 0x400) / 0x10;
-						return port_sc[idx].raw;
-					}
 					return 0;
 			}
+		}
+
+		// PORTSC array (op base + 0x400).
+		// Note: it sits above RTSOFF, so it must be dispatched explicitly.
+		if(offs >= XHCI_CAPLENGTH + 0x400
+		   && offs < XHCI_CAPLENGTH + 0x400 + (XHCI_MAX_PORTS * 0x10))
+		{
+			uint32_t idx = (offs - (XHCI_CAPLENGTH + 0x400)) / 0x10;
+			return port_sc[idx].raw;
 		}
 
 		// Runtime Registers (Interrupter 0 at RTSOFF + 0x20)
@@ -137,11 +152,15 @@ namespace rv64vm::dev
 						return interrupters[0].imod;
 					case 0x08:
 						return interrupters[0].erstsz;
-					case 0x10:
+					case 0x10: // ERSTBA (Low 32 / full 64-bit)
+						if(size == MemorySize::Long)
+							return interrupters[0].erstba;
 						return static_cast<uint32_t>(interrupters[0].erstba);
 					case 0x14:
 						return static_cast<uint32_t>(interrupters[0].erstba >> 32);
-					case 0x18:
+					case 0x18: // ERDP (Low 32 / full 64-bit)
+						if(size == MemorySize::Long)
+							return interrupters[0].erdp;
 						return static_cast<uint32_t>(interrupters[0].erdp);
 					case 0x1C:
 						return static_cast<uint32_t>(interrupters[0].erdp >> 32);
@@ -157,7 +176,6 @@ namespace rv64vm::dev
 	void XHCI::write_mmio(uint64_t offs, MemorySize size, uint64_t val)
 	{
 		if(offs < XHCI_CAPLENGTH) return;
-		printf("XHCI write offs: 0x%llx size: %d val: 0x%llx\n", offs, (int)size, val);
 		// Operational Registers
 		if(offs >= XHCI_CAPLENGTH && offs < XHCI_RTSOFF)
 		{
@@ -180,18 +198,24 @@ namespace rv64vm::dev
 					sts.raw &= ~static_cast<uint32_t>(val);
 					update_irq();
 					break;
-				case 0x18: // CRCR Low
-					crcr_base	 = (crcr_base & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
+				case 0x18: // CRCR (Low 32 / full 64-bit)
+					if(size == MemorySize::Long)
+						crcr_base = val;
+					else
+						crcr_base = (crcr_base & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
 					crcr_dequeue = crcr_base & ~0x3FULL;
 					pcs			 = crcr_base & 1;
 					break;
-				case 0x1C: // CRCR High
+				case 0x1C: // CRCR High 32
 					crcr_base	 = (crcr_base & 0xFFFFFFFFULL) | (val << 32);
 					crcr_dequeue = crcr_base & ~0x3FULL;
 					pcs			 = crcr_base & 1;
 					break;
-				case 0x30: // DCBAAP Low
-					dcbaap = (dcbaap & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
+				case 0x30: // DCBAAP (Low 32 / full 64-bit)
+					if(size == MemorySize::Long)
+						dcbaap = val;
+					else
+						dcbaap = (dcbaap & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
 					break;
 				case 0x34: // DCBAAP High
 					dcbaap = (dcbaap & 0xFFFFFFFFULL) | (val << 32);
@@ -200,24 +224,65 @@ namespace rv64vm::dev
 					config_reg = static_cast<uint32_t>(val) & 0xFF;
 					break;
 				default:
-					if(op >= 0x400 && op < 0x400 + (XHCI_MAX_PORTS * 0x10))
-					{
-						uint32_t idx  = (op - 0x400) / 0x10;
-						uint32_t wval = static_cast<uint32_t>(val);
+					return;
+			}
+			return;
+		}
 
-						auto& port = port_sc[idx];
+		// PORTSC array (op base + 0x400).
+		// Note: it sits above RTSOFF, so it must be dispatched explicitly.
+		if(offs >= XHCI_CAPLENGTH + 0x400
+		   && offs < XHCI_CAPLENGTH + 0x400 + (XHCI_MAX_PORTS * 0x10))
+		{
+			uint32_t idx  = (offs - (XHCI_CAPLENGTH + 0x400)) / 0x10;
+			uint32_t wval = static_cast<uint32_t>(val);
 
-						uint32_t rw1c_mask = (1 << 17) | (1 << 18) | (1 << 21);
-						port.raw &= ~(wval & rw1c_mask);
+			auto& port = port_sc[idx];
 
-						if((wval & (1 << 4)) && ports[idx])
-						{
-							port.fields.pr	= 0;
-							port.fields.ped = 1;
-							port.fields.prc = 1;
-						}
-					}
-					break;
+			uint32_t rw1c_mask = (1 << 17) | (1 << 18) | (1 << 21);
+			port.raw &= ~(wval & rw1c_mask);
+
+			// Handle Port Power (PP, bit 9) transitions
+			bool old_pp = port.fields.pp;
+			bool new_pp = (wval >> 9) & 1;
+
+			if(!new_pp && old_pp) // PP: 1 -> 0 (power off)
+			{
+				port.fields.pp	= 0;
+				port.fields.ped = 0;
+				port.fields.pls = 5; // RxDetect
+			}
+			else if(new_pp && !old_pp) // PP: 0 -> 1 (power on)
+			{
+				port.fields.pp = 1;
+				if(ports[idx])
+				{
+					port.fields.ccs = 1;
+					port.fields.csc = 1;
+
+					sts.fields.pcd = 1;
+
+					trb_t evt{};
+					evt.status				   = (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
+					evt.control.fields.type	   = static_cast<uint32_t>(TRBType::PORT_STATUS_CHANGE_EVENT);
+					evt.control.fields.control = (static_cast<uint32_t>(idx + 1) & 0xFF);
+					push_event(evt);
+				}
+			}
+
+			if((wval & (1 << 4)) && ports[idx]) // Port Reset (PR)
+			{
+				port.fields.pr	= 0;
+				port.fields.ped = 1;
+				port.fields.prc = 1;
+
+				sts.fields.pcd = 1;
+
+				trb_t evt{};
+				evt.status				   = (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
+				evt.control.fields.type	   = static_cast<uint32_t>(TRBType::PORT_STATUS_CHANGE_EVENT);
+				evt.control.fields.control = (static_cast<uint32_t>(idx + 1) & 0xFF);
+				push_event(evt);
 			}
 			return;
 		}
@@ -240,15 +305,22 @@ namespace rv64vm::dev
 					case 0x08:
 						interrupters[0].erstsz = static_cast<uint32_t>(val) & 0xFFFF;
 						break;
-					case 0x10:
-						interrupters[0].erstba = (interrupters[0].erstba & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
+					case 0x10: // ERSTBA (Low 32 / full 64-bit)
+						if(size == MemorySize::Long)
+							interrupters[0].erstba = val;
+						else
+							interrupters[0].erstba = (interrupters[0].erstba & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
+						update_event_ring_segment(0);
 						break;
 					case 0x14:
 						interrupters[0].erstba = (interrupters[0].erstba & 0xFFFFFFFFULL) | (val << 32);
 						update_event_ring_segment(0);
 						break;
-					case 0x18:
-						interrupters[0].erdp = (interrupters[0].erdp & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
+					case 0x18: // ERDP (Low 32 / full 64-bit)
+						if(size == MemorySize::Long)
+							interrupters[0].erdp = val;
+						else
+							interrupters[0].erdp = (interrupters[0].erdp & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
 						break;
 					case 0x1C:
 						interrupters[0].erdp = (interrupters[0].erdp & 0xFFFFFFFFULL) | (val << 32);
@@ -317,6 +389,42 @@ namespace rv64vm::dev
 		return tr_dequeue & ~0xFULL;
 	}
 
+	void XHCI::set_ep_state_running(uint8_t slot_id, unsigned int ep_ctx_idx)
+	{
+		if(!dcbaap) return;
+
+		uint64_t dcbaa_entry = 0;
+		read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &dcbaa_entry, sizeof(dcbaa_entry));
+		uint64_t out_ctx = dcbaa_entry & ~0xFULL;
+		if(!out_ctx) return;
+
+		constexpr size_t ctx_size = 32;
+		uint32_t ep_info		  = 0;
+		read_dma(out_ctx + (ep_ctx_idx * ctx_size), &ep_info, 4);
+		ep_info = (ep_info & ~0x7u) | 0x1; // EP_STATE_RUNNING
+		write_dma(out_ctx + (ep_ctx_idx * ctx_size), &ep_info, 4);
+	}
+
+	void XHCI::save_ep_ctx_from_input(uint8_t slot_id, unsigned int device_ep_idx, uint64_t input_ctx_addr)
+	{
+		if(!dcbaap) return;
+
+		uint64_t dcbaa_entry = 0;
+		read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &dcbaa_entry, sizeof(dcbaa_entry));
+		uint64_t out_ctx = dcbaa_entry & ~0xFULL;
+		if(!out_ctx) return;
+
+		constexpr size_t ctx_size = 32;
+		uint64_t in_ep			  = input_ctx_addr + ((device_ep_idx + 1) * ctx_size); // input ctx: ctrl=0, slot=1, ep=idx+1
+
+		// xHC saves the endpoint context (deq ptr, ep_info, ...) to the device ctx
+		uint8_t buf[ctx_size];
+		read_dma(in_ep, buf, sizeof(buf));
+		write_dma(out_ctx + (device_ep_idx * ctx_size), buf, sizeof(buf));
+
+		set_ep_state_running(slot_id, device_ep_idx);
+	}
+
 	void XHCI::send_transfer_event(uint32_t slot_id, uint32_t ep_index, TRBCompletionCode code)
 	{
 		trb_t evt{};
@@ -328,21 +436,28 @@ namespace rv64vm::dev
 
 	void XHCI::write_doorbell(uint32_t offset, uint32_t val)
 	{
-		uint8_t slot_id	 = offset / 4;
-		uint8_t ep_index = val & 0xFF;
-
-		if(slot_id == 0 && ep_index == 0)
+		uint8_t slot_id = offset / 4;
+		uint8_t target	= val & 0xFF;
+		if(slot_id == 0 && target == 0)
 		{
 			process_command_ring();
 			return;
 		}
 
-		if(ep_index == 1) // Control Endpoint (EP0)
+		if(target >= 1) // target = ep_index + 1; EP0 control = 1
 		{
-			uint64_t ep0_ring_dma_addr = get_ep_ctx_tr_enqueue_pointer(slot_id, ep_index);
-			if(ep0_ring_dma_addr != 0)
+			uint8_t ep_index = target - 1;
+			if(ep_index == 0) // Control Endpoint (EP0)
 			{
-				process_ep0_transfer_ring(slot_id, ep0_ring_dma_addr);
+				auto it = slots.find(slot_id);
+				if(it != slots.end() && it->second && it->second->ep0_tr_dequeue)
+				{
+					process_ep0_transfer_ring(slot_id, it->second->ep0_tr_dequeue);
+				}
+			}
+			else
+			{
+				process_ep_ring(slot_id, ep_index);
 			}
 		}
 	}
@@ -361,6 +476,9 @@ namespace rv64vm::dev
 		while(trb_dma_addr != 0)
 		{
 			trb_t trb = read_trb(trb_dma_addr);
+			fprintf(stderr, "[XHCI] EP0 trb addr=0x%llx pcs=%u flags=0x%x type=%u cycle=%u\n",
+					(unsigned long long)trb_dma_addr, slots[slot_id]->ep0_pcs,
+					trb.control.fields.flags, (unsigned int)trb.get_type(), trb.control.fields.cycle);
 
 			// Проверка флага цикла (Cycle Bit)
 			if(trb.control.fields.cycle != slots[slot_id]->ep0_pcs) break;
@@ -395,6 +513,10 @@ namespace rv64vm::dev
 						uint32_t requested = std::min<uint32_t>(setup_pkt.wLength, trb_buf_len);
 						uint32_t to_copy   = std::min<uint32_t>(resp.size(), requested);
 
+						fprintf(stderr, "[XHCI] DATA-IN req=0x%02x bReq=0x%02x wVal=0x%04x wLen=%u trbLen=%u resp=%zu copy=%u\n",
+								setup_pkt.bmRequestType, setup_pkt.bRequest, setup_pkt.wValue, setup_pkt.wLength,
+								trb_buf_len, resp.size(), to_copy);
+
 						if(to_copy > 0)
 							write_dma(trb.parameter, resp.data(), to_copy);
 
@@ -407,7 +529,7 @@ namespace rv64vm::dev
 							TRBCompletionCode cc	   = short_packet ? TRBCompletionCode::SHORT_PACKET : TRBCompletionCode::SUCCESS;
 							evt.status				   = residual | (static_cast<uint32_t>(cc) << 24);
 							evt.control.fields.type	   = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
-							evt.control.fields.control = (slot_id << 8) | (1 & 0x1F);
+							evt.control.fields.control = (slot_id << 8) | (1 & 0x1F); // EP1 (endpoint_id=1) in bits 23:16
 							push_event(evt);
 						}
 					}
@@ -426,7 +548,7 @@ namespace rv64vm::dev
 					evt.parameter			   = trb_dma_addr;
 					evt.status				   = static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24;
 					evt.control.fields.type	   = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
-					evt.control.fields.control = (slot_id << 8) | (1 & 0x1F);
+					evt.control.fields.control = (slot_id << 8) | (1 & 0x1F); // EP1 in bits 23:16
 					push_event(evt);
 					break;
 				}
@@ -437,6 +559,72 @@ namespace rv64vm::dev
 			trb_dma_addr += sizeof(trb_t);
 			it->second->ep0_tr_dequeue = trb_dma_addr;
 		}
+	}
+
+	void XHCI::process_ep_ring(uint32_t slot_id, uint32_t ep_index)
+	{
+		if(ep_index >= 16) return;
+
+		auto it = slots.find(slot_id);
+		if(it == slots.end() || !it->second || !it->second->attached_device) return;
+		auto dev = it->second->attached_device;
+
+		if(it->second->ep_deq[ep_index] == 0)
+		{
+			if(!dcbaap) return;
+
+			uint64_t slot_dc_ptr = 0;
+			read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &slot_dc_ptr, sizeof(slot_dc_ptr));
+			if(!slot_dc_ptr) return;
+
+			uint64_t ep_ctx_ptr = slot_dc_ptr + ((ep_index + 1) * 32); // device ctx index
+			uint64_t deq		= 0;
+			read_dma(ep_ctx_ptr + 0x08, &deq, sizeof(deq));
+
+			it->second->ep_deq[ep_index] = deq & ~0xFULL;
+			it->second->ep_pcs[ep_index] = deq & 1;
+		}
+
+		uint64_t trb_dma_addr = it->second->ep_deq[ep_index];
+		uint8_t ep_pcs		  = it->second->ep_pcs[ep_index];
+
+		while(trb_dma_addr != 0)
+		{
+			trb_t trb = read_trb(trb_dma_addr);
+
+			if(trb.control.fields.cycle != ep_pcs) break;
+
+			if(trb.get_type() == TRBType::LINK)
+			{
+				trb_dma_addr = trb.parameter & ~0xFULL;
+				if(trb.control.fields.ent) ep_pcs = !ep_pcs;
+				continue;
+			}
+
+			if(trb.get_type() == TRBType::NORMAL)
+			{
+				uint32_t len = trb.status & 0x1FFFF;
+				std::vector<uint8_t> data;
+				if(dev->get_interrupt_report(data) && !data.empty())
+				{
+					uint32_t copy = std::min<uint32_t>(len, data.size());
+					if(copy) write_dma(trb.parameter, data.data(), copy);
+
+					uint32_t residual = len - copy;
+					trb_t evt{};
+					evt.parameter			   = trb_dma_addr;
+					evt.status				   = residual | (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
+					evt.control.fields.type	   = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
+					evt.control.fields.control = (slot_id << 8) | ((ep_index + 1) & 0x1F);
+					push_event(evt);
+				}
+			}
+
+			trb_dma_addr += sizeof(trb_t);
+			it->second->ep_deq[ep_index] = trb_dma_addr;
+		}
+
+		it->second->ep_pcs[ep_index] = ep_pcs;
 	}
 
 	void XHCI::process_command_ring()
@@ -458,6 +646,8 @@ namespace rv64vm::dev
 			evt.parameter			= crcr_dequeue;
 			evt.status				= (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
 			evt.control.fields.type = static_cast<uint32_t>(TRBType::CMD_COMPLETION_EVENT);
+
+			fprintf(stderr, "[XHCI] CMD type=%u slot=%u param=0x%llx\n", (unsigned int)trb.get_type(), trb.get_slot_id(), (unsigned long long)trb.parameter);
 
 			switch(trb.get_type())
 			{
@@ -483,6 +673,7 @@ namespace rv64vm::dev
 				{
 					uint8_t slot_id = trb.get_slot_id();
 					slots.erase(slot_id);
+					evt.control.fields.control = (static_cast<uint32_t>(slot_id) << 8);
 					push_event(evt);
 					break;
 				}
@@ -495,6 +686,11 @@ namespace rv64vm::dev
 					{
 						uint64_t input_ctx_addr		= trb.parameter & ~0xFULL;
 						constexpr uint64_t ctx_size = 32;
+
+						uint32_t raw_add = 0, raw_drop = 0;
+						read_dma(input_ctx_addr + 4, &raw_add, 4);
+						read_dma(input_ctx_addr, &raw_drop, 4);
+						fprintf(stderr, "[XHCI] ADDR_DEV add=0x%08x drop=0x%08x\n", raw_add, raw_drop);
 
 						// Slot Context goes right after Input Control Context
 						uint64_t slot_ctx_addr = input_ctx_addr + ctx_size;
@@ -513,12 +709,44 @@ namespace rv64vm::dev
 
 						it->second->ep0_pcs		   = deq_lo & 1;
 						it->second->ep0_tr_dequeue = (static_cast<uint64_t>(deq_hi) << 32) | (deq_lo & ~0xFULL);
+
+						// xHC saves the device context: EP0 ctx + Running state
+						save_ep_ctx_from_input(slot_id, 1, input_ctx_addr);
 					}
+					evt.control.fields.control = (static_cast<uint32_t>(slot_id) << 8);
 					push_event(evt);
 					break;
 				}
 				case TRBType::CONFIG_ENDPOINT:
 				case TRBType::EVAL_CONTEXT:
+				{
+					uint8_t slot_id = trb.get_slot_id();
+
+					// Set every endpoint flagged in the input context to Running & save it
+					uint64_t input_ctx_addr = trb.parameter & ~0xFULL;
+					uint32_t add_flags = 0, drop_flags = 0;
+					read_dma(input_ctx_addr, &drop_flags, 4);
+					read_dma(input_ctx_addr + 4, &add_flags, 4);
+					fprintf(stderr, "[XHCI] CONFIG/EVAL slot=%u add_flags=0x%08x drop_flags=0x%08x\n", slot_id, add_flags, drop_flags);
+					if(add_flags)
+					{
+						for(unsigned int i = 1; i <= 31; ++i)
+						{
+							if(add_flags & (1u << i))
+								save_ep_ctx_from_input(slot_id, i, input_ctx_addr);
+						}
+					}
+
+					evt.control.fields.control = (static_cast<uint32_t>(slot_id) << 8);
+					push_event(evt);
+					break;
+				}
+
+				case TRBType::STOP_ENDPOINT:
+				case TRBType::RESET_ENDPOINT:
+				case TRBType::SET_TR_DEQUEUE:
+				case TRBType::RESET_DEVICE:
+					evt.control.fields.control = (static_cast<uint32_t>(trb.get_slot_id()) << 8);
 					push_event(evt);
 					break;
 

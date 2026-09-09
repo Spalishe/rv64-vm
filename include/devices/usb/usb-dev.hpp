@@ -52,6 +52,12 @@ struct USBDevice : std::enable_shared_from_this<USBDevice>
 		}
 	}
 
+	// IN (bulk/interrupt EP)
+	virtual bool get_interrupt_report(std::vector<uint8_t>& data)
+	{
+		return false;
+	}
+
   private:
 	std::vector<uint8_t> get_device_descriptor() { return {}; }
 	std::vector<uint8_t> get_config_descriptor() { return {}; }

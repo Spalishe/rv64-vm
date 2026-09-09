@@ -226,4 +226,7 @@ struct xhci_slot
 	uint32_t slot_id;
 
 	usb_setup_packet_t setup_pkt{};
+
+	uint64_t ep_deq[16]{ 0 };
+	uint8_t ep_pcs[16]{ 1 };
 };

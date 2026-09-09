@@ -34,16 +34,6 @@ namespace rv64vm::dev
 		HID_SET_PROTOCOL		= 0x0B
 	};
 
-	// Setup Packet (8 bytes) from TRB Setup Stage
-	struct alignas(2) usb_setup_packet_t
-	{
-		uint8_t bmRequestType;
-		uint8_t bRequest;
-		uint16_t wValue;
-		uint16_t wIndex;
-		uint16_t wLength;
-	};
-
 	class USBHIDDevice : public USBDevice
 	{
 	  protected:
@@ -68,6 +58,17 @@ namespace rv64vm::dev
 
 		// Data handle in EP1 IN (Interrupt)
 		bool get_next_input_report(std::vector<uint8_t>& out_report);
+
+		bool get_interrupt_report(std::vector<uint8_t>& data) override
+		{
+			// Idle keyboards only report on key events; deliver an empty
+			// boot report to the host during enumeration/probe instead of NAK.
+			if(!get_next_input_report(data))
+			{
+				data.assign(8, 0);
+			}
+			return true;
+		}
 
 		// Add message from device to report.
 		void push_report(const std::vector<uint8_t>& report)

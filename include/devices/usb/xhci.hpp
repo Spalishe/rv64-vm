@@ -41,6 +41,16 @@ namespace rv64vm::dev
 			port_sc[port_idx].fields.ped   = 0;
 			port_sc[port_idx].fields.pp	   = 1;
 			port_sc[port_idx].fields.speed = port_speed;
+			port_sc[port_idx].fields.csc   = 1; // Connect Status Change
+
+			// Generate PORT_STATUS_CHANGE_EVENT
+			sts.fields.pcd = 1;
+
+			trb_t evt{};
+			evt.status				   = (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
+			evt.control.fields.type	   = static_cast<uint32_t>(TRBType::PORT_STATUS_CHANGE_EVENT);
+			evt.control.fields.control = (static_cast<uint32_t>(port_idx + 1) & 0xFF); // Port ID (1-based, bits 16-23)
+			push_event(evt);
 		}
 
 	  private:
@@ -70,6 +80,7 @@ namespace rv64vm::dev
 		void write_mmio(uint64_t addr, MemorySize size, uint64_t val);
 
 		void process_ep0_transfer_ring(uint32_t slot_id, uint64_t trb_dma_addr);
+		void process_ep_ring(uint32_t slot_id, uint32_t ep_index);
 		void process_command_ring();
 		void push_event(trb_t& evt);
 		trb_t read_trb(uint64_t addr);
@@ -79,6 +90,8 @@ namespace rv64vm::dev
 
 		void write_doorbell(uint32_t offset, uint32_t val);
 		uint64_t get_ep_ctx_tr_enqueue_pointer(uint32_t slot_id, uint32_t ep_index);
+		void set_ep_state_running(uint8_t slot_id, unsigned int ep_ctx_idx);
+		void save_ep_ctx_from_input(uint8_t slot_id, unsigned int device_ep_idx, uint64_t input_ctx_addr);
 		void send_transfer_event(uint32_t slot_id, uint32_t ep_index, TRBCompletionCode code);
 		void write_interrupter_reg(size_t intr_idx, uint32_t reg_offset, uint32_t val);
 		void update_event_ring_segment(size_t intr_idx);
