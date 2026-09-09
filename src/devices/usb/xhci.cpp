@@ -20,53 +20,19 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::dev
 {
-	XHCI::XHCI(uint64_t start, runner::Machine& cpu, fdt_node* fdt)
-		: Device(start, 0x2000, fdt, cpu.get_mmap()),
+	XHCI::XHCI(runner::Machine& cpu)
+		: PCI_Device(0x1836, 0x000D, 0x0C),
 		  cpu(cpu),
 		  plic(cpu.get_mmio()->get<PLIC>().get()),
 		  irq_num(plic->acquire_irq())
 	{
-		cpu.get_mmap()->add_region(start, size);
+		write_config_fast<uint8_t>(0x0A, 0x03); // Subclass
+		write_config_fast<uint8_t>(0x09, 0x30); // Programming Interface (XHCI)
 
-		if(fdt != nullptr)
-		{
-			fdt_node* soc = fdt_node_find(fdt, "soc");
-			fdt_node* clk = fdt_node_find(fdt, "xhci_clk");
-			if(!clk)
-			{
-				struct fdt_node* clk_fdt = fdt_node_create("xhci_clk");
-				fdt_node_add_prop_str(clk_fdt, "compatible", "fixed-clock");
-				fdt_node_add_prop_u32(clk_fdt, "#clock-cells", 0);
-				fdt_node_add_prop_u32(clk_fdt, "clock-frequency", 24000000);
-				fdt_node_add_child(fdt, clk_fdt);
-			}
-			fdt_node_free(clk);
-			clk = fdt_node_find(fdt, "xhci_clk");
-			fdt_node_get_phandle(clk);
-
-			struct fdt_node* usb_fdt = fdt_node_create_reg("usb", start);
-			fdt_node_add_prop_reg(usb_fdt, "reg", start, size);
-			fdt_node_add_prop_str(usb_fdt, "compatible", "generic-xhci");
-
-			fdt_node* plic = fdt_node_find_reg(soc, "plic", 0x0C000000);
-			fdt_node_add_prop_u32(usb_fdt, "interrupt-parent", fdt_node_get_phandle(plic));
-			fdt_node_add_prop_u32(usb_fdt, "interrupts", irq_num);
-			fdt_node_add_prop(usb_fdt, "dma-coherent", NULL, 0);
-			fdt_node_add_prop_str(usb_fdt, "status", "okay");
-
-			fdt_node_add_prop_u32(usb_fdt, "clocks", fdt_node_get_phandle(clk));
-			fdt_node_free(clk);
-
-			fdt_node_add_child(soc, usb_fdt);
-			fdt_node_free(soc);
-		}
+		uint64_t xhci_mmio_size = 0x00010000;
+		init_bar(0, xhci_mmio_size, 0x02);
 
 		reset();
-	}
-
-	std::shared_ptr<XHCI> XHCI::init_auto(runner::Machine& cpu)
-	{
-		return std::make_shared<XHCI>(0x100a0000, cpu, cpu.get_fdt());
 	}
 
 	void XHCI::reset()
@@ -89,6 +55,7 @@ namespace rv64vm::dev
 		}
 
 		interrupters[0] = {};
+		event_ring_pcs	= true;
 	}
 
 	void XHCI::update_irq()
@@ -97,10 +64,8 @@ namespace rv64vm::dev
 		plic->set_pending(irq_num, pending);
 	}
 
-	uint64_t XHCI::read(uint64_t addr, MemorySize size)
+	uint64_t XHCI::read_mmio(uint64_t offs, MemorySize size)
 	{
-		uint64_t offs = addr - start;
-
 		// Capability Registers
 		if(offs < XHCI_CAPLENGTH)
 		{
@@ -114,9 +79,9 @@ namespace rv64vm::dev
 					return 0;
 				case 0x0C: // HCSPARAMS3
 					return 0;
-				case 0x10: // HCCPARAMS1 (64-bit addressing, CSZ=1)
-					return (1 << 2) | 1;
-				case 0x14: // DBOFF
+				case 0x10:	  // HCCPARAMS1 (64-bit addressing, CSZ=1)
+					return 1; // (1 << 2) for CSZ
+				case 0x14:	  // DBOFF
 					return XHCI_DBOFF;
 				case 0x18: // RTSOFF
 					return XHCI_RTSOFF;
@@ -189,13 +154,10 @@ namespace rv64vm::dev
 
 		return 0;
 	}
-
-	void XHCI::write(uint64_t addr, MemorySize size, uint64_t val)
+	void XHCI::write_mmio(uint64_t offs, MemorySize size, uint64_t val)
 	{
-		uint64_t offs = addr - start;
-
 		if(offs < XHCI_CAPLENGTH) return;
-
+		printf("XHCI write offs: 0x%llx size: %d val: 0x%llx\n", offs, (int)size, val);
 		// Operational Registers
 		if(offs >= XHCI_CAPLENGTH && offs < XHCI_RTSOFF)
 		{
@@ -205,13 +167,11 @@ namespace rv64vm::dev
 				case 0x00: // USBCMD
 				{
 					cmd.raw = static_cast<uint32_t>(val);
-
 					if(cmd.fields.hcrst)
 					{
 						reset();
 						cmd.fields.hcrst = 0;
 					}
-
 					sts.fields.hchalted = !cmd.fields.runstop;
 					update_irq();
 					break;
@@ -223,7 +183,7 @@ namespace rv64vm::dev
 				case 0x18: // CRCR Low
 					crcr_base	 = (crcr_base & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
 					crcr_dequeue = crcr_base & ~0x3FULL;
-					pcs			 = crcr_base & 1; // RCS bit
+					pcs			 = crcr_base & 1;
 					break;
 				case 0x1C: // CRCR High
 					crcr_base	 = (crcr_base & 0xFFFFFFFFULL) | (val << 32);
@@ -245,17 +205,17 @@ namespace rv64vm::dev
 						uint32_t idx  = (op - 0x400) / 0x10;
 						uint32_t wval = static_cast<uint32_t>(val);
 
-						// Preserve RW1S/RO fields, clear RW1C on '1' write
-						if(wval & (1 << 4)) // PR (Port Reset)
-						{
-							port_sc[idx].fields.prc = 1;
-							port_sc[idx].fields.ped = 1;
-							port_sc[idx].fields.pls = 0; // U0
-						}
+						auto& port = port_sc[idx];
 
-						// RW1C bits handling
-						uint32_t rw1c_mask = (1 << 17) | (1 << 18) | (1 << 21) | (1 << 22);
-						port_sc[idx].raw &= ~(wval & rw1c_mask);
+						uint32_t rw1c_mask = (1 << 17) | (1 << 18) | (1 << 21);
+						port.raw &= ~(wval & rw1c_mask);
+
+						if((wval & (1 << 4)) && ports[idx])
+						{
+							port.fields.pr	= 0;
+							port.fields.ped = 1;
+							port.fields.prc = 1;
+						}
 					}
 					break;
 			}
@@ -270,26 +230,27 @@ namespace rv64vm::dev
 			{
 				switch(rt - 0x20)
 				{
-					case 0x00: // IMAN
+					case 0x00:
 						interrupters[0].iman = static_cast<uint32_t>(val);
 						update_irq();
 						break;
-					case 0x04: // IMOD
+					case 0x04:
 						interrupters[0].imod = static_cast<uint32_t>(val);
 						break;
-					case 0x08: // ERSTSZ
+					case 0x08:
 						interrupters[0].erstsz = static_cast<uint32_t>(val) & 0xFFFF;
 						break;
-					case 0x10: // ERSTBA Low
+					case 0x10:
 						interrupters[0].erstba = (interrupters[0].erstba & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
 						break;
-					case 0x14: // ERSTBA High
+					case 0x14:
 						interrupters[0].erstba = (interrupters[0].erstba & 0xFFFFFFFFULL) | (val << 32);
+						update_event_ring_segment(0);
 						break;
-					case 0x18: // ERDP Low
+					case 0x18:
 						interrupters[0].erdp = (interrupters[0].erdp & 0xFFFFFFFF00000000ULL) | static_cast<uint32_t>(val);
 						break;
-					case 0x1C: // ERDP High
+					case 0x1C:
 						interrupters[0].erdp = (interrupters[0].erdp & 0xFFFFFFFFULL) | (val << 32);
 						break;
 				}
@@ -297,75 +258,185 @@ namespace rv64vm::dev
 			return;
 		}
 
-		// Doorbell Registers
+		// Doorbell Registers FIX
 		if(offs >= XHCI_DBOFF)
 		{
-			uint32_t slot_id = (offs - XHCI_DBOFF) / 4;
-			uint32_t target	 = static_cast<uint32_t>(val) & 0xFF;
+			write_doorbell(static_cast<uint32_t>(offs - XHCI_DBOFF), static_cast<uint32_t>(val));
+		}
+	}
 
-			if(slot_id == 0 && target == 0)
-			{
-				// Command Ring Doorbell triggered
-				process_command_ring();
-			}
+	void XHCI::read_dma(uint64_t addr, void* dest, size_t size)
+	{
+		uint8_t* ptr = static_cast<uint8_t*>(dest);
+		for(size_t i = 0; i < size; ++i)
+		{
+			ptr[i] = static_cast<uint8_t>(cpu.get_mmap()->load(addr + i, 8));
+		}
+	}
+
+	void XHCI::write_dma(uint64_t addr, const void* src, size_t size)
+	{
+		const uint8_t* ptr = static_cast<const uint8_t*>(src);
+		for(size_t i = 0; i < size; ++i)
+		{
+			cpu.get_mmap()->store(addr + i, 8, ptr[i]);
 		}
 	}
 
 	trb_t XHCI::read_trb(uint64_t addr)
 	{
 		trb_t trb{};
-		uint8_t* ptr = reinterpret_cast<uint8_t*>(&trb);
-		for(size_t i = 0; i < sizeof(trb_t); ++i)
-		{
-			ptr[i] = static_cast<uint8_t>(cpu.get_mmap()->load(addr + i, 8));
-		}
+		read_dma(addr, &trb, sizeof(trb_t));
 		return trb;
 	}
 
 	void XHCI::write_trb(uint64_t addr, const trb_t& trb)
 	{
-		const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&trb);
-		for(size_t i = 0; i < sizeof(trb_t); ++i)
-		{
-			cpu.get_mmap()->store(addr + i, 8, ptr[i]);
-		}
+		write_dma(addr, &trb, sizeof(trb_t));
 	}
 
-	void XHCI::push_event(const trb_t& evt)
+	uint64_t XHCI::get_ep_ctx_tr_enqueue_pointer(uint32_t slot_id, uint32_t ep_index)
 	{
-		if(!interrupters[0].erstba || !interrupters[0].erstsz) return;
+		if(ep_index < 1 || ep_index > 31) return 0;
 
-		// Read Segment 0 from ERST
-		erst_entry_t erst{};
-		uint8_t* erst_ptr = reinterpret_cast<uint8_t*>(&erst);
-		for(size_t i = 0; i < sizeof(erst_entry_t); ++i)
+		auto it = slots.find(slot_id);
+		if(it == slots.end() || !it->second) return 0;
+
+		if(!dcbaap) return 0;
+
+		uint64_t slot_dc_ptr = 0;
+		read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &slot_dc_ptr, sizeof(slot_dc_ptr));
+		if(!slot_dc_ptr) return 0;
+
+		constexpr size_t ctx_size = 32;
+		uint64_t ep_ctx_ptr		  = slot_dc_ptr + (ep_index * ctx_size);
+
+		uint64_t tr_dequeue = 0;
+		read_dma(ep_ctx_ptr + 0x08, &tr_dequeue, sizeof(tr_dequeue));
+
+		return tr_dequeue & ~0xFULL;
+	}
+
+	void XHCI::send_transfer_event(uint32_t slot_id, uint32_t ep_index, TRBCompletionCode code)
+	{
+		trb_t evt{};
+		evt.status				   = (static_cast<uint32_t>(code) << 24);
+		evt.control.fields.type	   = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
+		evt.control.fields.control = (slot_id << 8) | (ep_index & 0x1F);
+		push_event(evt);
+	}
+
+	void XHCI::write_doorbell(uint32_t offset, uint32_t val)
+	{
+		uint8_t slot_id	 = offset / 4;
+		uint8_t ep_index = val & 0xFF;
+
+		if(slot_id == 0 && ep_index == 0)
 		{
-			erst_ptr[i] = static_cast<uint8_t>(cpu.get_mmap()->load(interrupters[0].erstba + i, 8));
+			process_command_ring();
+			return;
 		}
 
-		if(!erst.ring_segment_base) return;
-
-		// Write event TRB to current ERDP
-		uint64_t erdp				 = interrupters[0].erdp & ~0xFULL;
-		trb_t out_evt				 = evt;
-		out_evt.control.fields.cycle = event_pcs;
-
-		write_trb(erdp, out_evt);
-
-		// Advance ERDP pointer
-		erdp += sizeof(trb_t);
-		uint64_t ring_end = erst.ring_segment_base + (erst.ring_segment_size * sizeof(trb_t));
-		if(erdp >= ring_end)
+		if(ep_index == 1) // Control Endpoint (EP0)
 		{
-			erdp	  = erst.ring_segment_base;
-			event_pcs = !event_pcs; // Toggle cycle state on wrap
+			uint64_t ep0_ring_dma_addr = get_ep_ctx_tr_enqueue_pointer(slot_id, ep_index);
+			if(ep0_ring_dma_addr != 0)
+			{
+				process_ep0_transfer_ring(slot_id, ep0_ring_dma_addr);
+			}
 		}
+	}
+	inline bool trb_has_ioc(const trb_t& trb)
+	{
+		return (trb.control.fields.flags & 0x08) != 0;
+	}
+	void XHCI::process_ep0_transfer_ring(uint32_t slot_id, uint64_t trb_dma_addr)
+	{
+		auto it = slots.find(slot_id);
+		if(it == slots.end() || !it->second || !it->second->attached_device) return;
+		auto dev = it->second->attached_device;
 
-		interrupters[0].erdp = erdp | (interrupters[0].erdp & 0xFUL);
+		usb_setup_packet_t setup_pkt{};
 
-		// Trigger IRQ
-		sts.fields.eint = 1;
-		update_irq();
+		while(trb_dma_addr != 0)
+		{
+			trb_t trb = read_trb(trb_dma_addr);
+
+			// Проверка флага цикла (Cycle Bit)
+			if(trb.control.fields.cycle != slots[slot_id]->ep0_pcs) break;
+
+			TRBType type = trb.get_type();
+
+			if(type == TRBType::LINK)
+			{
+				trb_dma_addr = trb.parameter & ~0xFULL;
+				if(trb.control.fields.ent)
+				{
+					slots[slot_id]->ep0_pcs = !slots[slot_id]->ep0_pcs;
+				}
+				continue;
+			}
+
+			switch(type)
+			{
+				case TRBType::SETUP_STAGE:
+				{
+					std::memcpy(&setup_pkt, &trb.parameter, sizeof(usb_setup_packet_t));
+					break;
+				}
+				case TRBType::DATA_STAGE:
+				{
+					bool is_read		 = (setup_pkt.bmRequestType & 0x80) != 0;
+					uint32_t trb_buf_len = trb.status & 0x1FFFF; // host allocated buffer size
+
+					if(is_read)
+					{
+						auto resp		   = dev->handle_control_request(setup_pkt);
+						uint32_t requested = std::min<uint32_t>(setup_pkt.wLength, trb_buf_len);
+						uint32_t to_copy   = std::min<uint32_t>(resp.size(), requested);
+
+						if(to_copy > 0)
+							write_dma(trb.parameter, resp.data(), to_copy);
+
+						bool short_packet = to_copy < trb_buf_len;
+						if(trb_has_ioc(trb) || short_packet)
+						{
+							trb_t evt{};
+							evt.parameter			   = trb_dma_addr;
+							uint32_t residual		   = trb_buf_len - to_copy;
+							TRBCompletionCode cc	   = short_packet ? TRBCompletionCode::SHORT_PACKET : TRBCompletionCode::SUCCESS;
+							evt.status				   = residual | (static_cast<uint32_t>(cc) << 24);
+							evt.control.fields.type	   = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
+							evt.control.fields.control = (slot_id << 8) | (1 & 0x1F);
+							push_event(evt);
+						}
+					}
+					else
+					{
+						uint32_t len = std::min<uint32_t>(trb_buf_len, setup_pkt.wLength);
+						std::vector<uint8_t> data(len);
+						read_dma(trb.parameter, data.data(), data.size());
+						dev->handle_control_data_out(setup_pkt, data);
+					}
+					break;
+				}
+				case TRBType::STATUS_STAGE:
+				{
+					trb_t evt{};
+					evt.parameter			   = trb_dma_addr;
+					evt.status				   = static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24;
+					evt.control.fields.type	   = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
+					evt.control.fields.control = (slot_id << 8) | (1 & 0x1F);
+					push_event(evt);
+					break;
+				}
+				default:
+					break;
+			}
+
+			trb_dma_addr += sizeof(trb_t);
+			it->second->ep0_tr_dequeue = trb_dma_addr;
+		}
 	}
 
 	void XHCI::process_command_ring()
@@ -374,25 +445,17 @@ namespace rv64vm::dev
 		{
 			trb_t trb = read_trb(crcr_dequeue);
 
-			// Check if TRB is owned by HC
-			if(trb.control.fields.cycle != pcs)
-			{
-				break;
-			}
+			if(trb.control.fields.cycle != pcs) break;
 
-			// Handle Link TRB
 			if(trb.get_type() == TRBType::LINK)
 			{
 				crcr_dequeue = trb.parameter & ~0xFULL;
-				if(trb.control.fields.ent) // Toggle Cycle bit
-				{
-					pcs = !pcs;
-				}
+				if(trb.control.fields.ent) pcs = !pcs;
 				continue;
 			}
 
 			trb_t evt{};
-			evt.parameter			= crcr_dequeue; // Pointer to original command TRB
+			evt.parameter			= crcr_dequeue;
 			evt.status				= (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
 			evt.control.fields.type = static_cast<uint32_t>(TRBType::CMD_COMPLETION_EVENT);
 
@@ -403,12 +466,57 @@ namespace rv64vm::dev
 					break;
 
 				case TRBType::ENABLE_SLOT:
-					evt.control.fields.control = (1 << 8); // Assign Slot ID = 1
+				{
+					uint8_t allocated_slot = 1;
+					if(slots.find(allocated_slot) == slots.end())
+					{
+						slots[allocated_slot]				   = std::make_shared<xhci_slot>();
+						slots[allocated_slot]->attached_device = ports[0];
+					}
+
+					evt.control.fields.control = (allocated_slot << 8);
 					push_event(evt);
 					break;
+				}
 
 				case TRBType::DISABLE_SLOT:
+				{
+					uint8_t slot_id = trb.get_slot_id();
+					slots.erase(slot_id);
+					push_event(evt);
+					break;
+				}
+
 				case TRBType::ADDRESS_DEVICE:
+				{
+					uint8_t slot_id = trb.get_slot_id();
+					auto it			= slots.find(slot_id);
+					if(it != slots.end() && it->second)
+					{
+						uint64_t input_ctx_addr		= trb.parameter & ~0xFULL;
+						constexpr uint64_t ctx_size = 32;
+
+						// Slot Context goes right after Input Control Context
+						uint64_t slot_ctx_addr = input_ctx_addr + ctx_size;
+						uint32_t slot_dword1   = 0;
+						read_dma(slot_ctx_addr + 4, &slot_dword1, 4);
+						uint8_t root_port = (slot_dword1 >> 16) & 0xFF; // Root Hub Port Number
+
+						if(root_port >= 1 && root_port <= XHCI_MAX_PORTS)
+							it->second->attached_device = ports[root_port - 1];
+
+						// Endpoint Context 0 (EP0) goes right after Input Control Context + Slot Context
+						uint64_t ep0_ctx_addr = input_ctx_addr + 2 * ctx_size;
+						uint32_t deq_lo = 0, deq_hi = 0;
+						read_dma(ep0_ctx_addr + 8, &deq_lo, 4);	 // DWord2: DCS + TR Dequeue Lo
+						read_dma(ep0_ctx_addr + 12, &deq_hi, 4); // DWord3: TR Dequeue Hi
+
+						it->second->ep0_pcs		   = deq_lo & 1;
+						it->second->ep0_tr_dequeue = (static_cast<uint64_t>(deq_hi) << 32) | (deq_lo & ~0xFULL);
+					}
+					push_event(evt);
+					break;
+				}
 				case TRBType::CONFIG_ENDPOINT:
 				case TRBType::EVAL_CONTEXT:
 					push_event(evt);
@@ -421,6 +529,77 @@ namespace rv64vm::dev
 			}
 
 			crcr_dequeue += sizeof(trb_t);
+		}
+	}
+	void XHCI::push_event(trb_t& evt)
+	{
+		auto& intr = interrupters[0];
+		if(intr.ring_base == 0) return;
+
+		evt.control.fields.cycle = (intr.pcs ? 1 : 0);
+
+		write_dma(intr.event_enqueue_ptr, &evt, sizeof(trb_t));
+
+		intr.event_enqueue_ptr += sizeof(trb_t);
+
+		if(intr.event_enqueue_ptr >= intr.ring_end)
+		{
+			intr.event_enqueue_ptr = intr.ring_base;
+			intr.pcs			   = !intr.pcs;
+		}
+
+		intr.iman |= 1;
+		sts.fields.eint = 1;
+		update_irq();
+	}
+
+	void XHCI::write_interrupter_reg(size_t intr_idx, uint32_t reg_offset, uint32_t val)
+	{
+		auto& intr = interrupters[intr_idx];
+
+		switch(reg_offset)
+		{
+			case 0x08:						// ERSTSZ
+				intr.erstsz = val & 0xFFFF; // lower 16 бит
+				break;
+
+			case 0x10: // ERSTBA Low 32 bits
+				intr.erstba = (intr.erstba & 0xFFFFFFFF00000000ULL) | val;
+				break;
+
+			case 0x14: // ERSTBA High 32 bits
+				intr.erstba = (intr.erstba & 0x00000000FFFFFFFFULL) | (static_cast<uint64_t>(val) << 32);
+				update_event_ring_segment(intr_idx);
+				break;
+
+			case 0x18:															   // ERDP Low 32 bits
+				intr.erdp = (intr.erdp & 0xFFFFFFFF00000000ULL) | (val & ~0xFULL); // first 4 bits are flags
+				break;
+
+			case 0x1C: // ERDP High 32 bits
+				intr.erdp = (intr.erdp & 0x00000000FFFFFFFFULL) | (static_cast<uint64_t>(val) << 32);
+				break;
+		}
+	}
+
+	void XHCI::update_event_ring_segment(size_t intr_idx)
+	{
+		auto& intr = interrupters[intr_idx];
+
+		if(intr.erstba == 0 || intr.erstsz == 0) return;
+
+		uint64_t table_phys_addr = intr.erstba & ~0x3FULL;
+
+		erst_entry_t seg_entry{};
+		read_dma(table_phys_addr, &seg_entry, sizeof(seg_entry));
+
+		intr.ring_base		= seg_entry.ring_segment_base & ~0x3FULL;
+		intr.ring_size_trbs = seg_entry.ring_segment_size;
+		intr.ring_end		= intr.ring_base + (intr.ring_size_trbs * sizeof(trb_t));
+
+		if(intr.event_enqueue_ptr < intr.ring_base || intr.event_enqueue_ptr >= intr.ring_end)
+		{
+			intr.event_enqueue_ptr = intr.ring_base;
 		}
 	}
 }

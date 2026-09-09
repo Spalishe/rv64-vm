@@ -15,7 +15,7 @@ Copyright 2026 Spalishe
 
 */
 
-#include "../../../include/devices/hid/hid_keyboard.hpp"
+#include "../../../include/devices/hid/hid_i2c_keyboard.hpp"
 #include "../../../include/devices/plic.hpp"
 #include <cstdint>
 namespace rv64vm::dev

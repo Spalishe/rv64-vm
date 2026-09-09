@@ -66,19 +66,21 @@ namespace rv64vm
 	}
 }
 
-#include "device.hpp"					// IWYU pragma: export
-#include "devices/clint.hpp"			// IWYU pragma: export
-#include "devices/framebuffer.hpp"		// IWYU pragma: export
-#include "devices/hid/hid-over-i2c.hpp" // IWYU pragma: export
-#include "devices/hid/hid_keyboard.hpp" // IWYU pragma: export
-#include "devices/i2c/i2c-core.hpp"		// IWYU pragma: export
-#include "devices/i2c/i2c-slave.hpp"	// IWYU pragma: export
-#include "devices/plic.hpp"				// IWYU pragma: export
-#include "devices/syscon.hpp"			// IWYU pragma: export
-#include "devices/uart.hpp"				// IWYU pragma: export
-#include "devices/usb/xhci.hpp"			// IWYU pragma: export
-#include "devices/virtio_blk.hpp"		// IWYU pragma: export
-#include "hart.hpp"						// IWYU pragma: export
-#include "machine.hpp"					// IWYU pragma: export
-#include "memory_map.hpp"				// IWYU pragma: export
-#include "mmio.hpp"						// IWYU pragma: export
+#include "device.hpp"							 // IWYU pragma: export
+#include "devices/clint.hpp"					 // IWYU pragma: export
+#include "devices/framebuffer.hpp"				 // IWYU pragma: export
+#include "devices/hid/hid-over-i2c.hpp"			 // IWYU pragma: export
+#include "devices/hid/hid_usb_keyboard.hpp"		 // IWYU pragma: export
+#include "devices/i2c/i2c-core.hpp"				 // IWYU pragma: export
+#include "devices/i2c/i2c-slave.hpp"			 // IWYU pragma: export
+#include "devices/pci/pci-device.hpp"			 // IWYU pragma: export
+#include "devices/pci/pci-host-ecam-generic.hpp" // IWYU pragma: export
+#include "devices/plic.hpp"						 // IWYU pragma: export
+#include "devices/syscon.hpp"					 // IWYU pragma: export
+#include "devices/uart.hpp"						 // IWYU pragma: export
+#include "devices/usb/xhci.hpp"					 // IWYU pragma: export
+#include "devices/virtio_blk.hpp"				 // IWYU pragma: export
+#include "hart.hpp"								 // IWYU pragma: export
+#include "machine.hpp"							 // IWYU pragma: export
+#include "memory_map.hpp"						 // IWYU pragma: export
+#include "mmio.hpp"								 // IWYU pragma: export

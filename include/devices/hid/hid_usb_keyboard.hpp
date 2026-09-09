@@ -18,15 +18,15 @@ Copyright 2026 Spalishe
 #pragma once
 #include "../../fwd.hpp"
 #include "../../utils/hid_report_descriptor.hpp"
-#include "hid-over-i2c.hpp"
+#include "hid-over-usb.hpp"
 
 namespace rv64vm::dev
 {
-	struct HID_Keyboard : HIDOverI2C
+	struct HID_USB_Keyboard : public USBHIDDevice
 	{
 	  public:
 		void update(uint8_t modifiers, uint8_t key_1, uint8_t key_2, uint8_t key_3, uint8_t key_4, uint8_t key_5, uint8_t key_6, bool rollover);
-		HID_Keyboard(runner::Machine& cpu, fdt_node* fdt);
+		HID_USB_Keyboard(runner::Machine& cpu);
 
 	  private:
 		inline static const std::vector<HIDItem> report_descriptor_items = {
@@ -61,5 +61,8 @@ namespace rv64vm::dev
 		void hid_event_output_report_write();
 		void hid_event_data_register_write();
 		void hid_event_command_register_write();
+
+		void handle_output_report(uint8_t report_id, const std::vector<uint8_t>& data) override;
+		void on_led_state_change(uint8_t leds);
 	};
 }

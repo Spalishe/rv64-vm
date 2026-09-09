@@ -28,10 +28,12 @@ extern "C"
 #include <wayland-client-core.h>
 #include <wayland-client.h>
 
-#include "../../devices/hid/hid_keyboard.hpp"
+#include "../../devices/hid/hid_usb_keyboard.hpp"
 #include <algorithm>
+#include <array>
 #include <fcntl.h>
 #include <linux/input-event-codes.h>
+#include <memory>
 #include <mutex>
 #include <sys/mman.h>
 #include <thread>
@@ -153,7 +155,7 @@ struct WaylandWindow
 	int height								 = 0;
 
 	InputState* input;
-	std::shared_ptr<rv64vm::dev::HID_Keyboard> kb;
+	std::shared_ptr<rv64vm::dev::HID_USB_Keyboard> kb;
 };
 namespace
 {
@@ -481,7 +483,7 @@ struct AppWindow
 {
 	WaylandWindow wl;
 	InputState input;
-	std::shared_ptr<rv64vm::dev::HID_Keyboard> kb;
+	std::shared_ptr<rv64vm::dev::HID_USB_Keyboard> kb;
 	int width  = 800;
 	int height = 600;
 };

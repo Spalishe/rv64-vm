@@ -317,8 +317,12 @@ int main(int argc, char* argv[])
 
 	uart = machine.get_mmio()->get<rv64vm::dev::UART>();
 
+	// PCI (tbe pci-host-ecam-generic)
+	auto pci = machine.get_mmio()->create_device_auto<rv64vm::dev::PCI_HEG>(machine);
+
 	// USB
-	auto ehci = machine.get_mmio()->create_device_auto<rv64vm::dev::XHCI>(machine);
+	auto xhci = std::make_shared<rv64vm::dev::XHCI>(machine);
+	pci->attach_device(1, xhci.get());
 
 #ifdef USE_FRAMEBUFFER
 	AppWindow window;
@@ -326,9 +330,11 @@ int main(int argc, char* argv[])
 	VkSurfaceKHR surface;
 	if(fb_w != 0 && fb_h != 0)
 	{
-		auto i2c	  = machine.get_mmio()->get<rv64vm::dev::I2C>();
-		auto kb		  = i2c->create_device<rv64vm::dev::HID_Keyboard>(machine, machine.get_fdt());
-		window.kb	  = std::dynamic_pointer_cast<rv64vm::dev::HID_Keyboard>(kb);
+		// auto i2c	  = machine.get_mmio()->get<rv64vm::dev::I2C>();
+		// auto kb		  = i2c->create_device<rv64vm::dev::HID_USB_Keyboard>(machine, machine.get_fdt());
+		auto kb = std::make_shared<rv64vm::dev::HID_USB_Keyboard>(machine);
+		xhci->attach_device(1, kb);
+		window.kb	  = std::dynamic_pointer_cast<rv64vm::dev::HID_USB_Keyboard>(kb);
 		window.width  = fb_w;
 		window.height = fb_h;
 		if(!InitializeNativeWindow(window, "rv64-vm"))
