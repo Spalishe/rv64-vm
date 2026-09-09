@@ -21,6 +21,9 @@ This document contains all Exported API objects.
   * [tick](api/I2C.md#tick)
   * [read](api/I2C.md#read)
   * [write](api/I2C.md#write)
+* **[PCI_HEG](api/PCI_HEG.md)**
+  * [read](api/PCI_HEG.md#read)
+  * [write](api/PCI_HEG.md#write)
 * **[PLIC](api/PLIC.md)**
   * [read](api/PLIC.md#read)
   * [write](api/PLIC.md#write)
@@ -34,9 +37,6 @@ This document contains all Exported API objects.
 * **[VirtIO_BLK](api/VirtIO_BLK.md)**
   * [read](api/VirtIO_BLK.md#read)
   * [write](api/VirtIO_BLK.md#write)
-* **[XHCI](api/XHCI.md)**
-  * [read](api/XHCI.md#read)
-  * [write](api/XHCI.md#write)
 
 ## Namespace `rv64vm::runner`
 

@@ -16,8 +16,8 @@ Defined in include/devices/clint.hpp:31
 
 | Name | Kind | Owner |
 |------|------|-------|
-| [`read`](#read-6) | `function` | Declared here |
-| [`write`](#write-6) | `function` | Declared here |
+| [`read`](#read-5) | `function` | Declared here |
+| [`write`](#write-5) | `function` | Declared here |
 | [`tick`](#tick-3) | `function` | Declared here |
 | [`mmap`](Device.md#mmap) | `variable` | Inherited from [`Device`](Device.md#device) |
 | [`start`](Device.md#start) | `variable` | Inherited from [`Device`](Device.md#device) |
@@ -47,8 +47,8 @@ Defined in include/devices/clint.hpp:31
 
 | Return | Name | Description |
 |--------|------|-------------|
-| `uint64_t` | [`read`](#read-6) `virtual` | [Device](Device.md#device) read function. |
-| `void` | [`write`](#write-6) `virtual` | [Device](Device.md#device) write function. |
+| `uint64_t` | [`read`](#read-5) `virtual` | [Device](Device.md#device) read function. |
+| `void` | [`write`](#write-5) `virtual` | [Device](Device.md#device) write function. |
 | `void` | [`tick`](#tick-3) `virtual` | [Device](Device.md#device) tick function. |
 
 ---

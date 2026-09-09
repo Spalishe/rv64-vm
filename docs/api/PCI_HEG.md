@@ -1,14 +1,14 @@
 
 
-# SYSCON
+# PCI_HEG
 
 ```cpp
-#include <syscon.hpp>
+#include <pci-host-ecam-generic.hpp>
 
-class SYSCON
+class PCI_HEG
 ```
 
-Defined in include/devices/syscon.hpp:25
+Defined in include/devices/pci/pci-host-ecam-generic.hpp:28
 
 > **Inherits:** [`Device`](Device.md#device)
 
@@ -16,8 +16,8 @@ Defined in include/devices/syscon.hpp:25
 
 | Name | Kind | Owner |
 |------|------|-------|
-| [`read`](#read-6) | `function` | Declared here |
-| [`write`](#write-6) | `function` | Declared here |
+| [`read`](#read-7) | `function` | Declared here |
+| [`write`](#write-7) | `function` | Declared here |
 | [`mmap`](Device.md#mmap) | `variable` | Inherited from [`Device`](Device.md#device) |
 | [`start`](Device.md#start) | `variable` | Inherited from [`Device`](Device.md#device) |
 | [`size`](Device.md#size) | `variable` | Inherited from [`Device`](Device.md#device) |
@@ -46,8 +46,8 @@ Defined in include/devices/syscon.hpp:25
 
 | Return | Name | Description |
 |--------|------|-------------|
-| `uint64_t` | [`read`](#read-6) `virtual` | [Device](Device.md#device) read function. |
-| `void` | [`write`](#write-6) `virtual` | [Device](Device.md#device) write function. |
+| `uint64_t` | [`read`](#read-7) `virtual` | [Device](Device.md#device) read function. |
+| `void` | [`write`](#write-7) `virtual` | [Device](Device.md#device) write function. |
 
 ---
 
@@ -61,7 +61,7 @@ Defined in include/devices/syscon.hpp:25
 virtual uint64_t read(uint64_t addr, MemorySize size)
 ```
 
-Defined in include/devices/syscon.hpp:33
+Defined in include/devices/pci/pci-host-ecam-generic.hpp:41
 
 [Device](Device.md#device) read function.
 
@@ -81,7 +81,7 @@ Defined in include/devices/syscon.hpp:33
 virtual void write(uint64_t addr, MemorySize size, uint64_t val)
 ```
 
-Defined in include/devices/syscon.hpp:34
+Defined in include/devices/pci/pci-host-ecam-generic.hpp:42
 
 [Device](Device.md#device) write function.
 
