@@ -416,7 +416,7 @@ namespace rv64vm::runner
 			// Update devices
 			constexpr int INSTR_BATCH = 256;
 #ifdef USE_GDBSTUB
-			const int batch = (gdb && gdb_single_step) ? 1 : INSTR_BATCH;
+			const int batch = (gdb) ? 1 : INSTR_BATCH;
 #else
 			constexpr int batch = INSTR_BATCH;
 #endif
@@ -453,7 +453,7 @@ namespace rv64vm::runner
 			}
 
 #ifdef USE_GDBSTUB
-			if(gdb) [[unlikely]]
+			if(gdb)
 			{
 				if(gdb_single_step)
 				{

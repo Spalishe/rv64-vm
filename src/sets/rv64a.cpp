@@ -73,7 +73,7 @@ MemoryReturn AMO_LR(Hart& hart, uint64_t va, MemorySize size, void* val)
 
 ExecReturn exec_LR_D(Hart& hart, InstructionData& inst)
 {
-	uint64_t val;
+	uint64_t val	 = 0;
 	MemoryReturn out = AMO_LR(hart, hart.GPR[inst.rs1], MemorySize::Long, &val);
 	if(!out.is_success) return { false, false, 4, out.exc_code, out.tval };
 	hart.GPR[inst.rd] = val;
@@ -81,7 +81,7 @@ ExecReturn exec_LR_D(Hart& hart, InstructionData& inst)
 }
 ExecReturn exec_SC_D(Hart& hart, InstructionData& inst)
 {
-	uint64_t val;
+	uint64_t val	 = 0;
 	MemoryReturn out = AMO_SC(hart, hart.GPR[inst.rs1], MemorySize::Long, hart.GPR[inst.rs2], &val);
 	if(!out.is_success) return { false, false, 4, out.exc_code, out.tval };
 	hart.GPR[inst.rd] = val;
