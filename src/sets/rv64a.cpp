@@ -185,7 +185,7 @@ ExecReturn exec_AMOMAXU_D(Hart& hart, InstructionData& inst)
 
 ExecReturn exec_LR_W(Hart& hart, InstructionData& inst)
 {
-	uint32_t val;
+	uint32_t val = 0;
 	MemoryReturn out = AMO_LR(hart, hart.GPR[inst.rs1], MemorySize::Int, &val);
 	if(!out.is_success) return { false, false, 0, out.exc_code, out.tval };
 	hart.GPR[inst.rd] = (int64_t)(int32_t)val;
@@ -193,7 +193,7 @@ ExecReturn exec_LR_W(Hart& hart, InstructionData& inst)
 }
 ExecReturn exec_SC_W(Hart& hart, InstructionData& inst)
 {
-	uint32_t val;
+	uint32_t val = 0;
 	MemoryReturn out = AMO_SC(hart, hart.GPR[inst.rs1], MemorySize::Int, (uint32_t)hart.GPR[inst.rs2], &val);
 	if(!out.is_success) return { false, false, 0, out.exc_code, out.tval };
 	hart.GPR[inst.rd] = val;
