@@ -324,17 +324,15 @@ int main(int argc, char* argv[])
 	auto xhci = std::make_shared<rv64vm::dev::XHCI>(machine);
 	pci->attach_device(1, xhci.get());
 
-	// HID keyboard is always present so that the guest sees a USB device.
-	// Keystrokes are only delivered when a framebuffer window exists.
-	auto kb = std::make_shared<rv64vm::dev::HID_USB_Keyboard>(machine);
-	xhci->attach_device(1, kb);
-
 #ifdef USE_FRAMEBUFFER
 	AppWindow window;
 	VkInstance instance;
 	VkSurfaceKHR surface;
 	if(fb_w != 0 && fb_h != 0)
 	{
+		auto kb = std::make_shared<rv64vm::dev::HID_USB_Keyboard>(machine);
+		xhci->attach_device(1, kb);
+
 		window.kb	  = std::dynamic_pointer_cast<rv64vm::dev::HID_USB_Keyboard>(kb);
 		window.width  = fb_w;
 		window.height = fb_h;
