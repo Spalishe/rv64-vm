@@ -126,6 +126,7 @@ This document contains all Exported API objects.
   * [~TLB](api/TLB.md#~tlb)
   * [lookup](api/TLB.md#lookup)
   * [insert](api/TLB.md#insert)
+  * [note_exec](api/TLB.md#note_exec)
   * [flush_all](api/TLB.md#flush_all)
   * [flush_addr](api/TLB.md#flush_addr)
   * [flush_asid](api/TLB.md#flush_asid)

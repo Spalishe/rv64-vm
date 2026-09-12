@@ -20,6 +20,7 @@ RISC-V Translation Lookaside Buffer.
 |  | [`~TLB`](#~tlb) `inline` | [TLB](#tlb) Destructor. |
 | `bool` | [`lookup`](#lookup)  | Looks up in cache for [TLB](#tlb) entry. |
 | `void` | [`insert`](#insert)  | Inserts new [TLB](#tlb) entry in cache. |
+| `void` | [`note_exec`](#note_exec) `inline` | Strips the write/dirty capability from the entry for `va`. |
 | `void` | [`flush_all`](#flush_all) `inline` | Flushes all [TLB](#tlb) entries. |
 | `void` | [`flush_addr`](#flush_addr) `inline` | Flushes all [TLB](#tlb) entries by address. |
 | `void` | [`flush_asid`](#flush_asid) `inline` | Flushes all [TLB](#tlb) entries by ASID. |
@@ -67,7 +68,7 @@ Defined in include/tlb.hpp:40
 bool lookup(uint64_t va, AccessType type, uint16_t asid, int mode, bool mxr, bool sum, uint64_t * pa)
 ```
 
-Defined in include/tlb.hpp:76
+Defined in include/tlb.hpp:87
 
 Looks up in cache for [TLB](#tlb) entry.
 
@@ -97,10 +98,10 @@ Is success?
 ### insert
 
 ```cpp
-void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global)
+void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void * host_page = nullptr)
 ```
 
-Defined in include/tlb.hpp:87
+Defined in include/tlb.hpp:101
 
 Inserts new [TLB](#tlb) entry in cache.
 
@@ -111,10 +112,30 @@ Inserts new [TLB](#tlb) entry in cache.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `va` | `uint64_t` | Virtual Address |
+| `pa` | `uint64_t` | Physical address (any byte inside the target page) |
 | `page_bits` | `uint8_t` | Size of PPN page bits |
 | `perm` | `uint8_t` | Permissions bit set |
 | `asid` | `uint16_t` | Entry ASID |
 | `global` | `bool` | Entry G bit |
+| `host_page` | `const void *` | Host pointer to the start of the guest page, or nullptr when the page has no direct host mapping (MMIO/IO) |
+
+---
+
+
+
+### note_exec
+
+`inline`
+
+```cpp
+inline void note_exec(uint64_t va)
+```
+
+Defined in include/tlb.hpp:114
+
+Strips the write/dirty capability from the entry for `va`.
+
+W^X: once a page is executed, JITed stores must miss the [TLB](#tlb) so stores fall back to the interpreter, which detects self-modifying writes and invalidates compiled code.
 
 ---
 
@@ -128,7 +149,7 @@ Inserts new [TLB](#tlb) entry in cache.
 inline void flush_all()
 ```
 
-Defined in include/tlb.hpp:92
+Defined in include/tlb.hpp:126
 
 Flushes all [TLB](#tlb) entries.
 
@@ -144,7 +165,7 @@ Flushes all [TLB](#tlb) entries.
 inline void flush_addr(uint64_t)
 ```
 
-Defined in include/tlb.hpp:98
+Defined in include/tlb.hpp:132
 
 Flushes all [TLB](#tlb) entries by address.
 
@@ -163,7 +184,7 @@ Flushes all [TLB](#tlb) entries by address.
 inline void flush_asid(uint16_t)
 ```
 
-Defined in include/tlb.hpp:103
+Defined in include/tlb.hpp:137
 
 Flushes all [TLB](#tlb) entries by ASID.
 
@@ -182,7 +203,7 @@ Flushes all [TLB](#tlb) entries by ASID.
 inline void flush_addr_asid(uint64_t, uint16_t)
 ```
 
-Defined in include/tlb.hpp:108
+Defined in include/tlb.hpp:142
 
 Flushes all [TLB](#tlb) entries by address and ASID.
 
