@@ -44,6 +44,18 @@ namespace rv64vm::jit
 		return !em.eof();
 	}
 
+	static inline bool ld(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, uint8_t width, bool sign)
+	{
+		em.emit_load(d.rd, d.rs1, (int64_t)d.imm, width, sign);
+		return !em.eof();
+	}
+
+	static inline bool st(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, uint8_t width)
+	{
+		em.emit_store(d.rs1, (int64_t)d.imm, d.rs2, width);
+		return !em.eof();
+	}
+
 	// R-Type
 	bool jit_ADD(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
@@ -106,7 +118,7 @@ namespace rv64vm::jit
 		return alu_r(h, d, b, e, ALUOp::SLTU, false);
 	}
 
-	// I-Type (ALU)
+	// I-Type
 	bool jit_ADDI(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
 		return alu_i(h, d, b, e, ALUOp::ADD, false);
@@ -159,6 +171,55 @@ namespace rv64vm::jit
 	{
 		return alu_i(h, d, b, e, ALUOp::SLTU, false);
 	}
+
+	// S-Type
+
+	bool jit_LB(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return ld(h, d, b, e, 1, true);
+	}
+	bool jit_LBU(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return ld(h, d, b, e, 1, false);
+	}
+	bool jit_LH(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return ld(h, d, b, e, 2, true);
+	}
+	bool jit_LHU(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return ld(h, d, b, e, 2, false);
+	}
+	bool jit_LW(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return ld(h, d, b, e, 4, true);
+	}
+	bool jit_LWU(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return ld(h, d, b, e, 4, false);
+	}
+	bool jit_LD(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return ld(h, d, b, e, 8, true);
+	}
+
+	bool jit_SB(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return st(h, d, b, e, 1);
+	}
+	bool jit_SH(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return st(h, d, b, e, 2);
+	}
+	bool jit_SW(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return st(h, d, b, e, 4);
+	}
+	bool jit_SD(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return st(h, d, b, e, 8);
+	}
+
 }
 
 #endif
