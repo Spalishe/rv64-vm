@@ -66,11 +66,20 @@ namespace rv64vm::runner
 		return true;
 	}
 
-	void TLB::insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global)
+	void TLB::insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void* host_page)
 	{
 		TlbEntry& e		   = entries[index(va)];
 		uint64_t page_mask = (1ULL << page_bits) - 1;
-		e				   = { va & ~page_mask, pa & ~page_mask, asid, page_bits, perm, global, generation };
+		uint64_t vpage	   = va & ~page_mask;
+		e.vpage_mask_inv   = ~page_mask;
+		e.vpage_base	   = vpage;
+		e.generation	   = generation;
+		e.host_ptr		   = host_page ? ((uint64_t)host_page - vpage) : 0;
+		e.ppage_base	   = pa & ~page_mask;
+		e.asid			   = asid;
+		e.page_bits		   = page_bits;
+		e.perm			   = perm;
+		e.global		   = global;
 	}
 
 	__attribute__((always_inline)) inline bool TLB::check_perm(uint8_t perm, AccessType type, int mode, bool mxr, bool sum)

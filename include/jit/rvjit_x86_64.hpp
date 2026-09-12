@@ -64,9 +64,33 @@ namespace rv64vm::jit::x86
 	};
 
 	// Context field offsets the generated code addresses.
-	constexpr uint16_t CTX_OFF_REGS	 = 0;
-	constexpr uint16_t CTX_OFF_ENTRY = 32;
-	constexpr uint16_t CTX_OFF_EXIT	 = 40;
+	constexpr uint16_t CTX_OFF_REGS			= 0;
+	constexpr uint16_t CTX_OFF_RAM			= 8;
+	constexpr uint16_t CTX_OFF_MMIO			= 16;
+	constexpr uint16_t CTX_OFF_MEMSIZE		= 24;
+	constexpr uint16_t CTX_OFF_ENTRY		= 32;
+	constexpr uint16_t CTX_OFF_EXIT			= 40;
+	constexpr uint16_t CTX_OFF_HART			= 48;
+	constexpr uint16_t CTX_OFF_LOOP			= 56;
+	constexpr uint16_t CTX_OFF_TLB_ENTRIES	= 64;
+	constexpr uint16_t CTX_OFF_TLB_GEN		= 72;
+	constexpr uint16_t CTX_OFF_SATP_ASID	= 80;
+
+	// TLB::TlbEntry field offsets (mirrors of the C++ layout; the JIT code
+	// addresses entries relative to [CTX + CTX_OFF_TLB_ENTRIES]).
+	constexpr uint16_t TLB_OFF_VPAGE_MASK_INV = 0;
+	constexpr uint16_t TLB_OFF_VPAGE_BASE	  = 8;
+	constexpr uint16_t TLB_OFF_GENERATION	  = 16;
+	constexpr uint16_t TLB_OFF_HOST_PTR		  = 24;
+	constexpr uint16_t TLB_OFF_PPAGE_BASE	  = 32;
+	constexpr uint16_t TLB_OFF_ASID			  = 40;
+	constexpr uint16_t TLB_OFF_PAGE_BITS	  = 42;
+	constexpr uint16_t TLB_OFF_PERM			  = 43;
+	constexpr uint16_t TLB_OFF_GLOBAL		  = 44;
+
+	// TLB index = (va >> 12) & TLB_SIZE_MASK, then scaled by TLB_ENTRY_LOG2.
+	constexpr uint16_t TLB_ENTRY_LOG2 = 6;
+	constexpr uint32_t TLB_SIZE_MASK  = (2 << 16) - 1;
 
 	struct CodeBuf
 	{
@@ -127,6 +151,76 @@ namespace rv64vm::jit::x86
 	inline void mov_rm(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t src)
 	{
 		rex(cb, true, src >= 8, false, base >= 8);
+		cb.b(0x89);
+		modrm_mem(cb, src, base, disp);
+	}
+	// lea r64, [base + disp32]
+	inline void lea_r64_mem(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, true, dst >= 8, false, base >= 8);
+		cb.b(0x8D);
+		modrm_mem(cb, dst, base, disp);
+	}
+	// Zero/sign-extending memory loads (REX.W gives the r64 form).
+	inline void movzx_r64_m8(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, true, dst >= 8, false, base >= 8);
+		cb.b(0x0F);
+		cb.b(0xB6);
+		modrm_mem(cb, dst, base, disp);
+	}
+	inline void movzx_r64_m16(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, true, dst >= 8, false, base >= 8);
+		cb.b(0x0F);
+		cb.b(0xB7);
+		modrm_mem(cb, dst, base, disp);
+	}
+	inline void movsx_r64_m8(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, true, dst >= 8, false, base >= 8);
+		cb.b(0x0F);
+		cb.b(0xBE);
+		modrm_mem(cb, dst, base, disp);
+	}
+	inline void movsx_r64_m16(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, true, dst >= 8, false, base >= 8);
+		cb.b(0x0F);
+		cb.b(0xBF);
+		modrm_mem(cb, dst, base, disp);
+	}
+	// movsxd r64, dword [mem]: sign-extends a 32-bit load.
+	inline void movsxd_r64_m32(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, true, dst >= 8, false, base >= 8);
+		cb.b(0x63);
+		modrm_mem(cb, dst, base, disp);
+	}
+	// mov r32, [mem] (32-bit load; zero-extends into the 64-bit register).
+	inline void mov_r32_m32(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, false, dst >= 8, false, base >= 8);
+		cb.b(0x8B);
+		modrm_mem(cb, dst, base, disp);
+	}
+	// Memory stores. REX always covers SIL/DIL/R8B..R11B for the byte form.
+	inline void mov_m8_r8(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t src)
+	{
+		rex(cb, false, src >= 8, false, base >= 8);
+		cb.b(0x88);
+		modrm_mem(cb, src, base, disp);
+	}
+	inline void mov_m16_r16(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t src)
+	{
+		cb.b(0x66);
+		rex(cb, false, src >= 8, false, base >= 8);
+		cb.b(0x89);
+		modrm_mem(cb, src, base, disp);
+	}
+	inline void mov_m32_r32(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t src)
+	{
+		rex(cb, false, src >= 8, false, base >= 8);
 		cb.b(0x89);
 		modrm_mem(cb, src, base, disp);
 	}
@@ -231,6 +325,48 @@ namespace rv64vm::jit::x86
 	{
 		arith_rr64(cb, 7, a, b);
 	}
+	// R-m forms: dst-reg op [mem] (3B/23/33/0B/03 /r).
+	inline void arith_rm64(CodeBuf& cb, uint8_t regfield, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, true, dst >= 8, false, base >= 8);
+		cb.b(0x03 | (static_cast<uint8_t>(regfield) << 3));
+		modrm_mem(cb, dst, base, disp);
+	}
+	inline void add_r64_m64(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		arith_rm64(cb, 0, dst, base, disp);
+	}
+	inline void or_r64_m64(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		arith_rm64(cb, 1, dst, base, disp);
+	}
+	inline void xor_r64_m64(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		arith_rm64(cb, 6, dst, base, disp);
+	}
+	inline void and_r64_m64(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		arith_rm64(cb, 4, dst, base, disp);
+	}
+	inline void cmp_r64_m64(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		arith_rm64(cb, 7, dst, base, disp);
+	}
+	inline void cmp_r16_m16(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		cb.b(0x66);
+		rex(cb, false, dst >= 8, false, base >= 8);
+		cb.b(0x3B);
+		modrm_mem(cb, dst, base, disp);
+	}
+	// cmp r/m16: reg field is the SOURCE register.
+	inline void cmp_m16_r16(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t src)
+	{
+		cb.b(0x66);
+		rex(cb, false, src >= 8, false, base >= 8);
+		cb.b(0x39);
+		modrm_mem(cb, src, base, disp);
+	}
 	inline void add_rr32(CodeBuf& cb, uint8_t dst, uint8_t src)
 	{
 		arith_rr32(cb, 0, dst, src);
@@ -274,6 +410,14 @@ namespace rv64vm::jit::x86
 	inline void add_imm32(CodeBuf& cb, uint8_t dst, int32_t imm)
 	{
 		arith_imm32(cb, 0, dst, imm);
+	}
+	inline void and_imm32(CodeBuf& cb, uint8_t dst, int32_t imm)
+	{
+		arith_imm32(cb, 4, dst, imm);
+	}
+	inline void cmp_imm32(CodeBuf& cb, uint8_t dst, int32_t imm)
+	{
+		arith_imm32(cb, 7, dst, imm);
 	}
 
 	inline void neg64(CodeBuf& cb, uint8_t dst)
@@ -412,6 +556,37 @@ namespace rv64vm::jit::x86
 		cb.b(0x99);
 	}
 
+	// test r64, [base+disp]
+	inline void test_r64_m64(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
+	{
+		rex(cb, true, dst >= 8, false, base >= 8);
+		cb.b(0x85);
+		modrm_mem(cb, dst, base, disp);
+	}
+	// test r64, r64 (sets ZF/SF like AND)
+	inline void test_rr(CodeBuf& cb, uint8_t a, uint8_t b)
+	{
+		rex(cb, true, a >= 8, false, b >= 8);
+		cb.b(0x85);
+		modrm_reg(cb, a, b);
+	}
+	// test r64, signext(imm32)
+	inline void test_imm(CodeBuf& cb, uint8_t dst, int32_t imm)
+	{
+		rex(cb, true, false, false, dst >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 0, dst);
+		cb.dw((uint32_t)imm);
+	}
+	// test byte [base+disp], imm8
+	inline void test_m8_imm(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t imm)
+	{
+		rex(cb, false, false, false, base >= 8);
+		cb.b(0xF6);
+		modrm_mem(cb, 0, base, disp);
+		cb.b(imm);
+	}
+
 	// rel8 conditional jump / jump; returns the index of the rel8 byte so the
 	// caller can patch it (see patch_rel8) once the target position is known.
 	inline uint32_t jcc8(CodeBuf& cb, uint8_t opcode)
@@ -424,5 +599,34 @@ namespace rv64vm::jit::x86
 	inline void patch_rel8(CodeBuf& cb, uint32_t rel, uint32_t target)
 	{
 		cb.bytes[rel] = (uint8_t)(target - (rel + 1));
+	}
+
+	// rel32 conditional jump; cc is the low-nibble condition (2=jb, 4=je, 5=jne,
+	// 7=ja, 12=jl, 15=jg...). Returns the position of the rel32 field; the
+	// displacement is patched by patch_rel32() once the target is known.
+	inline uint32_t jcc32(CodeBuf& cb, uint8_t cc)
+	{
+		cb.b(0x0F);
+		cb.b(0x80 | (cc & 0xF));
+		const uint32_t rel = cb.pos;
+		cb.dw(0);
+		return rel;
+	}
+	inline void patch_rel32(CodeBuf& cb, uint32_t rel, uint32_t target)
+	{
+		const int32_t off = (int32_t)(target - (rel + 4));
+		cb.bytes[rel + 0] = (uint8_t)((uint32_t)off >> 0);
+		cb.bytes[rel + 1] = (uint8_t)((uint32_t)off >> 8);
+		cb.bytes[rel + 2] = (uint8_t)((uint32_t)off >> 16);
+		cb.bytes[rel + 3] = (uint8_t)((uint32_t)off >> 24);
+	}
+
+	// rel32 unconditional jump to a late-patched label.
+	inline uint32_t jmp32(CodeBuf& cb)
+	{
+		cb.b(0xE9);
+		const uint32_t rel = cb.pos;
+		cb.dw(0);
+		return rel;
 	}
 }

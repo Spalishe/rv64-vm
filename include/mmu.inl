@@ -30,15 +30,22 @@ inline MemoryReturn MMU::translate(Hart* hart, AccessType type, uint64_t va, uin
 	bool mxr	  = hart->status.fields.MXR;
 	bool sum	  = hart->status.fields.SUM;
 
-	// Bare/Machine map identity - skip the TLB (stale entries set VA != PA).
-	if(mode == Hart::PrivilegeMode::Machine)
+	// Bare/Machine map identity. Skip the TLB lookup (stale entries set
+	// VA != PA) but seed the cache so JITed loads/stores can hit inline.
+	if(mode == Hart::PrivilegeMode::Machine || (SatpMode)satp.fields.mode == SatpMode::Bare)
 	{
 		*pa = va;
-		return { true, 0, 0 };
-	}
-	if((SatpMode)satp.fields.mode == SatpMode::Bare)
-	{
-		*pa = va;
+		uint64_t base = va & ~0xFFFULL;
+		uint8_t* host = nullptr;
+		auto*	 ram  = mmap->get_ram_direct();
+		if(ram != nullptr && base >= ram->get_base_addr() && base - ram->get_base_addr() + 0x1000 <= ram->get_size())
+			host = ram->get_data() + (base - ram->get_base_addr());
+		uint8_t perm = (uint8_t)TLB::TLBPermissions::PERM_R | (uint8_t)TLB::TLBPermissions::PERM_W |
+					   (uint8_t)TLB::TLBPermissions::PERM_X | (uint8_t)TLB::TLBPermissions::PERM_U |
+					   (uint8_t)TLB::TLBPermissions::PERM_A | (uint8_t)TLB::TLBPermissions::PERM_D;
+		if(was_page_executed(va))
+			perm &= ~((uint8_t)TLB::TLBPermissions::PERM_W | (uint8_t)TLB::TLBPermissions::PERM_D);
+		tlb.insert(va, base, 12, perm, asid, true, host);
 		return { true, 0, 0 };
 	}
 	if(tlb.lookup(va, type, asid, (int)mode, mxr, sum, pa)) [[likely]]
@@ -210,7 +217,21 @@ MemoryReturn MMU::translate_impl(Hart* hart, AccessType type, uint64_t raw_va, u
 	if(pte.fields.A) perm |= (int)TLB::TLBPermissions::PERM_A;
 	if(pte.fields.D) perm |= (int)TLB::TLBPermissions::PERM_D;
 	uint8_t page_bits = 12 + i * 9; // 12 for 4K, 21 for 2M, 30 for 1G
-	tlb.insert(raw_va, *pa & ~((1ULL << page_bits) - 1), page_bits,
-			   perm, asid, pte.fields.G);
+
+	// W^X: pages that are (or were) executed must never expose write
+	// capability to the JIT, otherwise JITed stores would bypass the
+	// self-modifying-code detection and write stale text.
+	if(was_page_executed(*pa) || type == AccessType::EXEC)
+		perm &= ~((uint8_t)TLB::TLBPermissions::PERM_W | (uint8_t)TLB::TLBPermissions::PERM_D);
+
+	// Direct host mapping for fast-path RAM pages only (whole page inside RAM).
+	const void* host_page = nullptr;
+	uint64_t	pa_aligned = *pa & ~((1ULL << page_bits) - 1);
+	auto*		ram		   = mmap->get_ram_direct();
+	if(ram != nullptr && pa_aligned >= ram->get_base_addr() &&
+	   pa_aligned - ram->get_base_addr() + (1ULL << page_bits) <= ram->get_size())
+		host_page = ram->get_data() + (pa_aligned - ram->get_base_addr());
+
+	tlb.insert(raw_va, pa_aligned, page_bits, perm, asid, pte.fields.G, host_page);
 	return { true, 0, 0 };
 }

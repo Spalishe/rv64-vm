@@ -22,7 +22,6 @@ Copyright 2026 Spalishe
 #endif
 #include <atomic>
 #include <cstddef>
-#include <cstdio>
 
 using namespace rv64vm::runner;
 using PrivilegeMode = Hart::PrivilegeMode;
@@ -613,5 +612,16 @@ void InstructionDecoder::init_rv64i()
 	inst_sraiw->jit_func = &jit::jit_SRAIW;
 	inst_slti->jit_func	 = &jit::jit_SLTI;
 	inst_sltiu->jit_func = &jit::jit_SLTIU;
+	inst_lb->jit_func	 = &jit::jit_LB;
+	inst_lh->jit_func	 = &jit::jit_LH;
+	inst_lw->jit_func	 = &jit::jit_LW;
+	inst_ld->jit_func	 = &jit::jit_LD;
+	inst_lbu->jit_func	 = &jit::jit_LBU;
+	inst_lhu->jit_func	 = &jit::jit_LHU;
+	inst_lwu->jit_func	 = &jit::jit_LWU;
+	inst_sb->jit_func	 = &jit::jit_SB;
+	inst_sh->jit_func	 = &jit::jit_SH;
+	inst_sw->jit_func	 = &jit::jit_SW;
+	inst_sd->jit_func	 = &jit::jit_SD;
 #endif
 }

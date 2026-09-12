@@ -22,6 +22,100 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::jit
 {
+	namespace
+	{
+		// TLB::TLBPermissions bits (see tlb.hpp).
+		constexpr uint8_t PERM_R = 1u << 0;
+		constexpr uint8_t PERM_W = 1u << 1;
+		constexpr uint8_t PERM_X = 1u << 2;
+		constexpr uint8_t PERM_U = 1u << 3;
+		constexpr uint8_t PERM_A = 1u << 4;
+		constexpr uint8_t PERM_D = 1u << 5;
+
+		// Upper bound for a single miss-stub (mov/add/mov/pop/pop/pop/ret).
+		constexpr uint32_t STUB_BYTES = 32;
+
+		constexpr uint8_t CC_JE  = 0x4;
+		constexpr uint8_t CC_JNE = 0x5;
+
+		/*
+		 * Inline TLB lookup, adapted from RVVM's rvjit_tlb_lookup but validated
+		 * at runtime instead of recompiling on miss: every check that can fail
+		 * jumps to the stub of `instr` at the end of the block, which exits to
+		 * the interpreter at a precise pc. On success H ends up as the host
+		 * address and the caller emits the actual memory access.
+		 *
+		 * Temp usage: RCX = TLB entry base, RAX/RDX scratch. H must be an
+		 * allocator-pool register (never RAX/RDX/RCX).
+		 */
+		void emit_tlb_checks(JIT_Emitter& em, uint8_t H, uint8_t width, bool store, uint32_t instr)
+		{
+			x86::CodeBuf& cb = em.code();
+			const bool has_stub = !em.misses.empty() && em.misses.back().instr == instr;
+			if(!has_stub)
+				em.stub_reserve += STUB_BYTES;
+
+			auto miss_jump = [&](uint8_t cc) {
+				const uint32_t rel = x86::jcc32(cb, cc);
+				em.misses.push_back({ rel, instr });
+			};
+
+			// E = [CTX + TLB_ENTRIES] + (((H >> 12) & TLB_SIZE_MASK) << 6)
+			x86::mov_rr(cb, x86::REG_RCX, H);
+			x86::shift_r64_imm(cb, 5, x86::REG_RCX, 12);
+			x86::and_imm(cb, x86::REG_RCX, x86::TLB_SIZE_MASK);
+			x86::shift_r64_imm(cb, 4, x86::REG_RCX, x86::TLB_ENTRY_LOG2);
+			x86::add_r64_m64(cb, x86::REG_RCX, x86::REG_CTX, x86::CTX_OFF_TLB_ENTRIES);
+
+			// generation: entry.generation == ctx.tlb_gen (flush detection, also
+			// guards against entries installed by other harts after a flush).
+			x86::mov_mr(cb, x86::REG_RDX, x86::REG_RCX, x86::TLB_OFF_GENERATION);
+			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_TLB_GEN);
+			miss_jump(CC_JNE);
+
+			// containment: (H ^ vpage_base) & vpage_mask_inv == 0
+			x86::mov_rr(cb, x86::REG_RAX, H);
+			x86::xor_r64_m64(cb, x86::REG_RAX, x86::REG_RCX, x86::TLB_OFF_VPAGE_BASE);
+			x86::and_r64_m64(cb, x86::REG_RAX, x86::REG_RCX, x86::TLB_OFF_VPAGE_MASK_INV);
+			miss_jump(CC_JNE);
+
+			// asid: match, or the entry is global (short forward skips).
+			x86::movzx_r64_m16(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_SATP_ASID);
+			x86::cmp_m16_r16(cb, x86::REG_RCX, x86::TLB_OFF_ASID, x86::REG_RDX);
+			const uint32_t ok_a = x86::jcc8(cb, 0x74); // je
+			x86::test_m8_imm(cb, x86::REG_RCX, x86::TLB_OFF_GLOBAL, 0xFF);
+			const uint32_t ok_b = x86::jcc8(cb, 0x75); // jne
+			const uint32_t asid_miss = x86::jmp32(cb);
+			em.misses.push_back({ asid_miss, instr });
+			x86::patch_rel8(cb, ok_a, cb.pos);
+			x86::patch_rel8(cb, ok_b, cb.pos);
+
+			// perm, with the mode/sum/mxr policy baked at compile time.
+			uint32_t must = store ? (PERM_W | PERM_D) : (em.mxr ? (PERM_R | PERM_X) : PERM_R);
+			uint32_t forb = 0;
+			if(em.eff_mode == 0)
+				must |= PERM_U; // user mode: page must be user-owned
+			else if(em.eff_mode == 1 && !em.sum)
+				forb = PERM_U; // supervisor w/o SUM: no user pages
+			x86::movzx_r64_m8(cb, x86::REG_RAX, x86::REG_RCX, x86::TLB_OFF_PERM);
+			x86::and_imm32(cb, x86::REG_RAX, (int32_t)(must | forb));
+			x86::cmp_imm32(cb, x86::REG_RAX, (int32_t)must);
+			miss_jump(CC_JNE);
+
+			// alignment: the fast path only handles in-page, aligned access.
+			if(width > 1)
+			{
+				x86::test_imm(cb, H, (int32_t)(width - 1));
+				miss_jump(CC_JNE);
+			}
+
+			// host mapping: host_ptr != 0, then H += host_ptr.
+			x86::mov_mr(cb, x86::REG_RDX, x86::REG_RCX, x86::TLB_OFF_HOST_PTR);
+			x86::test_rr(cb, x86::REG_RDX, x86::REG_RDX);
+			miss_jump(CC_JE);
+			x86::add_rr(cb, H, x86::REG_RDX);
+		}
+	}
 	JIT_Emitter::JIT_Emitter(JIT_Block* b) : blk(b)
 	{
 		for(size_t i = 0; i < x86::RVJIT_HOST_REGS; i++)
@@ -47,7 +141,7 @@ namespace rv64vm::jit
 		for(size_t i = 0; i < x86::RVJIT_HOST_REGS; i++)
 		{
 			uint32_t h = hr_vreg[i];
-			if(h != 0xFF && h != keep1 && h != keep2 && !vr[h].dirty)
+			if(h != 0xFF && h != 0xFE && h < 32 && h != keep1 && h != keep2 && !vr[h].dirty)
 			{
 				vr[h].slot = -1;
 				hr_vreg[i] = 0xFE;
@@ -58,7 +152,7 @@ namespace rv64vm::jit
 		for(size_t i = 0; i < x86::RVJIT_HOST_REGS; i++)
 		{
 			uint32_t h = hr_vreg[i];
-			if(h != 0xFF && h != keep1 && h != keep2)
+			if(h != 0xFF && h != 0xFE && h < 32 && h != keep1 && h != keep2)
 			{
 				flush_guest(h);
 				vr[h].slot = -1;
@@ -149,7 +243,121 @@ namespace rv64vm::jit
 
 	bool JIT_Emitter::eof() const
 	{
-		return code().pos + RVJIT_FUNC_MARGIN >= RVJIT_FUNC_SIZE;
+		return code().pos + RVJIT_FUNC_MARGIN + stub_reserve >= RVJIT_FUNC_SIZE;
+	}
+
+	void JIT_Emitter::release_slot(uint8_t slot)
+	{
+		hr_vreg[slot] = 0xFF;
+	}
+
+	void JIT_Emitter::emit_load(uint32_t rd, uint32_t rs1, int64_t imm, uint8_t width, bool sign_extend)
+	{
+		x86::CodeBuf& cb = code();
+		flush_all(); // a miss must exit with every register committed
+		const uint32_t instr = blk->instr_index;
+
+		uint8_t H = 0xFF;
+		if(rd == 0)
+		{
+			// Preserve fault semantics: translate/check, then discard.
+			uint8_t S1 = hreg_for_read(rs1);
+			uint8_t s  = free_slot(rs1);
+			H		   = phys(s);
+			x86::lea_r64_mem(cb, H, S1, (int32_t)imm);
+			emit_tlb_checks(*this, H, width, false, instr);
+			release_slot(s);
+			return;
+		}
+
+		uint8_t S1 = hreg_for_read(rs1);
+		uint8_t D  = hreg_for_write(rd, rs1);
+		x86::lea_r64_mem(cb, D, S1, (int32_t)imm);
+		H			= D;
+		emit_tlb_checks(*this, H, width, false, instr);
+
+		switch(width)
+		{
+			case 1:
+				if(sign_extend)
+					x86::movsx_r64_m8(cb, D, D, 0);
+				else
+					x86::movzx_r64_m8(cb, D, D, 0);
+				break;
+			case 2:
+				if(sign_extend)
+					x86::movsx_r64_m16(cb, D, D, 0);
+				else
+					x86::movzx_r64_m16(cb, D, D, 0);
+				break;
+			case 4:
+				if(sign_extend)
+					x86::movsxd_r64_m32(cb, D, D, 0);
+				else
+					x86::mov_r32_m32(cb, D, D, 0);
+				break;
+			default:
+				x86::mov_mr(cb, D, D, 0);
+				break;
+		}
+		vr[rd].dirty = true;
+	}
+
+	void JIT_Emitter::emit_store(uint32_t rs1, int64_t imm, uint32_t rs2, uint8_t width)
+	{
+		x86::CodeBuf& cb = code();
+		flush_all();
+		const uint32_t instr = blk->instr_index;
+
+		// Load the value first, then protect both operands while the address
+		// scratch is allocated.
+		uint8_t V  = hreg_for_read(rs2);
+		uint8_t S1 = hreg_for_read(rs1, rs2);
+		uint8_t s  = free_slot(rs1, rs2);
+		uint8_t H  = phys(s);
+		x86::lea_r64_mem(cb, H, S1, (int32_t)imm);
+		emit_tlb_checks(*this, H, width, true, instr);
+
+		switch(width)
+		{
+			case 1:
+				x86::mov_m8_r8(cb, H, 0, V);
+				break;
+			case 2:
+				x86::mov_m16_r16(cb, H, 0, V);
+				break;
+			case 4:
+				x86::mov_m32_r32(cb, H, 0, V);
+				break;
+			default:
+				x86::mov_rm(cb, H, 0, V);
+				break;
+		}
+		release_slot(s);
+	}
+
+	void JIT_Emitter::emit_miss_stubs()
+	{
+		x86::CodeBuf& cb = code();
+		size_t i		 = 0;
+		while(i < misses.size())
+		{
+			const uint32_t instr = misses[i].instr;
+			const uint32_t target = cb.pos;
+			while(i < misses.size() && misses[i].instr == instr)
+			{
+				x86::patch_rel32(cb, misses[i].rel_pos, target);
+				i++;
+			}
+			// exit_pc = entry_pc + instr*4
+			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+			x86::add_imm(cb, x86::REG_RAX, (int32_t)(instr * 4));
+			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
+			x86::pop_r(cb, x86::REG_R12);
+			x86::pop_r(cb, x86::REG_R13);
+			x86::pop_r(cb, x86::REG_RBP);
+			x86::ret(cb);
+		}
 	}
 
 	void JIT_Emitter::emit_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, ALUOp op, bool wVariant)

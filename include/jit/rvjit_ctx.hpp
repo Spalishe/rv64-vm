@@ -19,6 +19,8 @@ Copyright 2026 Spalishe
 #include <cstddef>
 #include <cstdint>
 
+#include "../tlb.hpp"
+
 namespace rv64vm::runner
 {
 	class MMIO;
@@ -42,6 +44,10 @@ namespace rv64vm::jit
 		runner::Hart* hart;
 		int32_t loop_count;
 		int32_t reserved;
+		runner::TLB::TlbEntry* tlb_entries; // refreshed by the runner per dispatch
+		uint64_t tlb_gen;					// TLB::current_generation() at dispatch time
+		uint16_t satp_asid;
+		uint16_t pad;
 	};
 
 	static_assert(offsetof(JIT_HartContext, regs) == 0);
@@ -52,4 +58,20 @@ namespace rv64vm::jit
 	static_assert(offsetof(JIT_HartContext, exit_pc) == 40);
 	static_assert(offsetof(JIT_HartContext, hart) == 48);
 	static_assert(offsetof(JIT_HartContext, loop_count) == 56);
+	static_assert(offsetof(JIT_HartContext, tlb_entries) == 64);
+	static_assert(offsetof(JIT_HartContext, tlb_gen) == 72);
+	static_assert(offsetof(JIT_HartContext, satp_asid) == 80);
+
+	// Layout mirrors of TLB::TlbEntry, sanity-checked against offsetof above.
+	// Do not change the TlbEntry field order without updating these.
+	static_assert(offsetof(runner::TLB::TlbEntry, vpage_mask_inv) == 0);
+	static_assert(offsetof(runner::TLB::TlbEntry, vpage_base) == 8);
+	static_assert(offsetof(runner::TLB::TlbEntry, generation) == 16);
+	static_assert(offsetof(runner::TLB::TlbEntry, host_ptr) == 24);
+	static_assert(offsetof(runner::TLB::TlbEntry, ppage_base) == 32);
+	static_assert(offsetof(runner::TLB::TlbEntry, asid) == 40);
+	static_assert(offsetof(runner::TLB::TlbEntry, page_bits) == 42);
+	static_assert(offsetof(runner::TLB::TlbEntry, perm) == 43);
+	static_assert(offsetof(runner::TLB::TlbEntry, global) == 44);
+	static_assert(sizeof(runner::TLB::TlbEntry) == 64);
 }

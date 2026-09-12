@@ -197,10 +197,21 @@ namespace rv64vm::runner
 			// Native JIT fast path. Blocks are keyed by the PHYSICAL pc and the
 			// runner re-translates `pc` (VA) before every dispatch, so aliased
 			// VAs and ASID switches are correct by construction. Lookups also
-			// validate the ASID and self-modifying-code epoch per entry.
+			// validate the ASID, effective privileged mode (MPRV honored),
+			// MXR/SUM (baked TLB policy) and the self-modifying-code epoch.
 			if(jctx != nullptr && (pc & 0x3) == 0) [[likely]]
 			{
-				jit::JITExec jj = jctx->lookup(phys, satp.fields.asid);
+				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
+				const bool mxr		   = status.fields.MXR;
+				const bool sum		   = status.fields.SUM;
+				// Refresh the hart C-context each iteration: the TLB array and
+				// generation move on translation, and a satp write clears the
+				// TLB (a stale asid would poison inline lookups).
+				hctx.tlb_entries = mmu.get_tlb().jit_entries();
+				hctx.tlb_gen	   = mmu.get_tlb().current_generation();
+				hctx.satp_asid	   = satp.fields.asid;
+
+				jit::JITExec jj = jctx->lookup(phys, satp.fields.asid, eff_mode, mxr, sum);
 				if(jj.fn == nullptr && jctx->hot_tick(phys))
 					jj = jctx->compile(*this, pc, phys);
 				if(jj.fn != nullptr)
@@ -208,16 +219,25 @@ namespace rv64vm::runner
 					const uint64_t prev_instret = instret;
 					hctx.entry_pc = pc;
 					jj.fn(&hctx);
-					pc			   = hctx.exit_pc;
-					instret			+= jj.count;
-					cycle			+= jj.count;
-					total			+= jj.count;
-					if((prev_instret & 0x2FFF) + jj.count >= 0x3000) [[unlikely]]
+					// The block may have bailed to the interpreter mid-way
+					// (inlined TLB miss): instret only counts what the block
+					// actually executed.
+					const uint64_t executed = (hctx.exit_pc - pc) >> 2;
+					pc						= hctx.exit_pc;
+					instret					+= executed;
+					cycle					+= executed;
+					total					+= executed;
+					if(executed != 0)
 					{
-						if((ip.raw & ie.raw) != 0 && check_ints())
-							break;
+						if((prev_instret & 0x2FFF) + executed >= 0x3000) [[unlikely]]
+						{
+							if((ip.raw & ie.raw) != 0 && check_ints())
+								break;
+						}
+						continue;
 					}
-					continue;
+					// executed == 0: the very first instruction bailed to the
+					// interpreter; fall through so it re-executes there.
 				}
 			}
 #endif

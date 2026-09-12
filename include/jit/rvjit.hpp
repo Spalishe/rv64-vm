@@ -60,8 +60,8 @@ namespace rv64vm::jit
 		// execution; {nullptr,0} when the stream is not JIT-able.
 		JITExec compile(runner::Hart& h, uint64_t va_pc, uint64_t phys_pc);
 
-		// Cache lookup with ASID + SMC-epoch validation.
-		JITExec lookup(uint64_t phys_pc, uint64_t asid);
+		// Cache lookup with ASID + SMC-epoch + effective-mode validation.
+		JITExec lookup(uint64_t phys_pc, uint64_t asid, uint8_t eff_mode, bool mxr, bool sum);
 
 		// Hotness gate: triggers compilation after RVJIT_HOT_THRESHOLD dispatches.
 		bool hot_tick(uint64_t phys_pc);
@@ -76,6 +76,9 @@ namespace rv64vm::jit
 			uint64_t start_phys		  = 0;
 			uint64_t asid			  = 0;
 			uint64_t smc_epoch		  = 0;
+			uint8_t eff_mode		  = 0; // baked privilege mode (0=U,1=S,3=M)
+			bool mxr				  = false;
+			bool sum				  = false;
 			std::atomic<uint32_t> hot = 0; // dispatch counter before compiling
 			uint32_t count			  = 0;
 			bool valid				  = false;
@@ -148,5 +151,17 @@ namespace rv64vm::jit
 	RVJIT_ISA_DECL(jit_REMU);
 	RVJIT_ISA_DECL(jit_REMW);
 	RVJIT_ISA_DECL(jit_REMUW);
+
+	RVJIT_ISA_DECL(jit_LB);
+	RVJIT_ISA_DECL(jit_LBU);
+	RVJIT_ISA_DECL(jit_LH);
+	RVJIT_ISA_DECL(jit_LHU);
+	RVJIT_ISA_DECL(jit_LW);
+	RVJIT_ISA_DECL(jit_LWU);
+	RVJIT_ISA_DECL(jit_LD);
+	RVJIT_ISA_DECL(jit_SB);
+	RVJIT_ISA_DECL(jit_SH);
+	RVJIT_ISA_DECL(jit_SW);
+	RVJIT_ISA_DECL(jit_SD);
 #undef RVJIT_ISA_DECL
 }

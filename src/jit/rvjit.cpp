@@ -53,11 +53,12 @@ namespace rv64vm::jit
 		cur_used = 0;
 	}
 
-	JITExec JIT_Context::lookup(uint64_t phys_pc, uint64_t asid)
+	JITExec JIT_Context::lookup(uint64_t phys_pc, uint64_t asid, uint8_t eff_mode, bool mxr, bool sum)
 	{
 		CachedBlock& e = cache[index_of(phys_pc)];
 		JITExec out;
-		if(e.valid && e.start_phys == phys_pc && e.asid == asid && e.smc_epoch == g_smc_epoch.load())
+		if(e.valid && e.start_phys == phys_pc && e.asid == asid && e.smc_epoch == g_smc_epoch.load() &&
+		   e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
 		{
 			out.fn	  = e.fn;
 			out.count = e.count;
@@ -79,8 +80,14 @@ namespace rv64vm::jit
 	{
 		std::lock_guard<std::mutex> lk(mtx);
 
+		// Effective access mode (MPRV honored) and the paging flags that the
+		// block policy is baked from; dispatch re-validates them.
+		const uint8_t eff_mode = (uint8_t)h.get_effective_mode(AccessType::STORE);
+		const bool mxr		   = h.status.fields.MXR;
+		const bool sum		   = h.status.fields.SUM;
+
 		// Already compiled by a concurrent hart?
-		JITExec fast = lookup(phys_pc, h.satp.fields.asid);
+		JITExec fast = lookup(phys_pc, h.satp.fields.asid, eff_mode, mxr, sum);
 		if(fast.fn != nullptr)
 			return fast;
 
@@ -88,6 +95,9 @@ namespace rv64vm::jit
 		JIT_Block blk;
 		blk.start_phys = phys_pc;
 		JIT_Emitter em(&blk);
+		em.eff_mode = eff_mode;
+		em.mxr		= mxr;
+		em.sum		= sum;
 		em.emit_prologue();
 
 		uint64_t pc_va = va_pc;
@@ -119,6 +129,7 @@ namespace rv64vm::jit
 			}
 			// jit_func always emits before returning; count it even when it
 			// reports buffer exhaustion (keep==false just ends the block).
+			blk.instr_index = count;
 			const bool keep = cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em);
 			count++;
 			pc_va += 4;
@@ -136,6 +147,7 @@ namespace rv64vm::jit
 		}
 
 		em.emit_epilogue(count);
+		em.emit_miss_stubs();
 		blk.count		= count;
 		blk.bytes_guest = count * 4;
 		blk.asid		= h.satp.fields.asid;
@@ -150,11 +162,24 @@ namespace rv64vm::jit
 		// Extend the self-modifying-code protection over the block's pages.
 		mark_block_executed(phys_pc, blk.bytes_guest);
 
+		// W^X: the inline TLB check honors each entry's write permission, so
+		// executed pages must not advertise W|D - otherwise a JITed store would
+		// slip past the self-modifying-code detector. Strip the covering slots.
+		{
+			const uint64_t p0 = phys_pc & ~0xFFFULL;
+			const uint64_t p1 = (phys_pc + blk.bytes_guest + 0xFFF) & ~0xFFFULL;
+			for(uint64_t p = p0; p < p1; p += 0x1000)
+				h.get_mmu().get_tlb().note_exec(p);
+		}
+
 		CachedBlock& e = cache[index_of(phys_pc)];
 		e.fn		   = (JITCompiledFunc)(void*)dst;
 		e.start_phys   = phys_pc;
 		e.asid		   = h.satp.fields.asid;
 		e.smc_epoch	   = g_smc_epoch.load();
+		e.eff_mode	   = eff_mode;
+		e.mxr		   = mxr;
+		e.sum		   = sum;
 		e.count		   = count;
 		e.valid		   = true;
 
@@ -163,8 +188,10 @@ namespace rv64vm::jit
 
 	void JIT_Context::mark_block_executed(uint64_t phys_pc, uint64_t guest_bytes)
 	{
-		mark_page_executed(phys_pc);
-		mark_page_executed(phys_pc + guest_bytes);
+		const uint64_t p0 = phys_pc & ~0xFFFULL;
+		const uint64_t p1 = (phys_pc + guest_bytes + 0xFFF) & ~0xFFFULL;
+		for(uint64_t p = p0; p < p1; p += 0x1000)
+			mark_page_executed(p);
 	}
 
 	void JIT_Context::invalidate_all()

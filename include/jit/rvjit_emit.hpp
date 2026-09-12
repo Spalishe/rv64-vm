@@ -27,6 +27,7 @@ Copyright 2026 Spalishe
  */
 #include "rvjit_x86_64.hpp"
 #include <cstdint>
+#include <vector>
 
 namespace rv64vm::jit
 {
@@ -38,6 +39,7 @@ namespace rv64vm::jit
 		uint32_t bytes_guest = 0;
 		uint64_t asid		 = 0;
 		uint64_t smc_epoch	 = 0;
+		uint32_t instr_index = 0; // index of the instruction being compiled
 		bool valid			 = false;
 	};
 
@@ -92,12 +94,31 @@ namespace rv64vm::jit
 		VReg vr[32];
 		uint8_t hr_vreg[x86::RVJIT_HOST_REGS]; // 0xFF = free
 
+		// Translation context baked into the block at compile time. The block
+		// is only dispatched while the hart matches these, so the emitted
+		// permission masks stay valid.
+		uint8_t eff_mode = 0; // Hart::PrivilegeMode as int (0=U,1=S,3=M)
+		bool mxr		 = false;
+		bool sum		 = false;
+
+		// TLB-miss fixups: each [rel_pos] is the rel32 displacement of a
+		// conditional jump to the stub of [instr], patched in emit_miss_stubs().
+		struct MissSite
+		{
+			uint32_t rel_pos;
+			uint32_t instr;
+		};
+		std::vector<MissSite> misses;
+		uint32_t stub_reserve = 0; // bytes reserved for the future miss stubs
+
 		JIT_Emitter(JIT_Block* b);
 
 		x86::CodeBuf& code() const;
 
 		// Never evicts slots holding keep1/keep2 (may be live operands).
 		uint8_t free_slot(uint32_t keep1 = 0xFFFFFFFFu, uint32_t keep2 = 0xFFFFFFFFu);
+		// Releases a slot previously handed out by free_slot() (hr_vreg == 0xFE).
+		void release_slot(uint8_t slot);
 
 		uint8_t phys(uint8_t slot) const;
 
@@ -113,8 +134,18 @@ namespace rv64vm::jit
 
 		void emit_prologue();
 
-		// Nothing else may emit code after emit_epilogue().
+		// Nothing else may emit code after emit_epilogue() except the miss
+		// stubs (which the epilogue must not fall through into).
 		void emit_epilogue(uint32_t guest_count);
+
+		// Appends the TLB-miss stubs and patches every recorded jcc32 to its stub.
+		void emit_miss_stubs();
+
+		// Native guest loads/stores with an inline TLB lookup. width = bytes
+		// (1/2/4/8); sign_extend only matters for narrow signed loads. The
+		// instruction that faults is reported through blk->instr_index.
+		void emit_load(uint32_t rd, uint32_t rs1, int64_t imm, uint8_t width, bool sign_extend);
+		void emit_store(uint32_t rs1, int64_t imm, uint32_t rs2, uint8_t width);
 
 		bool eof() const;
 
