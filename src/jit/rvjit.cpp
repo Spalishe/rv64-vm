@@ -101,6 +101,7 @@ namespace rv64vm::jit
 
 		uint64_t pc_va = va_pc;
 		uint32_t count = 0;
+		uint32_t size  = 0;
 		while(count < RVJIT_MAX_INSTRUCTIONS)
 		{
 			if(em.eof()) // buffer guard; stop early
@@ -132,7 +133,8 @@ namespace rv64vm::jit
 			blk.tmp_va		= pc_va;
 			const bool keep = cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em);
 			count++;
-			pc_va += 4;
+			pc_va += cache->data.size;
+			size += cache->data.size;
 			if(!keep)
 				break; // compiled, but the block ends after it
 		}
@@ -149,7 +151,7 @@ namespace rv64vm::jit
 		em.emit_epilogue(count);
 		em.emit_miss_stubs();
 		blk.count		= count;
-		blk.bytes_guest = count * 4;
+		blk.bytes_guest = size;
 		blk.asid		= h.satp.fields.asid;
 		blk.smc_epoch	= g_smc_epoch.load();
 

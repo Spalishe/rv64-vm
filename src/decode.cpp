@@ -50,6 +50,7 @@ __attribute__((noinline)) InstructionCache& InstructionDecoder::decode_inst_slow
 	data.rs3 = d_rs3(inst);
 	data.rm	 = d_rm(inst);
 #endif
+	data.size = ((inst & 0x3) != 3) ? 2 : 4;
 
 	CacheSet& set			= cache[idx];
 	InstructionCache& entry = set.ways[set.victim];

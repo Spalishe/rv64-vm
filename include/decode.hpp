@@ -212,6 +212,7 @@ namespace rv64vm::runner
 
 		uint32_t inst;
 		uint64_t imm;
+		uint8_t size = 4;
 	};
 
 	struct Instruction
