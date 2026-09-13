@@ -35,6 +35,7 @@ namespace rv64vm::jit
 	{
 		x86::CodeBuf code;
 		uint64_t start_phys	 = 0;
+		uint64_t tmp_va		 = 0;
 		uint32_t count		 = 0;
 		uint32_t bytes_guest = 0;
 		uint64_t asid		 = 0;
@@ -60,7 +61,9 @@ namespace rv64vm::jit
 		SRL,
 		SRA,
 		SLT,
-		SLTU
+		SLTU,
+		LUI,
+		AUIPC
 	};
 
 	// RV64M register-form operations (MULW/DIVW/etc. are the wVariant).
@@ -151,6 +154,7 @@ namespace rv64vm::jit
 
 		void emit_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, ALUOp op, bool wVariant);
 		void emit_i_to(uint8_t dstReg, uint8_t src1Reg, int64_t imm, ALUOp op, bool wVariant);
+		void emit_u_to(uint8_t dstReg, int32_t imm, ALUOp op, uint64_t pc);
 		void emit_m_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, MOp op, bool wVariant);
 	};
 }

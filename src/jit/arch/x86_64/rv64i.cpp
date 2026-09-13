@@ -15,12 +15,8 @@ Copyright 2026 Spalishe
 
 */
 
-/*
- * RV64I ALU register/immediate translators (semantics mirror src/sets/rv64i.cpp;
- * x0 writes are dropped). Each returns true when the block may keep compiling
- * past this instruction, false when it must stop right after it.
- */
 #include "../../../../include/decode.hpp"
+#include "../../../../include/hart.hpp"
 #include "../../../../include/jit/rvjit.hpp"
 
 #ifdef USE_JIT
@@ -41,6 +37,13 @@ namespace rv64vm::jit
 		if(d.rd == 0)
 			return !em.eof();
 		em.emit_i_to(d.rd, d.rs1, (int64_t)d.imm, op, w);
+		return !em.eof();
+	}
+	static inline bool alu_u(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& em, ALUOp op)
+	{
+		if(d.rd == 0)
+			return !em.eof();
+		em.emit_u_to(d.rd, (int32_t)(int64_t)d.imm, op, b.tmp_va);
 		return !em.eof();
 	}
 
@@ -170,6 +173,14 @@ namespace rv64vm::jit
 	bool jit_SLTIU(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
 		return alu_i(h, d, b, e, ALUOp::SLTU, false);
+	}
+	bool jit_LUI(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return alu_u(h, d, b, e, ALUOp::LUI);
+	}
+	bool jit_AUIPC(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return alu_u(h, d, b, e, ALUOp::AUIPC);
 	}
 
 	// S-Type

@@ -15,9 +15,6 @@ Copyright 2026 Spalishe
 
 */
 
-/*
- * x86-64 implementation of JIT_Emitter (declared in rvjit_emit.hpp).
- */
 #include "../../../../include/jit/rvjit_emit.hpp"
 
 namespace rv64vm::jit
@@ -35,7 +32,7 @@ namespace rv64vm::jit
 		// Upper bound for a single miss-stub (mov/add/mov/pop/pop/pop/ret).
 		constexpr uint32_t STUB_BYTES = 32;
 
-		constexpr uint8_t CC_JE  = 0x4;
+		constexpr uint8_t CC_JE	 = 0x4;
 		constexpr uint8_t CC_JNE = 0x5;
 
 		/*
@@ -50,12 +47,13 @@ namespace rv64vm::jit
 		 */
 		void emit_tlb_checks(JIT_Emitter& em, uint8_t H, uint8_t width, bool store, uint32_t instr)
 		{
-			x86::CodeBuf& cb = em.code();
+			x86::CodeBuf& cb	= em.code();
 			const bool has_stub = !em.misses.empty() && em.misses.back().instr == instr;
 			if(!has_stub)
 				em.stub_reserve += STUB_BYTES;
 
-			auto miss_jump = [&](uint8_t cc) {
+			auto miss_jump = [&](uint8_t cc)
+			{
 				const uint32_t rel = x86::jcc32(cb, cc);
 				em.misses.push_back({ rel, instr });
 			};
@@ -84,7 +82,7 @@ namespace rv64vm::jit
 			x86::cmp_m16_r16(cb, x86::REG_RCX, x86::TLB_OFF_ASID, x86::REG_RDX);
 			const uint32_t ok_a = x86::jcc8(cb, 0x74); // je
 			x86::test_m8_imm(cb, x86::REG_RCX, x86::TLB_OFF_GLOBAL, 0xFF);
-			const uint32_t ok_b = x86::jcc8(cb, 0x75); // jne
+			const uint32_t ok_b		 = x86::jcc8(cb, 0x75); // jne
 			const uint32_t asid_miss = x86::jmp32(cb);
 			em.misses.push_back({ asid_miss, instr });
 			x86::patch_rel8(cb, ok_a, cb.pos);
@@ -273,7 +271,7 @@ namespace rv64vm::jit
 		uint8_t S1 = hreg_for_read(rs1);
 		uint8_t D  = hreg_for_write(rd, rs1);
 		x86::lea_r64_mem(cb, D, S1, (int32_t)imm);
-		H			= D;
+		H = D;
 		emit_tlb_checks(*this, H, width, false, instr);
 
 		switch(width)
@@ -342,7 +340,7 @@ namespace rv64vm::jit
 		size_t i		 = 0;
 		while(i < misses.size())
 		{
-			const uint32_t instr = misses[i].instr;
+			const uint32_t instr  = misses[i].instr;
 			const uint32_t target = cb.pos;
 			while(i < misses.size() && misses[i].instr == instr)
 			{
@@ -588,11 +586,11 @@ namespace rv64vm::jit
 
 	void JIT_Emitter::emit_m_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, MOp op, bool wVariant)
 	{
-		const bool r1	 = (src1Reg != 0), r2 = (src2Reg != 0);
-		const bool mulF	 = (op == MOp::MUL || op == MOp::MULH || op == MOp::MULHU || op == MOp::MULHSU);
-		const bool rem	 = (op == MOp::REM || op == MOp::REMU);
+		const bool r1 = (src1Reg != 0), r2 = (src2Reg != 0);
+		const bool mulF	   = (op == MOp::MUL || op == MOp::MULH || op == MOp::MULHU || op == MOp::MULHSU);
+		const bool rem	   = (op == MOp::REM || op == MOp::REMU);
 		const bool signed_ = (op == MOp::MULH || op == MOp::MULHSU || op == MOp::DIV || op == MOp::REM);
-		x86::CodeBuf& cb = code();
+		x86::CodeBuf& cb   = code();
 
 		// x0 shortcuts: rs2 == 0 wins over rs1 == 0 (matches the interpreter's
 		// DIV-by-zero precedence). The mul/dividend zero cases both yield 0.
@@ -650,13 +648,23 @@ namespace rv64vm::jit
 			// shifts the multiply to whichever operand's slot D shares).
 			if(D == S1)
 			{
-				if(wVariant) { x86::imul_rr32(cb, D, S2); x86::movsxd(cb, D, D); }
-				else x86::imul_rr(cb, D, S2);
+				if(wVariant)
+				{
+					x86::imul_rr32(cb, D, S2);
+					x86::movsxd(cb, D, D);
+				}
+				else
+					x86::imul_rr(cb, D, S2);
 			}
 			else if(D == S2)
 			{
-				if(wVariant) { x86::imul_rr32(cb, D, S1); x86::movsxd(cb, D, D); }
-				else x86::imul_rr(cb, D, S1);
+				if(wVariant)
+				{
+					x86::imul_rr32(cb, D, S1);
+					x86::movsxd(cb, D, D);
+				}
+				else
+					x86::imul_rr(cb, D, S1);
 			}
 			else
 			{
@@ -775,7 +783,7 @@ namespace rv64vm::jit
 				if(D != x86::REG_ACC0)
 					x86::mov_rr(cb, D, x86::REG_ACC0);
 			}
-			uint32_t fix_done1	 = x86::jcc8(cb, 0xEB);
+			uint32_t fix_done1		  = x86::jcc8(cb, 0xEB);
 			const uint32_t label_idiv = cb.pos;
 			x86::patch_rel8(cb, fix_n1, label_idiv);
 
@@ -853,8 +861,8 @@ namespace rv64vm::jit
 	void JIT_Emitter::emit_i_to(uint8_t dstReg, uint8_t src1Reg, int64_t imm, ALUOp op, bool wVariant)
 	{
 		const bool r1 = (src1Reg != 0);
-		uint8_t S1	   = r1 ? hreg_for_read(src1Reg) : 0xFF;
-		uint8_t D	   = hreg_for_write(dstReg, src1Reg, 0xFFFFFFFFu);
+		uint8_t S1	  = r1 ? hreg_for_read(src1Reg) : 0xFF;
+		uint8_t D	  = hreg_for_write(dstReg, src1Reg, 0xFFFFFFFFu);
 		switch(op)
 		{
 			case ALUOp::ADD:
@@ -961,5 +969,19 @@ namespace rv64vm::jit
 		vr[dstReg].dirty = true;
 		if(wVariant)
 			x86::movsxd(code(), D, D);
+	}
+	void JIT_Emitter::emit_u_to(uint8_t dstReg, int32_t imm, ALUOp op, uint64_t pc)
+	{
+		uint8_t D = hreg_for_write(dstReg);
+		switch(op)
+		{
+			case ALUOp::LUI:
+				x86::mov_imm64(code(), D, imm);
+				break;
+			case ALUOp::AUIPC:
+				x86::mov_imm64(code(), D, imm + pc);
+				break;
+		}
+		vr[dstReg].dirty = true;
 	}
 }

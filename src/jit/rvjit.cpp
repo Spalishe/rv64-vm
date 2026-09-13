@@ -57,8 +57,7 @@ namespace rv64vm::jit
 	{
 		CachedBlock& e = cache[index_of(phys_pc)];
 		JITExec out;
-		if(e.valid && e.start_phys == phys_pc && e.asid == asid && e.smc_epoch == g_smc_epoch.load() &&
-		   e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
+		if(e.valid && e.start_phys == phys_pc && e.asid == asid && e.smc_epoch == g_smc_epoch.load() && e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
 		{
 			out.fn	  = e.fn;
 			out.count = e.count;
@@ -130,6 +129,7 @@ namespace rv64vm::jit
 			// jit_func always emits before returning; count it even when it
 			// reports buffer exhaustion (keep==false just ends the block).
 			blk.instr_index = count;
+			blk.tmp_va		= pc_va;
 			const bool keep = cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em);
 			count++;
 			pc_va += 4;

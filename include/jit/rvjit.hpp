@@ -163,5 +163,8 @@ namespace rv64vm::jit
 	RVJIT_ISA_DECL(jit_SH);
 	RVJIT_ISA_DECL(jit_SW);
 	RVJIT_ISA_DECL(jit_SD);
+
+	RVJIT_ISA_DECL(jit_LUI);
+	RVJIT_ISA_DECL(jit_AUIPC);
 #undef RVJIT_ISA_DECL
 }

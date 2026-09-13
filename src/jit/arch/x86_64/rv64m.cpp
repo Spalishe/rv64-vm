@@ -15,10 +15,6 @@ Copyright 2026 Spalishe
 
 */
 
-/*
- * RV64M register-form translators (semantics mirror src/sets/rv64m.cpp;
- * x0 writes are dropped; W variants wrap to 32 bits and sign-extend).
- */
 #include "../../../../include/decode.hpp"
 #include "../../../../include/jit/rvjit.hpp"
 
