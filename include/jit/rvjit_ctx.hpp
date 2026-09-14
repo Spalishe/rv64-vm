@@ -48,6 +48,7 @@ namespace rv64vm::jit
 		uint64_t tlb_gen;					// TLB::current_generation() at dispatch time
 		uint16_t satp_asid;
 		uint16_t pad;
+		uint64_t exit_count; // instructions executed, written by the block exits
 	};
 
 	static_assert(offsetof(JIT_HartContext, regs) == 0);
@@ -61,6 +62,7 @@ namespace rv64vm::jit
 	static_assert(offsetof(JIT_HartContext, tlb_entries) == 64);
 	static_assert(offsetof(JIT_HartContext, tlb_gen) == 72);
 	static_assert(offsetof(JIT_HartContext, satp_asid) == 80);
+	static_assert(offsetof(JIT_HartContext, exit_count) == 88);
 
 	// Layout mirrors of TLB::TlbEntry, sanity-checked against offsetof above.
 	// Do not change the TlbEntry field order without updating these.

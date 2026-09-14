@@ -75,6 +75,7 @@ namespace rv64vm::jit::x86
 	constexpr uint16_t CTX_OFF_TLB_ENTRIES	= 64;
 	constexpr uint16_t CTX_OFF_TLB_GEN		= 72;
 	constexpr uint16_t CTX_OFF_SATP_ASID	= 80;
+	constexpr uint16_t CTX_OFF_EXIT_COUNT	= 88;
 
 	// TLB::TlbEntry field offsets (mirrors of the C++ layout; the JIT code
 	// addresses entries relative to [CTX + CTX_OFF_TLB_ENTRIES]).
@@ -230,6 +231,14 @@ namespace rv64vm::jit::x86
 		rex(cb, true, false, false, dst >= 8);
 		cb.b(0xC7);
 		modrm_reg(cb, 0, dst);
+		cb.dw((uint32_t)imm);
+	}
+	// mov [base+disp32], signext(imm32): REX.W makes the imm32 sign-extend.
+	inline void mov_m64_imm(CodeBuf& cb, uint8_t base, int32_t disp, int32_t imm)
+	{
+		rex(cb, true, false, false, base >= 8);
+		cb.b(0xC7);
+		modrm_mem(cb, 0, base, disp);
 		cb.dw((uint32_t)imm);
 	}
 	inline void mov_imm64(CodeBuf& cb, uint8_t dst, uint64_t imm)

@@ -41,6 +41,7 @@ namespace rv64vm::jit
 		uint64_t asid		 = 0;
 		uint64_t smc_epoch	 = 0;
 		uint32_t instr_index = 0; // index of the instruction being compiled
+		uint32_t instr_bytes = 0; // guest bytes before the instruction being compiled
 		bool valid			 = false;
 	};
 
@@ -109,7 +110,8 @@ namespace rv64vm::jit
 		struct MissSite
 		{
 			uint32_t rel_pos;
-			uint32_t instr;
+			uint32_t instr; // instruction index (matches JIT_Block::instr_index)
+			uint32_t bytes; // guest bytes executed before this instruction
 		};
 		std::vector<MissSite> misses;
 		uint32_t stub_reserve = 0; // bytes reserved for the future miss stubs
@@ -138,8 +140,9 @@ namespace rv64vm::jit
 		void emit_prologue();
 
 		// Nothing else may emit code after emit_epilogue() except the miss
-		// stubs (which the epilogue must not fall through into).
-		void emit_epilogue(uint32_t guest_count);
+		// stubs (which the epilogue must not fall through into). guest_bytes /
+		// guest_count are the total guest bytes / instructions of the block.
+		void emit_epilogue(uint32_t guest_bytes, uint32_t guest_count);
 
 		// Appends the TLB-miss stubs and patches every recorded jcc32 to its stub.
 		void emit_miss_stubs();

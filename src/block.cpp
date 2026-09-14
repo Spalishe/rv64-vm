@@ -199,7 +199,7 @@ namespace rv64vm::runner
 			// VAs and ASID switches are correct by construction. Lookups also
 			// validate the ASID, effective privileged mode (MPRV honored),
 			// MXR/SUM (baked TLB policy) and the self-modifying-code epoch.
-			if(jctx != nullptr && (pc & 0x3) == 0) [[likely]]
+			if(jctx != nullptr && (pc & 0x1) == 0) [[likely]]
 			{
 				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
 				const bool mxr		   = status.fields.MXR;
@@ -221,8 +221,8 @@ namespace rv64vm::runner
 					jj.fn(&hctx);
 					// The block may have bailed to the interpreter mid-way
 					// (inlined TLB miss): instret only counts what the block
-					// actually executed.
-					const uint64_t executed = (hctx.exit_pc - pc) >> 2;
+					// actually executed. exit_count covers mixed-width blocks.
+					const uint64_t executed = hctx.exit_count;
 					pc						= hctx.exit_pc;
 					instret					+= executed;
 					cycle					+= executed;

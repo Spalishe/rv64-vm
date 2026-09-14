@@ -166,5 +166,34 @@ namespace rv64vm::jit
 
 	RVJIT_ISA_DECL(jit_LUI);
 	RVJIT_ISA_DECL(jit_AUIPC);
+
+	// Compressed (RV64C) translators; control-transfer, jump and FP C
+	// instructions stay on the interpreter (no jit_func).
+	RVJIT_ISA_DECL(jit_C_NOP);
+	RVJIT_ISA_DECL(jit_C_ADDI4SPN);
+	RVJIT_ISA_DECL(jit_C_ADDI);
+	RVJIT_ISA_DECL(jit_C_ADDIW);
+	RVJIT_ISA_DECL(jit_C_LI);
+	RVJIT_ISA_DECL(jit_C_LUI_ADDI16SP);
+	RVJIT_ISA_DECL(jit_C_SLLI);
+	RVJIT_ISA_DECL(jit_C_SRLI);
+	RVJIT_ISA_DECL(jit_C_SRAI);
+	RVJIT_ISA_DECL(jit_C_ANDI);
+	RVJIT_ISA_DECL(jit_C_SUB);
+	RVJIT_ISA_DECL(jit_C_XOR);
+	RVJIT_ISA_DECL(jit_C_OR);
+	RVJIT_ISA_DECL(jit_C_AND);
+	RVJIT_ISA_DECL(jit_C_SUBW);
+	RVJIT_ISA_DECL(jit_C_ADDW);
+	RVJIT_ISA_DECL(jit_C_MV);
+	RVJIT_ISA_DECL(jit_C_ADD);
+	RVJIT_ISA_DECL(jit_C_LW);
+	RVJIT_ISA_DECL(jit_C_LD);
+	RVJIT_ISA_DECL(jit_C_SW);
+	RVJIT_ISA_DECL(jit_C_SD);
+	RVJIT_ISA_DECL(jit_C_LWSP);
+	RVJIT_ISA_DECL(jit_C_LDSP);
+	RVJIT_ISA_DECL(jit_C_SWSP);
+	RVJIT_ISA_DECL(jit_C_SDSP);
 #undef RVJIT_ISA_DECL
 }

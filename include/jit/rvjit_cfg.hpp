@@ -22,11 +22,11 @@ namespace rv64vm::jit
 {
 	inline constexpr size_t RVJIT_MIN_INSTRUCTIONS = 1;
 	inline constexpr size_t RVJIT_MAX_INSTRUCTIONS = 128;
-	inline constexpr size_t RVJIT_FUNC_SIZE		   = 0x1000; // host code bytes per block
+	inline constexpr size_t RVJIT_FUNC_SIZE		   = 0x3000; // host code bytes per block
 	inline constexpr size_t RVJIT_ARENA_PAGES	   = 0x400;	 // host pages per code arena
 	inline constexpr size_t RVJIT_MAX_CACHE_BYTES  = 64 * 1024 * 1024;
 	// encode() may briefly overproduce bytes; this much margin keeps us off the buffer edge.
-	inline constexpr size_t RVJIT_FUNC_MARGIN = 256;
+	inline constexpr size_t RVJIT_FUNC_MARGIN = 512;
 
 	// Compile a block only after this many dispatches, so codegen cost is
 	// paid only for code that actually gets reused.

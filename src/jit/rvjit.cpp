@@ -118,18 +118,12 @@ namespace rv64vm::jit
 			{
 				break; // illegal instruction
 			}
-			const uint32_t inst = cache->data.inst;
-			if((inst & 0x3) != 0x3)
-			{
-				break; // compressed: interpreter path (no JIT yet)
-			}
 			if(cache->inst->jit_func == nullptr)
-			{
-				break; // not JIT-able (control/mem/system/fence)
-			}
+				break; // not JIT-able (control/mem/system/fence/jmp/ebreak)
 			// jit_func always emits before returning; count it even when it
 			// reports buffer exhaustion (keep==false just ends the block).
 			blk.instr_index = count;
+			blk.instr_bytes = size;
 			blk.tmp_va		= pc_va;
 			const bool keep = cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em);
 			count++;
@@ -148,7 +142,7 @@ namespace rv64vm::jit
 			return {};
 		}
 
-		em.emit_epilogue(count);
+		em.emit_epilogue(size, count);
 		em.emit_miss_stubs();
 		blk.count		= count;
 		blk.bytes_guest = size;

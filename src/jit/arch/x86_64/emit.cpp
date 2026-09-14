@@ -29,8 +29,14 @@ namespace rv64vm::jit
 		constexpr uint8_t PERM_A = 1u << 4;
 		constexpr uint8_t PERM_D = 1u << 5;
 
-		// Upper bound for a single miss-stub (mov/add/mov/pop/pop/pop/ret).
-		constexpr uint32_t STUB_BYTES = 32;
+		// Upper bound for a single miss-stub
+		// (mov/add/mov/mov64imm/pop/pop/pop/ret). Reserve conservatively so
+		// eof() can stop the block before the stubs overflow the buffer.
+		constexpr uint32_t STUB_BYTES = 48;
+
+		// Upper bound for emit_epilogue(), which is appended after the decode
+		// loop and is not covered by the per-instruction reserve.
+		constexpr uint32_t EPILOGUE_BYTES = 256;
 
 		constexpr uint8_t CC_JE	 = 0x4;
 		constexpr uint8_t CC_JNE = 0x5;
@@ -55,7 +61,7 @@ namespace rv64vm::jit
 			auto miss_jump = [&](uint8_t cc)
 			{
 				const uint32_t rel = x86::jcc32(cb, cc);
-				em.misses.push_back({ rel, instr });
+				em.misses.push_back({ rel, instr, em.blk->instr_bytes });
 			};
 
 			// E = [CTX + TLB_ENTRIES] + (((H >> 12) & TLB_SIZE_MASK) << 6)
@@ -84,7 +90,7 @@ namespace rv64vm::jit
 			x86::test_m8_imm(cb, x86::REG_RCX, x86::TLB_OFF_GLOBAL, 0xFF);
 			const uint32_t ok_b		 = x86::jcc8(cb, 0x75); // jne
 			const uint32_t asid_miss = x86::jmp32(cb);
-			em.misses.push_back({ asid_miss, instr });
+			em.misses.push_back({ asid_miss, instr, em.blk->instr_bytes });
 			x86::patch_rel8(cb, ok_a, cb.pos);
 			x86::patch_rel8(cb, ok_b, cb.pos);
 
@@ -227,12 +233,15 @@ namespace rv64vm::jit
 		x86::mov_mr(code(), x86::REG_R13, x86::REG_R12, x86::CTX_OFF_REGS);
 	}
 
-	void JIT_Emitter::emit_epilogue(uint32_t guest_count)
+	void JIT_Emitter::emit_epilogue(uint32_t guest_bytes, uint32_t guest_count)
 	{
 		flush_all();
+		// exit_pc = entry_pc + bytes (VA), accounting for mixed 2/4-byte
+		// compressed + uncompressed instructions inside one block.
 		x86::mov_mr(code(), x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
-		x86::add_imm(code(), x86::REG_RAX, (int32_t)(guest_count * 4));
+		x86::add_imm(code(), x86::REG_RAX, (int32_t)guest_bytes);
 		x86::mov_rm(code(), x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
+		x86::mov_m64_imm(code(), x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)guest_count);
 		x86::pop_r(code(), x86::REG_R12);
 		x86::pop_r(code(), x86::REG_R13);
 		x86::pop_r(code(), x86::REG_RBP);
@@ -241,7 +250,13 @@ namespace rv64vm::jit
 
 	bool JIT_Emitter::eof() const
 	{
-		return code().pos + RVJIT_FUNC_MARGIN + stub_reserve >= RVJIT_FUNC_SIZE;
+		// The decode loop must leave room for the epilogue, every miss stub,
+		// and a margin that absorbs the emission overshoot of the last
+		// instruction (the check runs before each instruction, so the buffer
+		// can still grow by one instruction past this point). With STUB_BYTES
+		// and EPILOGUE_BYTES as true upper bounds the epilogue + stubs then
+		// always fit inside RVJIT_FUNC_SIZE.
+		return code().pos + EPILOGUE_BYTES + RVJIT_FUNC_MARGIN + stub_reserve >= RVJIT_FUNC_SIZE;
 	}
 
 	void JIT_Emitter::release_slot(uint8_t slot)
@@ -341,16 +356,19 @@ namespace rv64vm::jit
 		while(i < misses.size())
 		{
 			const uint32_t instr  = misses[i].instr;
+			const uint32_t bytes  = misses[i].bytes;
 			const uint32_t target = cb.pos;
 			while(i < misses.size() && misses[i].instr == instr)
 			{
 				x86::patch_rel32(cb, misses[i].rel_pos, target);
 				i++;
 			}
-			// exit_pc = entry_pc + instr*4
+			// exit_pc = entry_pc + bytes_before_instr (captured before the
+			// group loop; `i` no longer points at this group when we get here).
 			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
-			x86::add_imm(cb, x86::REG_RAX, (int32_t)(instr * 4));
+			x86::add_imm(cb, x86::REG_RAX, (int32_t)bytes);
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
+			x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)instr);
 			x86::pop_r(cb, x86::REG_R12);
 			x86::pop_r(cb, x86::REG_R13);
 			x86::pop_r(cb, x86::REG_RBP);
