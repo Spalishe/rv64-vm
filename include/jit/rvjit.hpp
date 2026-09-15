@@ -34,8 +34,6 @@ namespace rv64vm::runner
 
 namespace rv64vm::jit
 {
-	using JITCompiledFunc = void (*)(JIT_HartContext*);
-
 	inline constexpr size_t JIT_ARENA_BYTES = RVJIT_ARENA_PAGES * 4096;
 
 	// Result of a JIT dispatch attempt.
@@ -98,7 +96,7 @@ namespace rv64vm::jit
 		std::vector<uint8_t*> arenas;
 		uint8_t* cur	= nullptr;
 		size_t cur_used = 0;
-		std::mutex mtx;
+		std::atomic_flag mtx = ATOMIC_FLAG_INIT;
 
 		uint8_t* arena_alloc(size_t nbytes);
 		void mark_block_executed(uint64_t phys_pc, uint64_t guest_bytes);

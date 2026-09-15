@@ -33,6 +33,9 @@ namespace rv64vm::runner
  */
 namespace rv64vm::jit
 {
+	struct JIT_HartContext;
+	using JITCompiledFunc = void (*)(JIT_HartContext*);
+
 	struct JIT_HartContext
 	{
 		uint64_t* regs;		// &hart.GPR[0]

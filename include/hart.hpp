@@ -137,6 +137,19 @@ namespace rv64vm::runner
 #ifdef USE_JIT
 		// Native JIT state (set up by Machine; used by run_blocks).
 		jit::JIT_HartContext hctx{};
+		// Per-hart dispatch cache: remembers the last compiled block for a
+		// (VA, TLB-generation, SMC-epoch, mode, ASID) tuple so hot loops skip
+		// translate + JIT lookup + hot_tick entirely. "seen" marks that the pc
+		// was already witnessed at this translation; only then does dispatch
+		// engage the JIT machinery at all (cold linear code stays interpreter).
+		struct DispatchHot {
+			uint64_t va = 0, gen = 0, smc = 0;
+			uint32_t asid = 0;
+			uint8_t mode = 0;
+			uint8_t seen = 0;
+			jit::JITCompiledFunc fn = nullptr;
+		};
+		DispatchHot dhot[64]{};
 		jit::JIT_Context* jctx = nullptr;
 #endif
 

@@ -21,6 +21,7 @@ Copyright 2026 Spalishe
 #include <cstdlib>
 #ifdef USE_JIT
 #include "../include/jit/rvjit.hpp"
+#include "../include/self_mod.hpp"
 #endif
 
 namespace rv64vm::runner
@@ -185,41 +186,52 @@ namespace rv64vm::runner
 					break;
 			}
 
-			uint64_t phys	= 0;
-			MemoryReturn mr = mmu.translate(this, AccessType::EXEC, pc, &phys);
-			if(!mr.is_success)
-			{
-				trap(mr.exc_code, mr.tval, false);
-				break;
-			}
-
+		uint64_t phys	= 0;
+		bool phys_done = false;
 #ifdef USE_JIT
-			// Native JIT fast path. Blocks are keyed by the PHYSICAL pc and the
-			// runner re-translates `pc` (VA) before every dispatch, so aliased
-			// VAs and ASID switches are correct by construction. Lookups also
-			// validate the ASID, effective privileged mode (MPRV honored),
-			// MXR/SUM (baked TLB policy) and the self-modifying-code epoch.
-			if(jctx != nullptr && (pc & 0x1) == 0) [[likely]]
-			{
-				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
-				const bool mxr		   = status.fields.MXR;
-				const bool sum		   = status.fields.SUM;
+		if(jctx != nullptr && (pc & 0x1) == 0) [[likely]]
+		{
+			const uint64_t gen  = mmu.get_tlb().current_generation();
+			const uint8_t  mode = (uint8_t)get_effective_mode(AccessType::EXEC);
+			const uint64_t smc  = rv64vm::g_smc_epoch.load(std::memory_order_relaxed);
+			const uint32_t asid = satp.fields.asid;
+			const size_t di = ((pc >> 2) * 2654435761u + (uint32_t)gen + (uint32_t)smc) & 63;
+			DispatchHot& d	= dhot[di];
+			jit::JITExec jj{};
 
-				jit::JITExec jj = jctx->lookup(phys, satp.fields.asid, eff_mode, mxr, sum);
-				if(jj.fn == nullptr && jctx->hot_tick(phys))
-					jj = jctx->compile(*this, pc, phys);
+			if(d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.asid == asid)
+			{
+				// Repeat visitor at the same translation: engage the JIT.
+				if(d.fn != nullptr)
+					jj.fn = d.fn;
+				else
+				{
+					MemoryReturn mr = mmu.translate(this, AccessType::EXEC, pc, &phys);
+					if(!mr.is_success) [[unlikely]]
+					{
+						trap(mr.exc_code, mr.tval, false);
+						break;
+					}
+					phys_done = true;
+
+					const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
+					const bool mxr		   = status.fields.MXR;
+					const bool sum		   = status.fields.SUM;
+					jj = jctx->lookup(phys, asid, eff_mode, mxr, sum);
+					if(jj.fn == nullptr && jctx->hot_tick(phys))
+						jj = jctx->compile(*this, pc, phys);
+					d.fn = jj.fn;
+				}
+
 				if(jj.fn != nullptr)
 				{
 					hctx.tlb_entries = mmu.get_tlb().jit_entries();
-					hctx.tlb_gen	 = mmu.get_tlb().current_generation();
-					hctx.satp_asid	 = satp.fields.asid;
+					hctx.tlb_gen	 = gen;
+					hctx.satp_asid	 = asid;
 
 					const uint64_t prev_instret = instret;
 					hctx.entry_pc				= pc;
 					jj.fn(&hctx);
-					// The block may have bailed to the interpreter mid-way
-					// (inlined TLB miss): instret only counts what the block
-					// actually executed. exit_count covers mixed-width blocks.
 					const uint64_t executed = hctx.exit_count;
 					pc						= hctx.exit_pc;
 					instret += executed;
@@ -234,11 +246,35 @@ namespace rv64vm::runner
 						}
 						continue;
 					}
-					// executed == 0: the very first instruction bailed to the
-					// interpreter; fall through so it re-executes there.
 				}
 			}
+			else
+			{
+				// First sighting at this translation: run the interpreter once
+				// (no translate/lookup/hot_tick tax) and remember the pc so the
+				// next dispatch decides whether the JIT is worth it.
+				MemoryReturn mr = mmu.translate(this, AccessType::EXEC, pc, &phys);
+				if(!mr.is_success) [[unlikely]]
+				{
+					trap(mr.exc_code, mr.tval, false);
+					break;
+				}
+				phys_done = true;
+				d.va = pc; d.gen = gen; d.mode = mode; d.smc = smc; d.asid = asid;
+				d.seen = true; d.fn = nullptr;
+			}
+		}
 #endif
+
+		if(!phys_done)
+		{
+			MemoryReturn mr = mmu.translate(this, AccessType::EXEC, pc, &phys);
+			if(!mr.is_success)
+			{
+				trap(mr.exc_code, mr.tval, false);
+				break;
+			}
+		}
 
 			Block* b = bc.lookup(phys);
 			if(b == nullptr)

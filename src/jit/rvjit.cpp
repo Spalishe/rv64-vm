@@ -93,10 +93,10 @@ namespace rv64vm::jit
 		return ++e.hot >= RVJIT_HOT_THRESHOLD;
 	}
 
-	JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
+JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 	{
-		std::lock_guard<std::mutex> lk(mtx);
-
+		while(mtx.test_and_set(std::memory_order_acquire)) { /* spin */ }
+		struct SpinGuard { std::atomic_flag& f; ~SpinGuard(){ f.clear(std::memory_order_release); } } guard{mtx};
 		// Effective access mode (MPRV honored) and the paging flags that the
 		// block policy is baked from; dispatch re-validates them.
 		const uint8_t eff_mode = (uint8_t)h.get_effective_mode(AccessType::STORE);
