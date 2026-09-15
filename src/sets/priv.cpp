@@ -99,8 +99,9 @@ ExecReturn exec_SFENCE_VMA(Hart& hart, InstructionData& inst)
 	else
 		tlb.flush_addr_asid(hart.GPR[inst.rs1], (uint16_t)hart.GPR[inst.rs2]);
 #ifdef USE_JIT
-	// Address-based flush may not cover a JIT block's full VA range, so
-	// conservatively drop all compiled code on any SFENCE.VMA.
+	// SFENCE is the correctness backstop: the guest may remap a VA onto a
+	// physical page that previously held compiled text (memblock reuse, COW),
+	// without writing through the SMC watchdog. Drop compiled code here.
 	if(hart.jctx)
 		hart.jctx->invalidate_all();
 #endif

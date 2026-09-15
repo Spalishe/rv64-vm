@@ -17,6 +17,7 @@ Copyright 2026 Spalishe
 
 #include "../../include/jit/rvjit.hpp"
 #include "../../include/hart.hpp"
+#include "../../include/self_mod.hpp"
 
 #include <cstring>
 #include <sys/mman.h>
@@ -31,6 +32,11 @@ namespace rv64vm::jit
 	{
 		if(cur == nullptr || cur_used + nbytes > JIT_ARENA_BYTES)
 		{
+			if(arenas.size() * JIT_ARENA_BYTES >= RVJIT_MAX_CACHE_BYTES)
+			{
+				g_smc_epoch.fetch_add(1, std::memory_order_release);
+				release_arenas();
+			}
 			void* p = mmap(nullptr, JIT_ARENA_BYTES, PROT_READ | PROT_WRITE | PROT_EXEC,
 						   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 			if(p == MAP_FAILED)
@@ -57,6 +63,8 @@ namespace rv64vm::jit
 	{
 		CachedBlock& e = cache[index_of(phys_pc)];
 		JITExec out;
+		// Blocks are keyed by PHYSICAL pc; ASID is deliberately NOT part of
+		// the key;
 		if(e.valid && e.start_phys == phys_pc && e.asid == asid && e.smc_epoch == g_smc_epoch.load() && e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
 		{
 			out.fn	  = e.fn;
@@ -71,8 +79,18 @@ namespace rv64vm::jit
 		GiveUpSlot& g  = giveup[i];
 		if(g.skip && g.phys == phys_pc)
 			return false; // known non-JIT starter: let the interpreter have it
-		CachedBlock& e = cache[i];
-		return e.hot.fetch_add(1, std::memory_order_relaxed) + 1 >= RVJIT_HOT_THRESHOLD;
+		CachedBlock& e			 = cache[i];
+		const uint64_t cur_epoch = g_smc_epoch.load();
+		// after an invalidation (smc epoch bump) the first
+		// dispatch to a pc re-bases its counter, so one-touch (cold) code is
+		// NOT recompiled after every SFENCE while genuinely hot code still
+		// recompiles after 2 dispatches.
+		if(e.hot_epoch != (uint32_t)cur_epoch)
+		{
+			e.hot_epoch = (uint32_t)cur_epoch;
+			e.hot		= 0;
+		}
+		return ++e.hot >= RVJIT_HOT_THRESHOLD;
 	}
 
 	JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
@@ -192,18 +210,7 @@ namespace rv64vm::jit
 
 	void JIT_Context::invalidate_all()
 	{
-		std::lock_guard<std::mutex> lk(mtx);
-		for(auto& e : cache)
-		{
-			e.valid = false;
-			e.hot.store(0, std::memory_order_relaxed);
-		}
-		for(auto& g : giveup)
-		{
-			g.phys = 0;
-			g.skip = false;
-		}
-		release_arenas();
+		g_smc_epoch.fetch_add(1, std::memory_order_release);
 	}
 }
 

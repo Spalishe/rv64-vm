@@ -79,7 +79,8 @@ namespace rv64vm::jit
 			uint8_t eff_mode		  = 0; // baked privilege mode (0=U,1=S,3=M)
 			bool mxr				  = false;
 			bool sum				  = false;
-			std::atomic<uint32_t> hot = 0; // dispatch counter before compiling
+			uint32_t hot			  = 0; // dispatch counter before compiling
+			uint32_t hot_epoch		  = 0; // smc epoch the hot counter is based on
 			uint32_t count			  = 0;
 			bool valid				  = false;
 		};

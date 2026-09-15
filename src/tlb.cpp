@@ -17,6 +17,7 @@ Copyright 2026 Spalishe
 
 #include "../include/tlb.hpp"
 #include "../include/hart.hpp"
+#include "../include/self_mod.hpp"
 
 namespace rv64vm::runner
 {
@@ -80,6 +81,16 @@ namespace rv64vm::runner
 		e.page_bits		   = page_bits;
 		e.perm			   = perm;
 		e.global		   = global;
+
+		// W^X invariant: once a page has ever been executed (see
+		// self_mod.hpp), no TLB entry for it may advertise W|D. Fresh walks
+		// would otherwise hand JITed stores a writable entry and let them
+		// silently rewrite compiled text, skipping the self-modifying-code
+		// detector (smc_store_hit) that invalidates stale blocks. With the
+		// bit stripped, stores fall back to the interpreter, which refills a
+		// full-perm entry, performs the write, and bumps the SMC epoch.
+		if((e.perm & (int)TLBPermissions::PERM_W) && was_page_executed(e.ppage_base))
+			e.perm &= ~((int)TLBPermissions::PERM_W | (int)TLBPermissions::PERM_D);
 	}
 
 	__attribute__((always_inline)) inline bool TLB::check_perm(uint8_t perm, AccessType type, int mode, bool mxr, bool sum)

@@ -30,7 +30,10 @@ inline uint64_t timer_clocksource(uint64_t freq)
 	auto now	  = std::chrono::steady_clock::now();
 	auto duration = now.time_since_epoch();
 	uint64_t ns	  = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
-	return (ns * freq) / 1000000000ULL;
+	// Split the conversion so `ns * freq` cannot overflow uint64 on long-running
+	// hosts (uptime * freq must stay below 2^64; <= 5e6 Hz that is ~114k years).
+	constexpr uint64_t B = 1000000000ULL;
+	return (ns / B) * freq + (ns % B) * freq / B;
 }
 inline uint64_t timer_freq(timer_st* timer)
 {

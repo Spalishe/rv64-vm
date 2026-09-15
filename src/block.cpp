@@ -15,10 +15,10 @@ Copyright 2026 Spalishe
 
 */
 
-#include "../include/hart.hpp"
 #include "../include/block_cache.hpp"
-#include <cstdlib>
+#include "../include/hart.hpp"
 #include <cstdio>
+#include <cstdlib>
 #ifdef USE_JIT
 #include "../include/jit/rvjit.hpp"
 #endif
@@ -85,7 +85,7 @@ namespace rv64vm::runner
 		// points at the faulting instruction, like the interpreter.
 		inline void run_block(Hart& h, Block& b, uint64_t& out_executed, bool& out_fault, uint32_t& cause, uint64_t& tval)
 		{
-			h.GPR[0] = 0; // a block may leave x0 non-zero if its last op wrote rd=0
+			h.GPR[0]		   = 0; // a block may leave x0 non-zero if its last op wrote rd=0
 			const uint32_t cnt = b.count;
 			uint32_t n		   = 0;
 			for(; n + 1 < cnt; n++)
@@ -121,9 +121,9 @@ namespace rv64vm::runner
 
 	Block* Hart::compile_block(BlockCache& bc, uint64_t start_phys)
 	{
-		Block& b		 = bc.slots[(start_phys >> 2) & (BlockCache::CACHE_SIZE - 1)];
-		b.gen			 = 0; // invalidate until fully built
-		b.start_phys	 = start_phys;
+		Block& b	 = bc.slots[(start_phys >> 2) & (BlockCache::CACHE_SIZE - 1)];
+		b.gen		 = 0; // invalidate until fully built
+		b.start_phys = start_phys;
 
 		uint64_t pc_va = pc;
 		uint32_t n	   = 0;
@@ -140,11 +140,11 @@ namespace rv64vm::runner
 			if((inst & 0x3) == 0x3 && writes_reg(inst) && ((inst >> 7) & 0x1F) == 0)
 				break; // rd == 0 would poison x0 for the rest of the block
 
-			BlockInstr& bi	 = b.instrs[n];
-			bi.inst			 = cache->inst;
-			bi.data			 = cache->data;
-			bi.increase_pc	 = ((inst & 0x3) == 0x3) ? 4 : 2;
-			b.last_inst		 = inst;
+			BlockInstr& bi = b.instrs[n];
+			bi.inst		   = cache->inst;
+			bi.data		   = cache->data;
+			bi.increase_pc = ((inst & 0x3) == 0x3) ? 4 : 2;
+			b.last_inst	   = inst;
 			n++;
 			if(is_block_end(inst))
 				break;
@@ -185,7 +185,7 @@ namespace rv64vm::runner
 					break;
 			}
 
-			uint64_t phys = 0;
+			uint64_t phys	= 0;
 			MemoryReturn mr = mmu.translate(this, AccessType::EXEC, pc, &phys);
 			if(!mr.is_success)
 			{
@@ -204,29 +204,27 @@ namespace rv64vm::runner
 				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
 				const bool mxr		   = status.fields.MXR;
 				const bool sum		   = status.fields.SUM;
-				// Refresh the hart C-context each iteration: the TLB array and
-				// generation move on translation, and a satp write clears the
-				// TLB (a stale asid would poison inline lookups).
-				hctx.tlb_entries = mmu.get_tlb().jit_entries();
-				hctx.tlb_gen	   = mmu.get_tlb().current_generation();
-				hctx.satp_asid	   = satp.fields.asid;
 
 				jit::JITExec jj = jctx->lookup(phys, satp.fields.asid, eff_mode, mxr, sum);
 				if(jj.fn == nullptr && jctx->hot_tick(phys))
 					jj = jctx->compile(*this, pc, phys);
 				if(jj.fn != nullptr)
 				{
+					hctx.tlb_entries = mmu.get_tlb().jit_entries();
+					hctx.tlb_gen	 = mmu.get_tlb().current_generation();
+					hctx.satp_asid	 = satp.fields.asid;
+
 					const uint64_t prev_instret = instret;
-					hctx.entry_pc = pc;
+					hctx.entry_pc				= pc;
 					jj.fn(&hctx);
 					// The block may have bailed to the interpreter mid-way
 					// (inlined TLB miss): instret only counts what the block
 					// actually executed. exit_count covers mixed-width blocks.
 					const uint64_t executed = hctx.exit_count;
 					pc						= hctx.exit_pc;
-					instret					+= executed;
-					cycle					+= executed;
-					total					+= executed;
+					instret += executed;
+					cycle += executed;
+					total += executed;
 					if(executed != 0)
 					{
 						if((prev_instret & 0x2FFF) + executed >= 0x3000) [[unlikely]]
@@ -254,10 +252,10 @@ namespace rv64vm::runner
 				continue;
 			}
 
-			uint64_t executed	  = 0;
-			bool fault			  = false;
-			uint32_t cause		  = 0;
-			uint64_t tval		  = 0;
+			uint64_t executed = 0;
+			bool fault		  = false;
+			uint32_t cause	  = 0;
+			uint64_t tval	  = 0;
 			run_block(*this, *b, executed, fault, cause, tval);
 
 			const uint64_t prev_instret = instret;
