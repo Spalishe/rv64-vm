@@ -356,11 +356,11 @@ ExecReturn exec_C_FSDSP(Hart& hart, InstructionData& inst)
 
 void InstructionDecoder::init_rv64c()
 {
-	Instruction* inst_addi4spn = register_instr("000***********00", exec_C_ADDI4SPN, d_c_uimm);
-	Instruction* inst_c_lw	 = register_instr("010***********00", exec_C_LW, d_c_uimm_cl);
-	Instruction* inst_c_ld	 = register_instr("011***********00", exec_C_LD, d_c_uimm_cl1);
-	Instruction* inst_c_sw	 = register_instr("110***********00", exec_C_SW, d_c_uimm_cl);
-	Instruction* inst_c_sd	 = register_instr("111***********00", exec_C_SD, d_c_uimm_cl1);
+	Instruction* inst_addi4spn	   = register_instr("000***********00", exec_C_ADDI4SPN, d_c_uimm);
+	Instruction* inst_c_lw		   = register_instr("010***********00", exec_C_LW, d_c_uimm_cl);
+	Instruction* inst_c_ld		   = register_instr("011***********00", exec_C_LD, d_c_uimm_cl1);
+	Instruction* inst_c_sw		   = register_instr("110***********00", exec_C_SW, d_c_uimm_cl);
+	Instruction* inst_c_sd		   = register_instr("111***********00", exec_C_SD, d_c_uimm_cl1);
 	Instruction* inst_c_nop		   = register_instr("0000000000000001", exec_C_NOP);
 	Instruction* inst_addi		   = register_instr("000***********01", exec_C_ADDI, d_c_nzimm);
 	// register_instr("001***********01", exec_C_JAL); // Reserved for RV32
@@ -377,17 +377,17 @@ void InstructionDecoder::init_rv64c()
 	Instruction* inst_c_and		   = register_instr("100011***11***01", exec_C_AND);
 	Instruction* inst_c_subw	   = register_instr("100111***00***01", exec_C_SUBW);
 	Instruction* inst_c_addw	   = register_instr("100111***01***01", exec_C_ADDW);
-	Instruction* inst_c_j	   = register_instr("101***********01", exec_C_J, d_c_j_imm);
-	Instruction* inst_c_beqz   = register_instr("110***********01", exec_C_BEQZ, d_c_b_imm);
-	Instruction* inst_c_bnez   = register_instr("111***********01", exec_C_BNEZ, d_c_b_imm);
-	Instruction* inst_slli = register_instr("000***********10", exec_C_SLLI, d_c_uimm_arith);
-	Instruction* inst_c_lwsp = register_instr("010***********10", exec_C_LWSP, d_c_uimm_lwsp);
-	Instruction* inst_c_ldsp = register_instr("011***********10", exec_C_LDSP, d_c_uimm_ldsp);
-	Instruction* inst_c_jr	 = register_instr("1000*****0000010", exec_C_JR);
-	Instruction* inst_c_mv	= register_instr("1000**********10", exec_C_MV);
+	Instruction* inst_c_j		   = register_instr("101***********01", exec_C_J, d_c_j_imm);
+	Instruction* inst_c_beqz	   = register_instr("110***********01", exec_C_BEQZ, d_c_b_imm);
+	Instruction* inst_c_bnez	   = register_instr("111***********01", exec_C_BNEZ, d_c_b_imm);
+	Instruction* inst_slli		   = register_instr("000***********10", exec_C_SLLI, d_c_uimm_arith);
+	Instruction* inst_c_lwsp	   = register_instr("010***********10", exec_C_LWSP, d_c_uimm_lwsp);
+	Instruction* inst_c_ldsp	   = register_instr("011***********10", exec_C_LDSP, d_c_uimm_ldsp);
+	Instruction* inst_c_jr		   = register_instr("1000*****0000010", exec_C_JR);
+	Instruction* inst_c_mv		   = register_instr("1000**********10", exec_C_MV);
 	register_instr("1001000000000010", exec_C_EBREAK);
 	Instruction* inst_c_jalr = register_instr("1001*****0000010", exec_C_JALR);
-	Instruction* inst_c_add = register_instr("1001**********10", exec_C_ADD);
+	Instruction* inst_c_add	 = register_instr("1001**********10", exec_C_ADD);
 	Instruction* inst_c_swsp = register_instr("110***********10", exec_C_SWSP, d_c_uimm_swsp);
 	Instruction* inst_c_sdsp = register_instr("111***********10", exec_C_SDSP, d_c_uimm_sdsp);
 #ifdef USE_FPU
