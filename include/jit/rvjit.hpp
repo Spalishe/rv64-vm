@@ -166,8 +166,18 @@ namespace rv64vm::jit
 	RVJIT_ISA_DECL(jit_LUI);
 	RVJIT_ISA_DECL(jit_AUIPC);
 
-	// Compressed (RV64C) translators; control-transfer, jump and FP C
-	// instructions stay on the interpreter (no jit_func).
+	// B-Type / jumps (end the block with a native exit).
+	RVJIT_ISA_DECL(jit_BEQ);
+	RVJIT_ISA_DECL(jit_BNE);
+	RVJIT_ISA_DECL(jit_BLT);
+	RVJIT_ISA_DECL(jit_BGE);
+	RVJIT_ISA_DECL(jit_BLTU);
+	RVJIT_ISA_DECL(jit_BGEU);
+	RVJIT_ISA_DECL(jit_JAL);
+	RVJIT_ISA_DECL(jit_JALR);
+
+	// Compressed (RV64C) translators; FP C instructions stay on the
+	// interpreter (no jit_func).
 	RVJIT_ISA_DECL(jit_C_NOP);
 	RVJIT_ISA_DECL(jit_C_ADDI4SPN);
 	RVJIT_ISA_DECL(jit_C_ADDI);
@@ -194,5 +204,10 @@ namespace rv64vm::jit
 	RVJIT_ISA_DECL(jit_C_LDSP);
 	RVJIT_ISA_DECL(jit_C_SWSP);
 	RVJIT_ISA_DECL(jit_C_SDSP);
+	RVJIT_ISA_DECL(jit_C_J);
+	RVJIT_ISA_DECL(jit_C_BEQZ);
+	RVJIT_ISA_DECL(jit_C_BNEZ);
+	RVJIT_ISA_DECL(jit_C_JR);
+	RVJIT_ISA_DECL(jit_C_JALR);
 #undef RVJIT_ISA_DECL
 }

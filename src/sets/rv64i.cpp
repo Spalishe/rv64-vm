@@ -625,5 +625,13 @@ void InstructionDecoder::init_rv64i()
 	inst_sd->jit_func	 = &jit::jit_SD;
 	inst_lui->jit_func	 = &jit::jit_LUI;
 	inst_auipc->jit_func = &jit::jit_AUIPC;
+	inst_beq->jit_func	 = &jit::jit_BEQ;
+	inst_bne->jit_func	 = &jit::jit_BNE;
+	inst_blt->jit_func	 = &jit::jit_BLT;
+	inst_bge->jit_func	 = &jit::jit_BGE;
+	inst_bltu->jit_func	 = &jit::jit_BLTU;
+	inst_bgeu->jit_func	 = &jit::jit_BGEU;
+	inst_jal->jit_func	 = &jit::jit_JAL;
+	inst_jalr->jit_func	 = &jit::jit_JALR;
 #endif
 }

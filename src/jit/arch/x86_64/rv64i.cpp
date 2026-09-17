@@ -231,6 +231,53 @@ namespace rv64vm::jit
 		return st(h, d, b, e, 8);
 	}
 
+	// B-Type / jump: end the block with a native exit. cc is the x86 condition
+	// for the taken side; an odd taken target exits as a miss so the
+	// interpreter raises the misalignment trap.
+	bool jit_BEQ(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		e.emit_cond_exit(d.rs1, d.rs2, 0x4, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
+		return false;
+	}
+	bool jit_BNE(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		e.emit_cond_exit(d.rs1, d.rs2, 0x5, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
+		return false;
+	}
+	bool jit_BLT(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		e.emit_cond_exit(d.rs1, d.rs2, 0xC, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
+		return false;
+	}
+	bool jit_BGE(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		e.emit_cond_exit(d.rs1, d.rs2, 0xD, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
+		return false;
+	}
+	bool jit_BLTU(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		e.emit_cond_exit(d.rs1, d.rs2, 0x2, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
+		return false;
+	}
+	bool jit_BGEU(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		e.emit_cond_exit(d.rs1, d.rs2, 0x3, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
+		return false;
+	}
+
+	// JAL: link rd (rd != 0) = branch_pc + 4. JALR never misaligns (target is
+	// masked); the align check only guards JAL's odd targets.
+	bool jit_JAL(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		e.emit_jump(d.rd, 0, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true, false);
+		return false;
+	}
+	bool jit_JALR(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		e.emit_jump(d.rd, d.rs1, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, false, true);
+		return false;
+	}
+
 }
 
 #endif

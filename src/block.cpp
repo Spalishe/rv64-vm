@@ -230,7 +230,7 @@ namespace rv64vm::runner
 					hctx.satp_asid	 = asid;
 
 					const uint64_t prev_instret = instret;
-					hctx.entry_pc				= pc;
+hctx.entry_pc				= pc;
 					jj.fn(&hctx);
 					const uint64_t executed = hctx.exit_count;
 					pc						= hctx.exit_pc;
@@ -244,6 +244,10 @@ namespace rv64vm::runner
 							if((ip.raw & ie.raw) != 0 && check_ints())
 								break;
 						}
+						if(total >= max_insts) [[unlikely]]
+							break;
+						// A JIT block exit lands on another JIT block start;
+						// re-enter the dispatch instead of the interpreter.
 						continue;
 					}
 				}

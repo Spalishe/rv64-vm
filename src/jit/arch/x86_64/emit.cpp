@@ -29,10 +29,10 @@ namespace rv64vm::jit
 		constexpr uint8_t PERM_A = 1u << 4;
 		constexpr uint8_t PERM_D = 1u << 5;
 
-		// Upper bound for a single miss-stub
-		// (mov/add/mov/mov64imm/pop/pop/pop/ret). Reserve conservatively so
+		// Upper bound for a single miss-stub (dirty-register flush stores +
+		// mov/add/mov/mov64imm/pop/pop/pop/ret). Reserve conservatively so
 		// eof() can stop the block before the stubs overflow the buffer.
-		constexpr uint32_t STUB_BYTES = 48;
+		constexpr uint32_t STUB_BYTES = 104;
 
 		// Upper bound for emit_epilogue(), which is appended after the decode
 		// loop and is not covered by the per-instruction reserve.
@@ -54,14 +54,9 @@ namespace rv64vm::jit
 		void emit_tlb_checks(JIT_Emitter& em, uint8_t H, uint8_t width, bool store, uint32_t instr)
 		{
 			x86::CodeBuf& cb	= em.code();
-			const bool has_stub = !em.misses.empty() && em.misses.back().instr == instr;
-			if(!has_stub)
-				em.stub_reserve += STUB_BYTES;
-
 			auto miss_jump = [&](uint8_t cc)
 			{
-				const uint32_t rel = x86::jcc32(cb, cc);
-				em.misses.push_back({ rel, instr, em.blk->instr_bytes });
+				em.push_miss(x86::jcc32(cb, cc), instr);
 			};
 
 			// E = [CTX + TLB_ENTRIES] + (((H >> 12) & TLB_SIZE_MASK) << 6)
@@ -90,7 +85,7 @@ namespace rv64vm::jit
 			x86::test_m8_imm(cb, x86::REG_RCX, x86::TLB_OFF_GLOBAL, 0xFF);
 			const uint32_t ok_b		 = x86::jcc8(cb, 0x75); // jne
 			const uint32_t asid_miss = x86::jmp32(cb);
-			em.misses.push_back({ asid_miss, instr, em.blk->instr_bytes });
+			em.push_miss(asid_miss, instr);
 			x86::patch_rel8(cb, ok_a, cb.pos);
 			x86::patch_rel8(cb, ok_b, cb.pos);
 
@@ -235,17 +230,11 @@ namespace rv64vm::jit
 
 	void JIT_Emitter::emit_epilogue(uint32_t guest_bytes, uint32_t guest_count)
 	{
-		flush_all();
-		// exit_pc = entry_pc + bytes (VA), accounting for mixed 2/4-byte
-		// compressed + uncompressed instructions inside one block.
-		x86::mov_mr(code(), x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
-		x86::add_imm(code(), x86::REG_RAX, (int32_t)guest_bytes);
-		x86::mov_rm(code(), x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
-		x86::mov_m64_imm(code(), x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)guest_count);
-		x86::pop_r(code(), x86::REG_R12);
-		x86::pop_r(code(), x86::REG_R13);
-		x86::pop_r(code(), x86::REG_RBP);
-		x86::ret(code());
+		// Only straight-line blocks reach here; control transfers emit their
+		// own exits (em.exited = true).
+		if(exited)
+			__builtin_trap();
+		emit_block_exit(guest_bytes, guest_count);
 	}
 
 	bool JIT_Emitter::eof() const
@@ -267,7 +256,8 @@ namespace rv64vm::jit
 	void JIT_Emitter::emit_load(uint32_t rd, uint32_t rs1, int64_t imm, uint8_t width, bool sign_extend)
 	{
 		x86::CodeBuf& cb = code();
-		flush_all(); // a miss must exit with every register committed
+		// No flush here: the miss stub for this instruction commits the dirty
+		// registers before the interpreter resumes.
 		const uint32_t instr = blk->instr_index;
 
 		uint8_t H = 0xFF;
@@ -319,7 +309,7 @@ namespace rv64vm::jit
 	void JIT_Emitter::emit_store(uint32_t rs1, int64_t imm, uint32_t rs2, uint8_t width)
 	{
 		x86::CodeBuf& cb = code();
-		flush_all();
+		// See emit_load().
 		const uint32_t instr = blk->instr_index;
 
 		// Load the value first, then protect both operands while the address
@@ -357,14 +347,23 @@ namespace rv64vm::jit
 		{
 			const uint32_t instr  = misses[i].instr;
 			const uint32_t bytes  = misses[i].bytes;
+			const uint8_t  dcnt   = misses[i].dcnt;
+			uint8_t dv[6], ds[6];
+			for(uint8_t k = 0; k < dcnt; k++)
+			{
+				dv[k] = misses[i].dv[k];
+				ds[k] = misses[i].ds[k];
+			}
 			const uint32_t target = cb.pos;
 			while(i < misses.size() && misses[i].instr == instr)
 			{
 				x86::patch_rel32(cb, misses[i].rel_pos, target);
 				i++;
 			}
-			// exit_pc = entry_pc + bytes_before_instr (captured before the
-			// group loop; `i` no longer points at this group when we get here).
+			// Commit the dirty cached registers, then exit with the pc/count
+			// captured before the faulting instruction.
+			for(uint8_t k = 0; k < dcnt; k++)
+				x86::mov_rm(cb, x86::REG_REGS, (int32_t)(dv[k] * 8), phys(ds[k]));
 			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
 			x86::add_imm(cb, x86::REG_RAX, (int32_t)bytes);
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
@@ -374,6 +373,140 @@ namespace rv64vm::jit
 			x86::pop_r(cb, x86::REG_RBP);
 			x86::ret(cb);
 		}
+	}
+
+	void JIT_Emitter::push_miss(uint32_t rel_pos, uint32_t instr)
+	{
+		if(misses.empty() || misses.back().instr != instr)
+			stub_reserve += STUB_BYTES;
+		MissSite s;
+		s.rel_pos = rel_pos;
+		s.instr	  = instr;
+		s.bytes	  = blk->instr_bytes;
+		s.dcnt	  = snapshot_dirty(s.dv, s.ds);
+		misses.push_back(s);
+	}
+
+	uint8_t JIT_Emitter::snapshot_dirty(uint8_t* dv, uint8_t* ds)
+	{
+		uint8_t n = 0;
+		for(uint8_t v = 1; v < 32 && n < 6; v++)
+		{
+			if(vr[v].dirty && vr[v].slot >= 0)
+			{
+				dv[n] = v;
+				ds[n] = (uint8_t)vr[v].slot;
+				n++;
+			}
+		}
+		return n;
+	}
+
+	void JIT_Emitter::emit_block_exit(uint32_t delta_va, uint32_t count)
+	{
+		x86::CodeBuf& cb = code();
+		flush_all();
+		// exit_pc = entry_pc + delta_va (VA), accounting for mixed 2/4-byte
+		// compressed + uncompressed instructions inside one block.
+		x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+		x86::add_imm(cb, x86::REG_RAX, (int32_t)delta_va);
+		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
+		x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)count);
+		x86::pop_r(cb, x86::REG_R12);
+		x86::pop_r(cb, x86::REG_R13);
+		x86::pop_r(cb, x86::REG_RBP);
+		x86::ret(cb);
+	}
+
+	void JIT_Emitter::emit_block_exit_rax(uint32_t count)
+	{
+		x86::CodeBuf& cb = code();
+		flush_all();
+		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
+		x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)count);
+		x86::pop_r(cb, x86::REG_R12);
+		x86::pop_r(cb, x86::REG_R13);
+		x86::pop_r(cb, x86::REG_RBP);
+		x86::ret(cb);
+	}
+
+	void JIT_Emitter::emit_cond_exit(uint32_t rs1, uint32_t rs2, uint8_t cc, int64_t imm,
+									 uint32_t off, uint32_t size, uint32_t count_before, bool check_align)
+	{
+		x86::CodeBuf& cb = code();
+		uint8_t S1		 = hreg_for_read(rs1);
+		uint8_t S2		 = (rs2 == rs1) ? S1 : hreg_for_read(rs2, rs1);
+		// Flush dirty regs before the branch: the not-taken exit's flush would
+		// otherwise clear them before the taken exit runs, losing the updates.
+		flush_all();
+		x86::cmp_rr(cb, S1, S2);
+		const uint32_t taken_rel = x86::jcc32(cb, cc);
+		emit_block_exit(off + size, count_before + 1);
+		const uint32_t taken_target = cb.pos;
+		x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+		x86::add_imm(cb, x86::REG_RAX, (int32_t)((int64_t)off + imm));
+		if(check_align)
+		{
+			x86::test_imm(cb, x86::REG_RAX, 1);
+			push_miss(x86::jcc32(cb, CC_JNE), count_before);
+		}
+		emit_block_exit_rax(count_before + 1);
+		x86::patch_rel32(cb, taken_rel, taken_target);
+		exited = true;
+	}
+
+void JIT_Emitter::emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
+									  uint32_t off, uint32_t count_before)
+	{
+		x86::CodeBuf& cb = code();
+		uint8_t S		 = hreg_for_read(rs);
+		flush_all();
+		x86::test_rr(cb, S, S);
+		const uint32_t taken_rel = x86::jcc32(cb, cc);
+		emit_block_exit(off + 2, count_before + 1);
+		const uint32_t taken_target = cb.pos;
+		x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+		x86::add_imm(cb, x86::REG_RAX, (int32_t)((int64_t)off + imm));
+		emit_block_exit_rax(count_before + 1);
+		x86::patch_rel32(cb, taken_rel, taken_target);
+		exited = true;
+	}
+
+	void JIT_Emitter::emit_jump(uint32_t link_rd, uint32_t src_rs1, int64_t imm,
+								uint32_t off, uint32_t size, uint32_t count_before,
+								bool check_align, bool from_rs1)
+	{
+		x86::CodeBuf& cb = code();
+		// Flush the block's state; the target block reloads regs from memory.
+		flush_all();
+		if(from_rs1)
+		{
+			uint8_t S1 = hreg_for_read(src_rs1);
+			x86::mov_rr(cb, x86::REG_RAX, S1);
+			if(imm != 0)
+				x86::add_imm(cb, x86::REG_RAX, (int32_t)imm);
+			x86::and_imm(cb, x86::REG_RAX, -2); // target & ~1
+		}
+		else
+		{
+			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+			x86::add_imm(cb, x86::REG_RAX, (int32_t)((int64_t)off + imm));
+		}
+		if(check_align)
+		{
+			x86::test_imm(cb, x86::REG_RAX, 1);
+			push_miss(x86::jcc32(cb, CC_JNE), count_before);
+		}
+		if(link_rd != 0)
+		{
+			// link = entry_pc + off + size; the exit flush commits it.
+			uint8_t D = hreg_for_write(link_rd, src_rs1);
+			x86::mov_mr(cb, D, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+			x86::add_imm(cb, D, (int32_t)((int64_t)off + size));
+			vr[link_rd].dirty = true;
+		}
+		emit_block_exit_rax(count_before + 1);
+		exited = true;
 	}
 
 	void JIT_Emitter::emit_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, ALUOp op, bool wVariant)

@@ -160,7 +160,8 @@ JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 			return {};
 		}
 
-		em.emit_epilogue(size, count);
+		if(!em.exited)
+			em.emit_epilogue(size, count);
 		em.emit_miss_stubs();
 		blk.count		= count;
 		blk.bytes_guest = size;

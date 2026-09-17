@@ -105,16 +105,25 @@ namespace rv64vm::jit
 		bool mxr		 = false;
 		bool sum		 = false;
 
-		// TLB-miss fixups: each [rel_pos] is the rel32 displacement of a
-		// conditional jump to the stub of [instr], patched in emit_miss_stubs().
+		// TLB-miss / branch-misalign fixups: each [rel_pos] is a rel32 jcc
+		// into the stub of [instr], patched by emit_miss_stubs(). Dirty guest
+		// registers + their host slots are snapshotted at the site so the stub
+		// can commit them before the block exits to the interpreter.
 		struct MissSite
 		{
 			uint32_t rel_pos;
 			uint32_t instr; // instruction index (matches JIT_Block::instr_index)
 			uint32_t bytes; // guest bytes executed before this instruction
+			uint8_t dcnt;	// number of dirty registers at this point (<= 6)
+			uint8_t dv[6];	// them: guest register numbers
+			uint8_t ds[6];	// them: host pool slots holding the values
 		};
 		std::vector<MissSite> misses;
 		uint32_t stub_reserve = 0; // bytes reserved for the future miss stubs
+
+		// A control-transfer translator already emitted its own exit, so the
+		// default emit_epilogue() must be skipped.
+		bool exited = false;
 
 		JIT_Emitter(JIT_Block* b);
 
@@ -146,6 +155,35 @@ namespace rv64vm::jit
 
 		// Appends the TLB-miss stubs and patches every recorded jcc32 to its stub.
 		void emit_miss_stubs();
+
+		// Records a stub site for `instr`, reserving its share of stub space
+		// and capturing the dirty-register snapshot at this point.
+		void push_miss(uint32_t rel_pos, uint32_t instr);
+		// Count of currently dirty guest registers (and their host slots).
+		uint8_t snapshot_dirty(uint8_t* dv, uint8_t* ds);
+
+		// Flush dirty regs and exit to the runner: exit_pc = entry_pc +
+		// delta_va (or RAX), exit_count = count. Used by the control-transfer
+		// translators as their block tail.
+		void emit_block_exit(uint32_t delta_va, uint32_t count);
+		void emit_block_exit_rax(uint32_t count);
+
+		// Branch: continue at entry_pc + off + size unless (rs1 cc rs2), which
+		// takes entry_pc + off + imm. check_align exits an odd taken target as
+		// a miss so the interpreter can trap on it.
+		void emit_cond_exit(uint32_t rs1, uint32_t rs2, uint8_t cc, int64_t imm,
+							uint32_t off, uint32_t size, uint32_t count_before, bool check_align);
+
+		// C.BEQZ / C.BNEZ form: single register tested against zero.
+		void emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
+								 uint32_t off, uint32_t count_before);
+
+		// Jump ending the block: from_rs1 targets (GPR[src_rs1] + imm) & ~1
+		// (JALR / C.JR / C.JALR), otherwise entry_pc + off + imm (JAL / C.J).
+		// link_rd != 0 is written with entry_pc + off + size first.
+		void emit_jump(uint32_t link_rd, uint32_t src_rs1, int64_t imm,
+					   uint32_t off, uint32_t size, uint32_t count_before,
+					   bool check_align, bool from_rs1);
 
 		// Native guest loads/stores with an inline TLB lookup. width = bytes
 		// (1/2/4/8); sign_extend only matters for narrow signed loads. The

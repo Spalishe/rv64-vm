@@ -238,6 +238,35 @@ namespace rv64vm::jit
 	{
 		return c_st_sp(h, d, b, em, 8);
 	}
+
+	// C.J / C.BEQZ / C.BNEZ / C.JR / C.JALR: native control exits mirroring the
+	// interpreter, which - unlike the RV64I branch set - performs no alignment
+	// check on the compressed forms (the & ~1 masks keep C.JR/C.JALR even).
+	bool jit_C_J(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
+	{
+		em.emit_jump(0, 0, (int64_t)d.imm, b.instr_bytes, 2, b.instr_index, false, false);
+		return false;
+	}
+	bool jit_C_BEQZ(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
+	{
+		em.emit_cond_exit_zero(8 + (uint8_t)d_c_rs1(d.inst), 0x4, (int64_t)d.imm, b.instr_bytes, b.instr_index);
+		return false;
+	}
+	bool jit_C_BNEZ(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
+	{
+		em.emit_cond_exit_zero(8 + (uint8_t)d_c_rs1(d.inst), 0x5, (int64_t)d.imm, b.instr_bytes, b.instr_index);
+		return false;
+	}
+	bool jit_C_JR(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
+	{
+		em.emit_jump(0, (uint8_t)d.rd, 0, b.instr_bytes, 2, b.instr_index, false, true);
+		return false;
+	}
+	bool jit_C_JALR(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
+	{
+		em.emit_jump(1, (uint8_t)d.rd, 0, b.instr_bytes, 2, b.instr_index, false, true);
+		return false;
+	}
 }
 
 #endif
