@@ -41,6 +41,16 @@ namespace rv64vm::jit
 		constexpr uint8_t CC_JE	 = 0x4;
 		constexpr uint8_t CC_JNE = 0x5;
 
+		void emit_chain_tail(x86::CodeBuf& cb)
+		{
+			// Every block exit lands in the shared dispatcher instead of
+			// ret-ing: it resolves the target through the hctx jump cache and
+			// either chains (jmp, frame preserved) or pops the one frame that
+			// the C++ caller's call + this prologue pushed, then returns.
+			x86::mov_imm64(cb, x86::REG_R11, x86::chain_dispatcher());
+			x86::jmp_r(cb, x86::REG_R11);
+		}
+
 		/*
 		 * Inline TLB lookup, adapted from RVVM's rvjit_tlb_lookup but validated
 		 * at runtime instead of recompiling on miss: every check that can fail
@@ -226,6 +236,7 @@ namespace rv64vm::jit
 		x86::push_r(code(), x86::REG_R12);
 		x86::mov_rr(code(), x86::REG_R12, x86::REG_RDI);
 		x86::mov_mr(code(), x86::REG_R13, x86::REG_R12, x86::CTX_OFF_REGS);
+		blk->chain_off = code().pos; // chain entry: assumes R12/R13 already set
 	}
 
 	void JIT_Emitter::emit_epilogue(uint32_t guest_bytes, uint32_t guest_count)
@@ -361,13 +372,19 @@ namespace rv64vm::jit
 				i++;
 			}
 			// Commit the dirty cached registers, then exit with the pc/count
-			// captured before the faulting instruction.
+			// captured before the faulting instruction. A TLB miss is a yield
+			// to C++ (softmmu refill), not a chainable handoff: account its
+			// instructions into the chain budget and return via the single
+			// C++ frame, which the chain tail must not bypass.
 			for(uint8_t k = 0; k < dcnt; k++)
 				x86::mov_rm(cb, x86::REG_REGS, (int32_t)(dv[k] * 8), phys(ds[k]));
 			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
 			x86::add_imm(cb, x86::REG_RAX, (int32_t)bytes);
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
 			x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)instr);
+			x86::mov_mr(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET);
+			x86::arith_rm64(cb, 5, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT);
+			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET, x86::REG_RDX);
 			x86::pop_r(cb, x86::REG_R12);
 			x86::pop_r(cb, x86::REG_R13);
 			x86::pop_r(cb, x86::REG_RBP);
@@ -412,10 +429,7 @@ namespace rv64vm::jit
 		x86::add_imm(cb, x86::REG_RAX, (int32_t)delta_va);
 		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
 		x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)count);
-		x86::pop_r(cb, x86::REG_R12);
-		x86::pop_r(cb, x86::REG_R13);
-		x86::pop_r(cb, x86::REG_RBP);
-		x86::ret(cb);
+		emit_chain_tail(cb);
 	}
 
 	void JIT_Emitter::emit_block_exit_rax(uint32_t count)
@@ -424,10 +438,7 @@ namespace rv64vm::jit
 		flush_all();
 		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
 		x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)count);
-		x86::pop_r(cb, x86::REG_R12);
-		x86::pop_r(cb, x86::REG_R13);
-		x86::pop_r(cb, x86::REG_RBP);
-		x86::ret(cb);
+		emit_chain_tail(cb);
 	}
 
 	void JIT_Emitter::emit_cond_exit(uint32_t rs1, uint32_t rs2, uint8_t cc, int64_t imm,

@@ -59,6 +59,91 @@ namespace rv64vm::jit
 		cur_used = 0;
 	}
 
+	// One shared chain dispatcher per process: every block exit lands here
+	// (via emit.cpp's chain tail) instead of ret-ing into C++. It resolves the
+	// exit pc through the direct-mapped hctx jump cache and either jumps into
+	// the chained block's post-prologue entry or, on any key mismatch or cadence
+	// budget exhaustion, pops the single C++ frame and returns to the runner.
+	// R12 (ctx) is preserved here; the pooled/scratch regs are dead at block end.
+	uint8_t* ensure_chain_dispatcher()
+	{
+		static uint8_t* dispatch = nullptr;
+		if(dispatch != nullptr)
+			return dispatch;
+
+		void* p = mmap(nullptr, 4096, PROT_READ | PROT_WRITE | PROT_EXEC,
+					   MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if(p == MAP_FAILED)
+			__builtin_trap();
+		dispatch = (uint8_t*)p;
+
+		x86::CodeBuf cb;
+
+		// entry = &ctx->chain_cache[((exit_pc >> 2) & MASK) * STRIDE]
+		x86::mov_mr(cb, x86::REG_RCX, x86::REG_CTX, x86::CTX_OFF_EXIT);
+		x86::mov_rr(cb, x86::REG_RAX, x86::REG_RCX);
+		x86::shift_r64_imm(cb, 5, x86::REG_RAX, 2);
+		x86::and_imm(cb, x86::REG_RAX, x86::CHAIN_CACHE_MASK);
+		x86::mov_rr(cb, x86::REG_RDX, x86::REG_RAX);
+		x86::shift_r64_imm(cb, 4, x86::REG_RAX, 4);
+		x86::shift_r64_imm(cb, 4, x86::REG_RDX, 5);
+		x86::add_rr(cb, x86::REG_RAX, x86::REG_RDX);
+		x86::add_rr(cb, x86::REG_RAX, x86::REG_CTX);
+		x86::add_imm(cb, x86::REG_RAX, x86::CTX_OFF_CHAIN_CACHE);
+
+		// Budget: every executed block counts toward the next C++ cadence
+		// check (interrupt pacing / max_insts), as in the per-block dispatch.
+		x86::mov_mr(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET);
+		x86::arith_rm64(cb, 5, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT);
+		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET, x86::REG_RDX);
+		const uint32_t j_budget = x86::jcc32(cb, 0x8); // js
+
+		// chain_fn != 0, pc == exit_pc
+		x86::mov_mr(cb, x86::REG_R11, x86::REG_RAX, 0);
+		x86::test_rr(cb, x86::REG_R11, x86::REG_R11);
+		const uint32_t j_nofn = x86::jcc32(cb, 0x4); // je
+		x86::cmp_r64_m64(cb, x86::REG_RCX, x86::REG_RAX, 8);
+		const uint32_t j_pc = x86::jcc32(cb, 0x5); // jne
+
+		// gen / smc / mode_key / asid against the current dispatch snapshot
+		x86::mov_mr(cb, x86::REG_RDX, x86::REG_RAX, 16);
+		x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_TLB_GEN);
+		const uint32_t j_gen = x86::jcc32(cb, 0x5);
+		x86::mov_mr(cb, x86::REG_RDX, x86::REG_RAX, 24);
+		x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_SMC_KEY);
+		const uint32_t j_smc = x86::jcc32(cb, 0x5);
+		x86::mov_mr(cb, x86::REG_RDX, x86::REG_RAX, 32);
+		x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_MODE_KEY);
+		const uint32_t j_mode = x86::jcc32(cb, 0x5);
+		x86::movzx_r64_m16(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_SATP_ASID);
+		x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_RAX, 40);
+		const uint32_t j_asid = x86::jcc32(cb, 0x5);
+
+		// hit: set the target block's base pc (exits are computed as
+		// entry_pc + delta_va) and jump in right after its prologue
+		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_ENTRY, x86::REG_RCX);
+		x86::jmp_r(cb, x86::REG_R11);
+
+		const uint32_t miss = cb.pos;
+		x86::pop_r(cb, x86::REG_R12);
+		x86::pop_r(cb, x86::REG_R13);
+		x86::pop_r(cb, x86::REG_RBP);
+		x86::ret(cb);
+
+		x86::patch_rel32(cb, j_budget, miss);
+		x86::patch_rel32(cb, j_nofn, miss);
+		x86::patch_rel32(cb, j_pc, miss);
+		x86::patch_rel32(cb, j_gen, miss);
+		x86::patch_rel32(cb, j_smc, miss);
+		x86::patch_rel32(cb, j_mode, miss);
+		x86::patch_rel32(cb, j_asid, miss);
+
+		memcpy(p, cb.bytes, cb.pos);
+		if(x86::chain_dispatcher() == 0)
+			x86::chain_dispatcher() = (uint64_t)dispatch;
+		return dispatch;
+	}
+
 	JITExec JIT_Context::lookup(uint64_t phys_pc, uint64_t asid, uint8_t eff_mode, bool mxr, bool sum)
 	{
 		CachedBlock& e = cache[index_of(phys_pc)];
@@ -67,8 +152,9 @@ namespace rv64vm::jit
 		// the key;
 		if(e.valid && e.start_phys == phys_pc && e.asid == asid && e.smc_epoch == g_smc_epoch.load() && e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
 		{
-			out.fn	  = e.fn;
-			out.count = e.count;
+			out.fn		  = e.fn;
+			out.chain_fn  = e.chain_fn;
+			out.count	  = e.count;
 		}
 		return out;
 	}
@@ -95,6 +181,7 @@ namespace rv64vm::jit
 
 JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 	{
+		ensure_chain_dispatcher();
 		while(mtx.test_and_set(std::memory_order_acquire)) { /* spin */ }
 		struct SpinGuard { std::atomic_flag& f; ~SpinGuard(){ f.clear(std::memory_order_release); } } guard{mtx};
 		// Effective access mode (MPRV honored) and the paging flags that the
@@ -189,6 +276,7 @@ JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 
 		CachedBlock& e = cache[index_of(phys_pc)];
 		e.fn		   = (JITCompiledFunc)(void*)dst;
+		e.chain_fn	   = (JITCompiledFunc)(void*)(dst + blk.chain_off);
 		e.start_phys   = phys_pc;
 		e.asid		   = h.satp.fields.asid;
 		e.smc_epoch	   = g_smc_epoch.load();
@@ -198,7 +286,7 @@ JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 		e.count		   = count;
 		e.valid		   = true;
 
-		return { e.fn, count };
+		return { e.fn, e.chain_fn, count };
 	}
 
 	void JIT_Context::mark_block_executed(uint64_t phys_pc, uint64_t guest_bytes)

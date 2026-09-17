@@ -40,6 +40,7 @@ namespace rv64vm::jit
 	struct JITExec
 	{
 		JITCompiledFunc fn = nullptr; // nullptr => interpreter fallback
+		JITCompiledFunc chain_fn = nullptr; // fn + prologue size (chain entry)
 		uint32_t count	   = 0;
 	};
 
@@ -71,6 +72,7 @@ namespace rv64vm::jit
 		struct CachedBlock
 		{
 			JITCompiledFunc fn		  = nullptr;
+			JITCompiledFunc chain_fn  = nullptr; // fn + prologue size
 			uint64_t start_phys		  = 0;
 			uint64_t asid			  = 0;
 			uint64_t smc_epoch		  = 0;

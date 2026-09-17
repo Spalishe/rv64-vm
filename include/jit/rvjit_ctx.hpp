@@ -52,6 +52,11 @@ namespace rv64vm::jit
 		uint16_t satp_asid;
 		uint16_t pad;
 		uint64_t exit_count; // instructions executed, written by the block exits
+		uint64_t smc_key;	 // g_smc_epoch at dispatch time (chain key)
+		uint64_t mode_key;	 // eff_mode | MXR<<8 | SUM<<9 (chain key)
+		int64_t chain_budget; // instructions until the chain must return to C++
+		uint64_t chain_reserved;
+		uint64_t chain_cache[256 * 6]; // CHAIN_CACHE_STRIDE-sized slots
 	};
 
 	static_assert(offsetof(JIT_HartContext, regs) == 0);
@@ -66,6 +71,10 @@ namespace rv64vm::jit
 	static_assert(offsetof(JIT_HartContext, tlb_gen) == 72);
 	static_assert(offsetof(JIT_HartContext, satp_asid) == 80);
 	static_assert(offsetof(JIT_HartContext, exit_count) == 88);
+	static_assert(offsetof(JIT_HartContext, smc_key) == 96);
+	static_assert(offsetof(JIT_HartContext, mode_key) == 104);
+	static_assert(offsetof(JIT_HartContext, chain_budget) == 112);
+	static_assert(offsetof(JIT_HartContext, chain_cache) == 128);
 
 	// Layout mirrors of TLB::TlbEntry, sanity-checked against offsetof above.
 	// Do not change the TlbEntry field order without updating these.

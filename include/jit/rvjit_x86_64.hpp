@@ -77,6 +77,21 @@ namespace rv64vm::jit::x86
 	constexpr uint16_t CTX_OFF_SATP_ASID	= 80;
 	constexpr uint16_t CTX_OFF_EXIT_COUNT	= 88;
 
+	// Block-chaining keys: the runner fills these before every JIT call and the
+	// chain dispatcher (see rvjit.cpp) revalidates them on each hop, mirroring
+	// the dhot dispatch signature so a stale target can never be entered.
+	constexpr uint16_t CTX_OFF_SMC_KEY		= 96;	// g_smc_epoch at dispatch
+	constexpr uint16_t CTX_OFF_MODE_KEY		= 104;	// eff_mode | MXR<<8 | SUM<<9
+	constexpr uint16_t CTX_OFF_CHAIN_BUDGET = 112;	// instrs left before the next C++ cadence check
+	constexpr uint16_t CTX_OFF_CHAIN_CACHE	= 128;
+
+	// Direct-mapped jump cache inside hctx: index (pc>>2)&MASK, entry stride
+	// CHAIN_CACHE_STRIDE bytes: {chain_fn, pc, gen, smc, mode_key, asid}.
+	constexpr uint32_t CHAIN_CACHE_MASK		= 255;
+	constexpr uint32_t CHAIN_CACHE_STRIDE	= 48;
+	// Guest instructions per chain before control returns to the C++ runner.
+	constexpr uint64_t CHAIN_CADENCE		= 0x3000;
+
 	// TLB::TlbEntry field offsets (mirrors of the C++ layout; the JIT code
 	// addresses entries relative to [CTX + CTX_OFF_TLB_ENTRIES]).
 	constexpr uint16_t TLB_OFF_VPAGE_MASK_INV = 0;
@@ -637,5 +652,22 @@ namespace rv64vm::jit::x86
 		const uint32_t rel = cb.pos;
 		cb.dw(0);
 		return rel;
+	}
+
+	// jmp r64 (indirect jump, FF /4).
+	inline void jmp_r(CodeBuf& cb, uint8_t r)
+	{
+		if(r >= 8)
+			cb.b(0x41); // REX.B
+		cb.b(0xFF);
+		cb.b(0xC0 | (0x4 << 3) | (r & 7));
+	}
+
+	// Address of the block-chaining dispatcher, generated once into an
+	// executable page by JIT_Context (rvjit.cpp) before any block compiles.
+	inline uint64_t& chain_dispatcher()
+	{
+		static uint64_t addr = 0;
+		return addr;
 	}
 }

@@ -198,12 +198,19 @@ namespace rv64vm::runner
 			const size_t di = ((pc >> 2) * 2654435761u + (uint32_t)gen + (uint32_t)smc) & 63;
 			DispatchHot& d	= dhot[di];
 			jit::JITExec jj{};
+			// Chain key: mirrors what compile() bakes into block TLB checks.
+			const uint64_t mode_key = (uint64_t)get_effective_mode(AccessType::STORE) |
+									  (status.fields.MXR ? 0x100ull : 0) |
+									  (status.fields.SUM ? 0x200ull : 0);
 
-			if(d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.asid == asid)
+if(d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.asid == asid)
 			{
 				// Repeat visitor at the same translation: engage the JIT.
 				if(d.fn != nullptr)
-					jj.fn = d.fn;
+				{
+					jj.fn		  = d.fn;
+					jj.chain_fn   = d.chain_fn;
+				}
 				else
 				{
 					MemoryReturn mr = mmu.translate(this, AccessType::EXEC, pc, &phys);
@@ -220,7 +227,8 @@ namespace rv64vm::runner
 					jj = jctx->lookup(phys, asid, eff_mode, mxr, sum);
 					if(jj.fn == nullptr && jctx->hot_tick(phys))
 						jj = jctx->compile(*this, pc, phys);
-					d.fn = jj.fn;
+					d.fn		= jj.fn;
+					d.chain_fn	= jj.chain_fn;
 				}
 
 				if(jj.fn != nullptr)
@@ -228,11 +236,26 @@ namespace rv64vm::runner
 					hctx.tlb_entries = mmu.get_tlb().jit_entries();
 					hctx.tlb_gen	 = gen;
 					hctx.satp_asid	 = asid;
+					hctx.smc_key	 = smc;
+					hctx.mode_key	 = mode_key;
+					hctx.chain_budget = (int64_t)jit::x86::CHAIN_CADENCE;
+
+					// Install this block into the chain jump cache so any exit
+					// targeting this guest pc can hop here directly.
+					uint64_t* ce = &hctx.chain_cache[(((uint64_t)pc >> 2) & jit::x86::CHAIN_CACHE_MASK) * 6];
+					ce[0] = (uint64_t)jj.chain_fn;
+					ce[1] = pc;
+					ce[2] = gen;
+					ce[3] = smc;
+					ce[4] = mode_key;
+					ce[5] = (uint64_t)(uint16_t)asid;
 
 					const uint64_t prev_instret = instret;
-hctx.entry_pc				= pc;
+					hctx.entry_pc				= pc;
 					jj.fn(&hctx);
-					const uint64_t executed = hctx.exit_count;
+					// The chain dispatcher counts every hop into chain_budget;
+					// the budget released is the whole chain's instruction total.
+					const uint64_t executed = (uint64_t)((int64_t)jit::x86::CHAIN_CADENCE - hctx.chain_budget);
 					pc						= hctx.exit_pc;
 					instret += executed;
 					cycle += executed;

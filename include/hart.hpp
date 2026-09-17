@@ -148,6 +148,7 @@ namespace rv64vm::runner
 			uint8_t mode = 0;
 			uint8_t seen = 0;
 			jit::JITCompiledFunc fn = nullptr;
+			jit::JITCompiledFunc chain_fn = nullptr; // fn + prologue size
 		};
 		DispatchHot dhot[64]{};
 		jit::JIT_Context* jctx = nullptr;

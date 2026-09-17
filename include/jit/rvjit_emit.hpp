@@ -38,6 +38,7 @@ namespace rv64vm::jit
 		uint64_t tmp_va		 = 0;
 		uint32_t count		 = 0;
 		uint32_t bytes_guest = 0;
+		uint32_t chain_off	 = 0; // bytes of emit_prologue(); the chain entry target
 		uint64_t asid		 = 0;
 		uint64_t smc_epoch	 = 0;
 		uint32_t instr_index = 0; // index of the instruction being compiled
