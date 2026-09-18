@@ -25,11 +25,6 @@ namespace rv64vm::jit
 {
 	using namespace rv64vm::runner;
 
-	// Compressed ALU translators. These mirror the interpreter bodies in
-	// src/sets/rv64c.cpp field-by-field (d_c_rd/d_c_rs1/d_c_rs2 read the low
-	// 16 bits of d.inst). Only ALU / register moves are handled here; the
-	// control-transfer and FP compressed instructions keep jit_func == nullptr
-	// so the block ends and the interpreter takes them.
 	static inline bool c_keep(JIT_Emitter& em)
 	{
 		return !em.eof();
@@ -174,10 +169,6 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// CL/CS index-form load/store: rd' in inst[4:2], rs1' in inst[9:7]; the
-	// rs2 of C.SW/C.SD reuses the rd' field. Mirrors the interpreter bodies
-	// (which index GPR[8 + d_c_rs1] / GPR[8 + d_c_rd]) and the RV64I JIT
-	// load/store wrappers.
 	static inline bool c_ld(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, uint8_t width, bool sign)
 	{
 		em.emit_load(8 + (uint8_t)d_c_rd(d.inst), 8 + (uint8_t)d_c_rs1(d.inst), (int64_t)d.imm, width, sign);
@@ -207,9 +198,6 @@ namespace rv64vm::jit
 		return c_st(h, d, b, em, 8);
 	}
 
-	// CSP stack-relative load/store: rs1 = sp, the destination of C.LWSP /
-	// C.LDSP sits in inst[11:7] (InstructionData.rd), the source of C.SWSP /
-	// C.SDSP in inst[6:2] (d_c_rs2).
 	static inline bool c_ld_sp(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, uint8_t width, bool sign)
 	{
 		em.emit_load((uint8_t)d.rd, 2, (int64_t)d.imm, width, sign);
@@ -239,9 +227,6 @@ namespace rv64vm::jit
 		return c_st_sp(h, d, b, em, 8);
 	}
 
-	// C.J / C.BEQZ / C.BNEZ / C.JR / C.JALR: native control exits mirroring the
-	// interpreter, which - unlike the RV64I branch set - performs no alignment
-	// check on the compressed forms (the & ~1 masks keep C.JR/C.JALR even).
 	bool jit_C_J(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
 	{
 		em.emit_jump(0, 0, (int64_t)d.imm, b.instr_bytes, 2, b.instr_index, false, false);

@@ -285,6 +285,7 @@ namespace rv64vm::jit
 		}
 
 		uint8_t S1 = hreg_for_read(rs1);
+		flush_guest(rd);
 		uint8_t D  = hreg_for_write(rd, rs1);
 		x86::lea_r64_mem(cb, D, S1, (int32_t)imm);
 		H = D;
