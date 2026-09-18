@@ -39,9 +39,9 @@ namespace rv64vm::jit
 	// Result of a JIT dispatch attempt.
 	struct JITExec
 	{
-		JITCompiledFunc fn = nullptr; // nullptr => interpreter fallback
+		JITCompiledFunc fn		 = nullptr; // nullptr => interpreter fallback
 		JITCompiledFunc chain_fn = nullptr; // fn + prologue size (chain entry)
-		uint32_t count	   = 0;
+		uint32_t count			 = 0;
 	};
 
 	class JIT_Context
@@ -71,18 +71,18 @@ namespace rv64vm::jit
 	  private:
 		struct CachedBlock
 		{
-			JITCompiledFunc fn		  = nullptr;
-			JITCompiledFunc chain_fn  = nullptr; // fn + prologue size
-			uint64_t start_phys		  = 0;
-			uint64_t asid			  = 0;
-			uint64_t smc_epoch		  = 0;
-			uint8_t eff_mode		  = 0; // baked privilege mode (0=U,1=S,3=M)
-			bool mxr				  = false;
-			bool sum				  = false;
-			uint32_t hot			  = 0; // dispatch counter before compiling
-			uint32_t hot_epoch		  = 0; // smc epoch the hot counter is based on
-			uint32_t count			  = 0;
-			bool valid				  = false;
+			JITCompiledFunc fn		 = nullptr;
+			JITCompiledFunc chain_fn = nullptr; // fn + prologue size
+			uint64_t start_phys		 = 0;
+			uint64_t asid			 = 0;
+			uint64_t smc_epoch		 = 0;
+			uint8_t eff_mode		 = 0; // baked privilege mode (0=U,1=S,3=M)
+			bool mxr				 = false;
+			bool sum				 = false;
+			uint32_t hot			 = 0; // dispatch counter before compiling
+			uint32_t hot_epoch		 = 0; // smc epoch the hot counter is based on
+			uint32_t count			 = 0;
+			bool valid				 = false;
 		};
 
 		// Per-slot "compiling this pc is pointless" marker, kept separate
@@ -96,8 +96,8 @@ namespace rv64vm::jit
 		std::vector<CachedBlock> cache;
 		std::vector<GiveUpSlot> giveup;
 		std::vector<uint8_t*> arenas;
-		uint8_t* cur	= nullptr;
-		size_t cur_used = 0;
+		uint8_t* cur		 = nullptr;
+		size_t cur_used		 = 0;
 		std::atomic_flag mtx = ATOMIC_FLAG_INIT;
 
 		uint8_t* arena_alloc(size_t nbytes);
