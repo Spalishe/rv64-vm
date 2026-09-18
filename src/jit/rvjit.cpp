@@ -19,10 +19,54 @@ Copyright 2026 Spalishe
 #include "../../include/hart.hpp"
 #include "../../include/self_mod.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <sys/mman.h>
 
 #ifdef USE_JIT
+
+static bool jit_dump_enabled()
+{
+	static const bool on = [] {
+		const char* v = getenv("RVJIT_DUMP");
+		return v && *v && *v != '0';
+	}();
+	return on;
+}
+
+static uint32_t jit_dump_min_insns()
+{
+	static const uint32_t min = [] {
+		const char* v = getenv("RVJIT_DUMP_MIN");
+		return v ? (uint32_t)atoi(v) : 1;
+	}();
+	return min;
+}
+
+static void jit_dump_block(const uint8_t* code, uint32_t len, uint64_t phys_pc,
+	uint64_t va_pc, uint32_t insns, uint32_t guest_bytes, const uint32_t* guest_words)
+{
+	fprintf(stderr, "[JIT] va=0x%lx phys=0x%lx fn=%p x86=%u bytes (%u guest insns, %u guest bytes)\n",
+		va_pc, phys_pc, (void*)code, len, insns, guest_bytes);
+	for(uint32_t i = 0; i < insns; i++)
+	{
+		uint32_t w = guest_words[i];
+		uint8_t opcode = w & 0x7f;
+		bool compressed = (w & 0x3) != 0x3;
+		if(compressed)
+			fprintf(stderr, "  [%u] %04x  (C)\n", i, w & 0xffff);
+		else
+			fprintf(stderr, "  [%u] %08x  op=%02x f3=%x rd=%u rs1=%u\n",
+				i, w, opcode, (w >> 12) & 7, (w >> 7) & 0x1f, (w >> 15) & 0x1f);
+	}
+	for(uint32_t off = 0; off < len; off += 16)
+	{
+		fprintf(stderr, "  %04x: ", off);
+		for(uint32_t j = off; j < len && j < off + 16; j++)
+			fprintf(stderr, "%02x ", code[j]);
+		fprintf(stderr, "\n");
+	}
+}
 
 namespace rv64vm::jit
 {
@@ -207,6 +251,7 @@ JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 		uint64_t pc_va = va_pc;
 		uint32_t count = 0;
 		uint32_t size  = 0;
+		uint32_t guest_words[RVJIT_MAX_INSTRUCTIONS];
 		while(count < RVJIT_MAX_INSTRUCTIONS)
 		{
 			if(em.eof()) // buffer guard; stop early
@@ -231,6 +276,7 @@ JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 			blk.instr_bytes = size;
 			blk.tmp_va		= pc_va;
 			const bool keep = cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em);
+			guest_words[count] = cache->data.inst;
 			count++;
 			pc_va += cache->data.size;
 			size += cache->data.size;
@@ -260,6 +306,9 @@ JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 		if(dst == nullptr)
 			return {};
 		memcpy(dst, blk.code.bytes, blk.code.pos);
+
+		if(jit_dump_enabled() && count >= jit_dump_min_insns())
+			jit_dump_block(dst, blk.code.pos, phys_pc, va_pc, count, size, guest_words);
 
 		// Extend the self-modifying-code protection over the block's pages.
 		mark_block_executed(phys_pc, blk.bytes_guest);

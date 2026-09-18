@@ -193,7 +193,7 @@ namespace rv64vm::runner
 		{
 			const uint64_t gen  = mmu.get_tlb().current_generation();
 			const uint8_t  mode = (uint8_t)get_effective_mode(AccessType::EXEC);
-			const uint64_t smc  = rv64vm::g_smc_epoch.load(std::memory_order_relaxed);
+			uint64_t smc  = rv64vm::g_smc_epoch.load(std::memory_order_relaxed);
 			const uint32_t asid = satp.fields.asid;
 			const size_t di = ((pc >> 2) * 2654435761u + (uint32_t)gen + (uint32_t)smc) & 63;
 			DispatchHot& d	= dhot[di];
@@ -227,6 +227,11 @@ if(d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.a
 					jj = jctx->lookup(phys, asid, eff_mode, mxr, sum);
 					if(jj.fn == nullptr && jctx->hot_tick(phys))
 						jj = jctx->compile(*this, pc, phys);
+					// Re-read smc after compile() — it may have called
+					// release_arenas() which bumps g_smc_epoch.  Using a
+					// stale smc would let the chain dispatcher validate
+					// against freed arenas.
+					smc = rv64vm::g_smc_epoch.load(std::memory_order_acquire);
 					d.fn		= jj.fn;
 					d.chain_fn	= jj.chain_fn;
 				}
