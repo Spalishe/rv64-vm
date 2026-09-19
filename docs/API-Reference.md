@@ -22,6 +22,7 @@ This document contains all Exported API objects.
   * [read](api/I2C.md#read)
   * [write](api/I2C.md#write)
 * **[PCI_HEG](api/PCI_HEG.md)**
+  * [tick](api/PCI_HEG.md#tick)
   * [read](api/PCI_HEG.md#read)
   * [write](api/PCI_HEG.md#write)
 * **[PLIC](api/PLIC.md)**

@@ -16,6 +16,7 @@ Defined in include/devices/pci/pci-host-ecam-generic.hpp:28
 
 | Name | Kind | Owner |
 |------|------|-------|
+| [`tick`](#tick-4) | `function` | Declared here |
 | [`read`](#read-7) | `function` | Declared here |
 | [`write`](#write-7) | `function` | Declared here |
 | [`mmap`](Device.md#mmap) | `variable` | Inherited from [`Device`](Device.md#device) |
@@ -42,6 +43,34 @@ Defined in include/devices/pci/pci-host-ecam-generic.hpp:28
 | `function` | [`tick`](Device.md#tick) `virtual` `inline` | [Device](Device.md#device) tick function. |
 | `function` | [`get`](Device.md#get) `inline` | Returns device. |
 
+## Public Methods
+
+| Return | Name | Description |
+|--------|------|-------------|
+| `void` | [`tick`](#tick-4) `virtual` `override` | [Device](Device.md#device) tick function. |
+
+---
+
+
+
+### tick
+
+`virtual` `override`
+
+```cpp
+virtual void tick() override
+```
+
+Defined in include/devices/pci/pci-host-ecam-generic.hpp:35
+
+[Device](Device.md#device) tick function.
+
+This function would call almost(optimization) every tick
+
+#### Reimplements
+
+- [`tick`](Device.md#tick)
+
 ## Private Methods
 
 | Return | Name | Description |
@@ -61,7 +90,7 @@ Defined in include/devices/pci/pci-host-ecam-generic.hpp:28
 virtual uint64_t read(uint64_t addr, MemorySize size)
 ```
 
-Defined in include/devices/pci/pci-host-ecam-generic.hpp:41
+Defined in include/devices/pci/pci-host-ecam-generic.hpp:48
 
 [Device](Device.md#device) read function.
 
@@ -81,7 +110,7 @@ Defined in include/devices/pci/pci-host-ecam-generic.hpp:41
 virtual void write(uint64_t addr, MemorySize size, uint64_t val)
 ```
 
-Defined in include/devices/pci/pci-host-ecam-generic.hpp:42
+Defined in include/devices/pci/pci-host-ecam-generic.hpp:49
 
 [Device](Device.md#device) write function.
 

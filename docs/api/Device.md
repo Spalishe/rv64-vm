@@ -198,6 +198,7 @@ This function would call almost(optimization) every tick
 - [`tick`](CLINT.md#tick-3)
 - [`tick`](I2C.md#tick-1)
 - [`tick`](PLIC.md#tick-2)
+- [`tick`](PCI_HEG.md#tick-4)
 
 ---
 
