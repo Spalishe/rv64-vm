@@ -15,16 +15,22 @@ Copyright 2026 Spalishe
 
 */
 #include "../../../include/devices/usb/xhci.hpp"
+#include "../../../include/devices/pci/pci-host-ecam-generic.hpp"
 #include "../../../include/devices/plic.hpp"
 #include "../../../include/machine.hpp"
 
 namespace rv64vm::dev
 {
+	// Approximate interrupt EP poll period in tick() units (~10 ms, mimics a
+	// full-speed keyboard's bInterval). Ep rings are re-serviced by tick() at
+	// this rate while a TRB is pending, so no poll ever hangs.
+	static constexpr uint64_t EP_POLL_INTERVAL = 16;
+
 	XHCI::XHCI(runner::Machine& cpu)
 		: PCI_Device(0x1836, 0x000D, 0x0C),
 		  cpu(cpu),
 		  plic(cpu.get_mmio()->get<PLIC>().get()),
-		  irq_num(plic->acquire_irq())
+		  irq_num(cpu.get_mmio()->get<PCI_HEG>().get()->get_pci_irq())
 	{
 		write_config_fast<uint8_t>(0x0A, 0x03); // Subclass
 		write_config_fast<uint8_t>(0x09, 0x30); // Programming Interface (XHCI)
@@ -56,6 +62,10 @@ namespace rv64vm::dev
 			if(ports[i])
 			{
 				port_sc[i].fields.ccs = 1; // Device connected
+				port_sc[i].fields.csc = 1; // Re-assert connect change: a freshly
+				// reset controller must re-report devices so a new OS (e.g. Linux
+				// booted after U-Boot) detects them even if U-Boot cleared CSC.
+				sts.fields.pcd = 1;
 			}
 			else
 			{
@@ -69,7 +79,36 @@ namespace rv64vm::dev
 
 	void XHCI::update_irq()
 	{
-		bool pending = sts.fields.eint && (interrupters[0].iman & 0x1) && cmd.fields.inte;
+		auto& intr = interrupters[0];
+
+		// The guest's PLIC claim/complete can clear our pending bit even though
+		// a fresh event we just pushed is still sitting unread in the event ring
+		// (the resubmit -> completion happens inside the previous ISR window).
+		// Real xHC keeps the interrupt asserted while the ring has unread data,
+		// so we re-derive pending from "events not yet consumed by the guest".
+		bool unread = false;
+		if(intr.ring_base != 0 && intr.ring_end != intr.ring_base)
+		{
+			uint64_t d = intr.erdp & ~0xFULL;
+			if(d == 0) d = intr.ring_base;
+			uint64_t e = intr.event_enqueue_ptr;
+			if(e != d)
+			{
+				uint64_t total = intr.ring_end - intr.ring_base;
+				uint64_t dist  = (e >= d) ? (e - d) : (total - (d - e));
+				unread		  = dist >= 16;
+			}
+		}
+
+		if(unread)
+		{
+			// The guest ISR returns IRQ_NONE unless EINT is set, so the watchdog
+			// reassert must also present a fresh EINT, otherwise the drained-less
+			// IRQ would just storm and never clear the ring.
+			sts.fields.eint = 1;
+			intr.iman	 |= 0x1;
+		}
+		bool pending = (sts.fields.eint || unread) && (intr.iman & 0x1) && cmd.fields.inte;
 		plic->set_pending(irq_num, pending);
 	}
 
@@ -175,21 +214,50 @@ namespace rv64vm::dev
 			return 0;
 		}
 
-		if(offs >= 0x8000 && offs < 0x8000 + 16)
+		if(offs >= 0x8000 && offs < 0x8000 + 32)
 		{
+			// Two Supported Protocol capabilities (like QEMU):
+			//   USB2 at 0x8000 -> ports (numports_3+1)..(numports_3+numports_2)
+			//   USB3 at 0x8010 -> ports 1..numports_3
+			// Both roothubs must report at least one port, otherwise the guest's
+			// shared USB3 roothub configures with zero ports and fails
+			// ("hub doesn't have any ports!"). The USB3 ports stay empty.
+			constexpr uint32_t numports_3 = 1;
+			constexpr uint32_t numports_2 = XHCI_MAX_PORTS - numports_3;
+
 			uint32_t local = offs - 0x8000;
 			switch(local)
 			{
 				case 0x00:
-					// ID=0x02 (Supported Protocol), Next=0 (last capability),
-					// Minor Rev=0x00, Major Rev=0x02 (USB 2.0)
-					return 0x02 | (0x00 << 8) | (0x00 << 16) | (0x02 << 24);
+					// USB2 Supported Protocol Capability DW0:
+					// [7:0] Capability ID = 0x02
+					// [15:8] Next Capability Pointer = 4 (dwords -> 0x8010)
+					// [23:16] Minor Revision = 0
+					// [31:24] Major Revision = 0x02 (USB 2.0)
+					return 0x02 | (4 << 8) | (static_cast<uint32_t>(0x02) << 24);
 				case 0x04:
-					return 0x20425355; // ASCII "USB " little-endian
+					// DW1: Name String "USB " little-endian ASCII
+					return 0x20425355;
 				case 0x08:
-					// Compatible Port Offset=1, Compatible Port Count=XHCI_MAX_PORTS,
-					// PSIC=0, Protocol Slot Type=0
-					return 1 | (static_cast<uint32_t>(XHCI_MAX_PORTS) << 8);
+					// DW2: Compatible Port Offset = numports_3+1, Port Count = numports_2
+					return (numports_2 << 8) | (numports_3 + 1);
+				case 0x0C:
+					// DW3: Protocol Defined / reserved
+					return 0;
+				case 0x10:
+					// USB3 Supported Protocol Capability DW0:
+					// Capability ID = 0x02, Next Capability Pointer = 0 (last),
+					// Minor Revision = 0, Major Revision = 0x03 (USB 3.0)
+					return 0x02 | (static_cast<uint32_t>(0x03) << 24);
+				case 0x14:
+					// DW1: Name String "USB " little-endian ASCII
+					return 0x20425355;
+				case 0x18:
+					// DW2: Compatible Port Offset = 1, Port Count = numports_3
+					return (numports_3 << 8) | 1;
+				case 0x1C:
+					// DW3: Protocol Defined / reserved
+					return 0;
 				default:
 					return 0;
 			}
@@ -432,6 +500,14 @@ namespace rv64vm::dev
 	{
 		if(!dcbaap) return;
 
+		if(device_ep_idx >= 16) return;
+		auto it = slots.find(slot_id);
+		if(it == slots.end() || !it->second) return;
+		// device_ep_idx is the guest's endpoint ID (doorbell target, DCI entry,
+		// ADD flags bit) - one higher than the 0-based ep_index used to walk it.
+		if(device_ep_idx >= 2)
+			it->second->ep_enabled[device_ep_idx - 1] = true;
+
 		uint64_t dcbaa_entry = 0;
 		read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &dcbaa_entry, sizeof(dcbaa_entry));
 		uint64_t out_ctx = dcbaa_entry & ~0xFULL;
@@ -600,6 +676,28 @@ namespace rv64vm::dev
 			it->second->ep_deq[ep_index] = deq & ~0xFULL;
 			it->second->ep_pcs[ep_index] = deq & 1;
 		}
+		else if(dcbaap)
+		{
+			// The endpoint context's dequeue pointer is authoritative: the
+			// guest may have moved it via SET_TR_DEQUEUE or a re-configuration.
+			// Adopt it whenever it differs so we never chase a stale position
+			// (the source of stuck cycles at ring wraps).
+			uint64_t slot_dc_ptr = 0;
+			read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &slot_dc_ptr, sizeof(slot_dc_ptr));
+			if(slot_dc_ptr)
+			{
+				uint64_t ep_ctx_ptr = slot_dc_ptr + ((ep_index + 1) * 32);
+				uint64_t cdeq		= 0;
+				read_dma(ep_ctx_ptr + 0x08, &cdeq, sizeof(cdeq));
+				if(cdeq
+				   && ((cdeq & ~0xFULL) != it->second->ep_deq[ep_index]
+					   || (cdeq & 1) != it->second->ep_pcs[ep_index]))
+				{
+					it->second->ep_deq[ep_index] = cdeq & ~0xFULL;
+					it->second->ep_pcs[ep_index] = cdeq & 1;
+				}
+			}
+		}
 
 		uint64_t trb_dma_addr = it->second->ep_deq[ep_index];
 		uint8_t ep_pcs		  = it->second->ep_pcs[ep_index];
@@ -612,8 +710,17 @@ namespace rv64vm::dev
 
 			if(trb.get_type() == TRBType::LINK)
 			{
+				// LINK TRBs are control TRBs: the xHC must follow them even when
+				// the cycle bit does not match (Linux writes the interior segment
+				// links once at ring setup with cycle=0 and never re-touches
+				// them), so LINK handling happens before the cycle check above.
 				trb_dma_addr = trb.parameter & ~0xFULL;
-				if(trb.control.fields.ent) ep_pcs = !ep_pcs;
+				it->second->ep_deq[ep_index] = trb_dma_addr;
+				if(trb.control.fields.ent)
+				{
+					ep_pcs = !ep_pcs;
+					it->second->ep_pcs[ep_index] = ep_pcs;
+				}
 				continue;
 			}
 
@@ -621,11 +728,21 @@ namespace rv64vm::dev
 			{
 				uint32_t len = trb.status & 0x1FFFF;
 				std::vector<uint8_t> data;
-				if(!dev->get_interrupt_report(data) || data.empty())
-				{
+				bool has_data = dev->get_interrupt_report(data);
 
+				// Pace completions like a real interrupt IN endpoint: the xHC
+				// serves the ring no faster than its bInterval, even when the
+				// report is unchanged (this is what real keyboards do - the
+				// host generates auto-repeat from the repeated identical state).
+				// Stops the guest from being flooded with instant completions.
+				if(!has_data
+				   || (it->second->ep_last_complete[ep_index] != 0
+					   && (tick_counter - it->second->ep_last_complete[ep_index]) < EP_POLL_INTERVAL))
+				{
 					break;
 				}
+
+				it->second->ep_last_complete[ep_index] = tick_counter;
 
 				uint32_t copy = std::min<uint32_t>(len, data.size());
 				if(copy) write_dma(trb.parameter, data.data(), copy);
@@ -644,6 +761,48 @@ namespace rv64vm::dev
 		}
 
 		it->second->ep_pcs[ep_index] = ep_pcs;
+
+		// Publish the controller's dequeue position back to the endpoint
+		// context in guest memory (as a real xHC does), so the guest's own
+		// view of the ring can never drift from ours.
+		if(dcbaap)
+		{
+			uint64_t slot_dc_ptr = 0;
+			read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &slot_dc_ptr, sizeof(slot_dc_ptr));
+			if(slot_dc_ptr)
+			{
+				uint64_t ep_ctx_ptr = slot_dc_ptr + ((ep_index + 1) * 32);
+				uint64_t cdeq		= it->second->ep_deq[ep_index] | (static_cast<uint64_t>(ep_pcs) & 1);
+				write_dma(ep_ctx_ptr + 0x08, &cdeq, sizeof(cdeq));
+			}
+		}
+	}
+
+	void XHCI::tick()
+	{
+		tick_counter++;
+
+		// Service every configured EP ring on the tick clock: like real xHC, the
+		// ring is polled at endpoint+interval even when the report state did not
+		// change. This is what keeps the bus alive - a NAK'd TRB is re-served
+		// until pacing allows a completion, so no guest poll ever times out.
+		for(auto& [slot_id, slot] : slots)
+		{
+			if(!slot || !slot->attached_device) continue;
+
+			for(unsigned int i = 1; i < 16; ++i)
+			{
+				if(!slot->ep_enabled[i]) continue;
+				process_ep_ring(slot_id, i);
+			}
+		}
+
+		// Watchdog: re-derive the interrupt level from unread event data on every
+		// tick. The guest's PLIC claim/complete can clear our pending bit even
+		// when a freshly pushed event is still unread (see update_irq), so we
+		// re-assert here until the guest drains the ring. Guarantees the final
+		// transfer event is never lost to a claim/complete race.
+		update_irq();
 	}
 
 	void XHCI::process_command_ring()
@@ -748,7 +907,21 @@ namespace rv64vm::dev
 						for(unsigned int i = 1; i <= 31; ++i)
 						{
 							if(add_flags & (1u << i))
+							{
 								save_ep_ctx_from_input(slot_id, i, input_ctx_addr);
+								// A re-configuration installs a fresh ring; drop
+								// any cached position so the device context (just
+								// saved) becomes authoritative again.
+								if(trb.get_type() == TRBType::CONFIG_ENDPOINT)
+								{
+									auto it = slots.find(slot_id);
+									if(it != slots.end() && it->second)
+									{
+										it->second->ep_deq[i] = 0;
+										it->second->ep_pcs[i] = 0;
+									}
+								}
+							}
 						}
 					}
 
@@ -760,6 +933,72 @@ namespace rv64vm::dev
 				case TRBType::STOP_ENDPOINT:
 				case TRBType::RESET_ENDPOINT:
 				case TRBType::SET_TR_DEQUEUE:
+				{
+					uint8_t slot_id = trb.get_slot_id();
+					// Command TRBs carry the Endpoint ID in DW3 bits [13:8]
+					// (unlike transfer events, where it sits at [23:16]).
+					uint32_t dw3	 = (trb.control.fields.control << 16)
+								   | (static_cast<uint32_t>(trb.control.fields.type) << 10)
+								   | (static_cast<uint32_t>(trb.control.fields.flags) << 2)
+								   | (static_cast<uint32_t>(trb.control.fields.ent) << 1)
+								   | trb.control.fields.cycle;
+					uint32_t ep_id	 = (dw3 >> 8) & 0x1F;
+					uint32_t ep_index = ep_id - 1;
+
+					auto it = slots.find(slot_id);
+
+					// STOP_ENDPOINT with a TD in flight: xHC first reports a
+					// COMP_STOP transfer event for the stopped TRB, then the
+					// command completion. This is what U-Boot's abort_td()
+					// waits for after an interrupt-in poll times out.
+					if(trb.get_type() == TRBType::STOP_ENDPOINT
+					   && it != slots.end() && it->second
+					   && ep_id >= 1 && ep_id <= 31)
+					{
+						uint64_t deq = it->second->ep_deq[ep_index];
+						if(deq != 0)
+						{
+							trb_t probe = read_trb(deq);
+							if(probe.control.fields.cycle == it->second->ep_pcs[ep_index])
+							{
+								trb_t tev{};
+								tev.parameter						  = deq;
+								tev.status							  = (static_cast<uint32_t>(TRBCompletionCode::STOPPED) << 24);
+								tev.control.fields.type				  = static_cast<uint32_t>(TRBType::TRANSFER_EVENT);
+								tev.control.fields.control			  = (static_cast<uint32_t>(slot_id) << 8) | (ep_id & 0x1F);
+								push_event(tev);
+							}
+						}
+					}
+
+					// SET_TR_DEQUEUE moves the cached deq to the new position.
+					// The guest abandons every pending TRB (deq = its enqueue).
+					if(trb.get_type() == TRBType::SET_TR_DEQUEUE
+					   && it != slots.end() && it->second
+					   && ep_id >= 1 && ep_id <= 31)
+					{
+						it->second->ep_deq[ep_index] = trb.parameter & ~0xFULL;
+						it->second->ep_pcs[ep_index] = trb.parameter & 1;
+						// Mirror the moved dequeue into the endpoint context so
+						// the round-trip with process_ep_ring stays consistent.
+						uint64_t slot_dc_ptr = 0;
+						if(dcbaap)
+						{
+							read_dma(dcbaap + (slot_id * sizeof(uint64_t)), &slot_dc_ptr, sizeof(slot_dc_ptr));
+							if(slot_dc_ptr)
+							{
+								uint64_t ep_ctx_ptr = slot_dc_ptr + ((ep_index + 1) * 32);
+								uint64_t cdeq		= trb.parameter;
+								write_dma(ep_ctx_ptr + 0x08, &cdeq, sizeof(cdeq));
+							}
+						}
+					}
+
+					evt.control.fields.control = (static_cast<uint32_t>(slot_id) << 8);
+					push_event(evt);
+					break;
+				}
+
 				case TRBType::RESET_DEVICE:
 					evt.control.fields.control = (static_cast<uint32_t>(trb.get_slot_id()) << 8);
 					push_event(evt);

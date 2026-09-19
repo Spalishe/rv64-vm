@@ -19,6 +19,7 @@ Copyright 2026 Spalishe
 #include "../usb/usb-dev.hpp"
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <queue>
 #include <vector>
 
@@ -38,6 +39,7 @@ namespace rv64vm::dev
 	{
 	  protected:
 		std::vector<uint8_t> report_desc;
+		std::mutex report_lock; // GUI thread pushes, XHCI tick pops
 		std::queue<std::vector<uint8_t>> report_queue;
 		uint8_t idle_rate{ 0 };
 		uint8_t protocol{ 1 }; // 1 = Report Protocol, 0 = Boot Protocol
@@ -61,18 +63,13 @@ namespace rv64vm::dev
 
 		bool get_interrupt_report(std::vector<uint8_t>& data) override
 		{
-			// Idle keyboards only report on key events; deliver an empty
-			// boot report to the host during enumeration/probe instead of NAK.
-			if(!get_next_input_report(data))
-			{
-				data.assign(8, 0);
-			}
-			return true;
+			return get_next_input_report(data);
 		}
 
 		// Add message from device to report.
 		void push_report(const std::vector<uint8_t>& report)
 		{
+			std::lock_guard<std::mutex> lock(report_lock);
 			report_queue.push(report);
 		}
 

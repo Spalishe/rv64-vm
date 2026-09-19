@@ -55,8 +55,8 @@ namespace rv64vm::runner
 	Machine::~Machine()
 	{
 		stop();
+		destroy_devices(); // join device threads (CLINT) before the harts they poke are gone
 		destroy_harts();
-		destroy_devices();
 		destroy_mmap();
 
 		if(bios_file) fclose(bios_file);

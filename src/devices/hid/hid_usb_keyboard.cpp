@@ -43,11 +43,6 @@ namespace rv64vm::dev
 	}
 	void HID_USB_Keyboard::update(uint8_t modifiers, uint8_t key_1, uint8_t key_2, uint8_t key_3, uint8_t key_4, uint8_t key_5, uint8_t key_6, bool rollover)
 	{
-		if(report_queue.size() >= 64)
-		{
-			return;
-		}
-
 		report[0] = modifiers;
 		report[1] = 0x00; // Reserved
 
@@ -65,11 +60,12 @@ namespace rv64vm::dev
 			report[6] = key_5;
 			report[7] = key_6;
 		}
-
-		push_report(report);
 	}
+
 	bool HID_USB_Keyboard::get_interrupt_report(std::vector<uint8_t>& out)
 	{
+		// A real HID keyboard answers every IN poll with its CURRENT key state,
+		// even if nothing changed (the host generates auto-repeat itself).
 		out = report;
 		return true;
 	}

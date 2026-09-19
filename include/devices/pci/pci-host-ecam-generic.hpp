@@ -32,11 +32,18 @@ namespace rv64vm::dev
 		static std::shared_ptr<PCI_HEG> init_auto(runner::Machine& cpu);
 
 		void attach_device(uint8_t slot, PCI_Device* dev);
+		void tick() override;
+
+		// The PLIC source line advertised for every PCI INTA in the DT
+		// interrupt-map. PCI devices must raise THIS line, not a number
+		// they allocate themselves, or the guest never enables/masks it.
+		uint32_t get_pci_irq() const { return pci_irq_line; }
 
 	  private:
 		::rv64vm::runner::Machine& cpu;
 		PLIC* plic;
 		int irq_num;
+		uint32_t pci_irq_line = 0;
 
 		uint64_t read(uint64_t addr, MemorySize size);
 		void write(uint64_t addr, MemorySize size, uint64_t val);

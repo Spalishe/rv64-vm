@@ -31,6 +31,7 @@ namespace rv64vm::dev
 	{
 	  public:
 		XHCI(runner::Machine& cpu);
+		void tick() override;
 		void attach_device(uint8_t port_idx, std::shared_ptr<USBDevice> dev, uint8_t port_speed = 3)
 		{
 			if(port_idx >= XHCI_MAX_PORTS) return;
@@ -73,6 +74,8 @@ namespace rv64vm::dev
 		// ports and interrupts
 		xhci_portsc port_sc[XHCI_MAX_PORTS];
 		xhci_interrupter interrupters[1];
+
+		uint64_t tick_counter{ 0 };
 
 		void reset();
 		void update_irq();

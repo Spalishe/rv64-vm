@@ -48,13 +48,14 @@ union xhci_usbsts
 {
 	struct
 	{
-		uint32_t hchalted : 1; // Controller halted
-		uint32_t hse : 1;	   // Host System Error
-		uint32_t eint : 1;	   // Event Interrupt (new unhandled events)
-		uint32_t pcd : 1;	   // Port Change Detect
-		uint32_t : 7;
-		uint32_t cnr : 1; // Controller Not Ready (1 = no init)
-		uint32_t hce : 1; // Host Controller Error
+		uint32_t hchalted : 1; // Controller halted (bit 0)
+		uint32_t : 1;		   // rsvdz (bit 1)
+		uint32_t hse : 1;	   // Host System Error (bit 2)
+		uint32_t eint : 1;	   // Event Interrupt (new unhandled events) (bit 3)
+		uint32_t pcd : 1;	   // Port Change Detect (bit 4)
+		uint32_t : 6;		   // (bits 5-10)
+		uint32_t cnr : 1; // Controller Not Ready (1 = no init) (bit 11)
+		uint32_t hce : 1; // Host Controller Error (bit 12)
 		uint32_t : 19;
 	} fields;
 	uint32_t raw;
@@ -229,4 +230,6 @@ struct xhci_slot
 
 	uint64_t ep_deq[16]{ 0 };
 	uint8_t ep_pcs[16]{ 1 };
+	uint64_t ep_last_complete[16]{ 0 };
+	bool ep_enabled[16]{ false };
 };

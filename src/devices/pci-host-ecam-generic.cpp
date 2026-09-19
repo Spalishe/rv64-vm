@@ -53,10 +53,15 @@ namespace rv64vm::dev
 			fdt_node_add_prop_cells(pci_fdt, "interrupt-map-mask", interrupt_map_mask, interrupt_map_mask.size());
 
 			std::vector<uint32_t> interrupt_map;
+			// Allocate a dedicated, exclusive PLIC source for the PCI wiring
+			// (mirrors a shared INTA). Using plic->last_irq() here advertised the
+			// line of whichever device happened to be constructed last (e.g. the
+			// virtio-blk source), not the line the actual PCI device raises later.
+			pci_irq_line = plic->acquire_irq();
 			for(uint32_t slot = 0; slot < 32; slot++)
 			{
 				uint32_t devfn_addr = (slot << 11); // PCI address encoding: bus=0, device=slot, func=0 -> bits [15:11]=devno
-				uint32_t irq_num	= plic->last_irq();
+				uint32_t irq_num	= pci_irq_line;
 
 				interrupt_map.insert(interrupt_map.end(), { devfn_addr, 0x0, 0x0, // PCI unit address
 															0x1,				  // INTA#
@@ -100,6 +105,14 @@ namespace rv64vm::dev
 		if(slot < 32)
 		{
 			devices[slot] = dev;
+		}
+	}
+
+	void PCI_HEG::tick()
+	{
+		for(auto* dev : devices)
+		{
+			if(dev) dev->tick();
 		}
 	}
 

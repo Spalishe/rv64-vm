@@ -121,12 +121,16 @@ namespace rv64vm::dev
 				case 0x0B: // SET_PROTOCOL
 					protocol = setup.wValue & 0xFF;
 					break;
-				case 0x01: // GET_REPORT
+case 0x01: // GET_REPORT
+				{
+					std::lock_guard<std::mutex> lock(report_lock);
 					if(!report_queue.empty())
 					{
 						response = report_queue.front();
+						report_queue.pop();
 					}
-					break;
+				}
+				break;
 			}
 		}
 
@@ -140,6 +144,7 @@ namespace rv64vm::dev
 
 	bool USBHIDDevice::get_next_input_report(std::vector<uint8_t>& out_report)
 	{
+		std::lock_guard<std::mutex> lock(report_lock);
 		if(report_queue.empty())
 			return false;
 

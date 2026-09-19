@@ -53,6 +53,8 @@ struct USBDevice : std::enable_shared_from_this<USBDevice>
 	}
 
 	// IN (bulk/interrupt EP)
+	// Returns true and fills data only if a report is available now.
+	// "No report" is treated as NAK by the XHCI emulation.
 	virtual bool get_interrupt_report(std::vector<uint8_t>& data)
 	{
 		return false;
