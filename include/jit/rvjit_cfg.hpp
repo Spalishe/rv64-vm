@@ -30,5 +30,5 @@ namespace rv64vm::jit
 
 	// Compile a block only after this many dispatches, so codegen cost is
 	// paid only for code that actually gets reused.
-	inline constexpr size_t RVJIT_HOT_THRESHOLD = 2;
+	inline constexpr size_t RVJIT_HOT_THRESHOLD = 1;
 }

@@ -36,6 +36,12 @@ namespace rv64vm::jit
 	struct JIT_HartContext;
 	using JITCompiledFunc = void (*)(JIT_HartContext*);
 
+	// Direct-mapped jump cache size: 2^14 slots.  Kernel boot compiles far
+	// more live blocks than 256, so a small direct-mapped table thrash-chains
+	// nearly every hop back into C++.  Tuned upward from 256 after sampling.
+	constexpr uint32_t CHAIN_CACHE_SLOTS = 1 << 16;
+	constexpr uint32_t CHAIN_CACHE_MASK  = CHAIN_CACHE_SLOTS - 1;
+
 	struct JIT_HartContext
 	{
 		uint64_t* regs;		// &hart.GPR[0]
@@ -56,7 +62,7 @@ namespace rv64vm::jit
 		uint64_t mode_key;	 // eff_mode | MXR<<8 | SUM<<9 (chain key)
 		int64_t chain_budget; // instructions until the chain must return to C++
 		uint64_t chain_reserved;
-		uint64_t chain_cache[256 * 6]; // CHAIN_CACHE_STRIDE-sized slots
+		uint64_t chain_cache[CHAIN_CACHE_SLOTS * 6]; // CHAIN_CACHE_STRIDE-sized slots
 	};
 
 	static_assert(offsetof(JIT_HartContext, regs) == 0);

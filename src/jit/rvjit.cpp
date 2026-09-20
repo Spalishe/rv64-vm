@@ -80,10 +80,10 @@ namespace rv64vm::jit
 
 		x86::CodeBuf cb;
 
-		// entry = &ctx->chain_cache[((exit_pc >> 2) & MASK) * STRIDE]
+		// entry = &ctx->chain_cache[((exit_pc >> 1) & MASK) * STRIDE]  (2-byte pc granularity for RV64C)
 		x86::mov_mr(cb, x86::REG_RCX, x86::REG_CTX, x86::CTX_OFF_EXIT);
 		x86::mov_rr(cb, x86::REG_RAX, x86::REG_RCX);
-		x86::shift_r64_imm(cb, 5, x86::REG_RAX, 2);
+		x86::shift_r64_imm(cb, 5, x86::REG_RAX, 1);
 		x86::and_imm(cb, x86::REG_RAX, x86::CHAIN_CACHE_MASK);
 		x86::mov_rr(cb, x86::REG_RDX, x86::REG_RAX);
 		x86::shift_r64_imm(cb, 4, x86::REG_RAX, 4);

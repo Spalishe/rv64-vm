@@ -23,6 +23,7 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::runner
 {
+
 	/**
 	 * @ingroup RV64VM-API
 	 * @brief RISC-V Translation Lookaside Buffer
@@ -123,7 +124,10 @@ namespace rv64vm::runner
 		/**
 		 * @brief Flushes all TLB entries
 		 */
-		void flush_all() { ++generation; }
+		void flush_all()
+		{
+			++generation;
+		}
 
 		/**
 		 * @brief Flushes all TLB entries by address

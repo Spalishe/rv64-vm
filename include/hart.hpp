@@ -143,14 +143,14 @@ namespace rv64vm::runner
 		// was already witnessed at this translation; only then does dispatch
 		// engage the JIT machinery at all (cold linear code stays interpreter).
 		struct DispatchHot {
-			uint64_t va = 0, gen = 0, smc = 0;
+			uint64_t va = 0, gen = 0, smc = 0, phys = 0;
 			uint32_t asid = 0;
 			uint8_t mode = 0;
 			uint8_t seen = 0;
 			jit::JITCompiledFunc fn = nullptr;
 			jit::JITCompiledFunc chain_fn = nullptr; // fn + prologue size
 		};
-		DispatchHot dhot[64]{};
+		DispatchHot dhot[4096]{};
 		jit::JIT_Context* jctx = nullptr;
 #endif
 

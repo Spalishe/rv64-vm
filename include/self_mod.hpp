@@ -40,7 +40,9 @@ namespace rv64vm
 	{
 		const uint64_t page = phys >> 12;
 		if(page < g_executed_pages.size() && g_executed_pages[page])
+		{
 			g_smc_epoch.fetch_add(1);
+		}
 	}
 
 	inline bool was_page_executed(uint64_t phys)

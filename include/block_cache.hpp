@@ -43,7 +43,7 @@ namespace rv64vm::runner
 
 	struct BlockCache
 	{
-		static constexpr uint32_t CACHE_BITS = 14;
+		static constexpr uint32_t CACHE_BITS = 15;
 		static constexpr uint32_t CACHE_SIZE = 1u << CACHE_BITS;
 
 		uint64_t generation = 1;
@@ -53,7 +53,7 @@ namespace rv64vm::runner
 
 		Block* lookup(uint64_t phys_pc)
 		{
-			Block& b = slots[(phys_pc >> 2) & (CACHE_SIZE - 1)];
+			Block& b = slots[(phys_pc >> 1) & (CACHE_SIZE - 1)];
 			if(b.start_phys == phys_pc && b.gen == generation && b.smc == g_smc_epoch.load()) [[likely]]
 				return &b;
 			return nullptr;

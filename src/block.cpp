@@ -17,7 +17,6 @@ Copyright 2026 Spalishe
 
 #include "../include/block_cache.hpp"
 #include "../include/hart.hpp"
-#include <cstdio>
 #include <cstdlib>
 #ifdef USE_JIT
 #include "../include/jit/rvjit.hpp"
@@ -195,7 +194,7 @@ namespace rv64vm::runner
 			const uint8_t  mode = (uint8_t)get_effective_mode(AccessType::EXEC);
 			uint64_t smc  = rv64vm::g_smc_epoch.load(std::memory_order_relaxed);
 			const uint32_t asid = satp.fields.asid;
-			const size_t di = ((pc >> 2) * 2654435761u + (uint32_t)gen + (uint32_t)smc) & 63;
+			const size_t di = ((pc >> 1) * 2654435761u + (uint32_t)gen + (uint32_t)smc) & 4095;
 			DispatchHot& d	= dhot[di];
 			jit::JITExec jj{};
 			// Chain key: mirrors what compile() bakes into block TLB checks.
@@ -203,88 +202,25 @@ namespace rv64vm::runner
 									  (status.fields.MXR ? 0x100ull : 0) |
 									  (status.fields.SUM ? 0x200ull : 0);
 
-if(d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.asid == asid)
+			// One-pass JIT: dhot only memorizes the last outcome; a memo hit with a
+			// compiled fn skips the translate+lookup on the re-dispatch.
+			jit::JITExec cached{};
+			const bool memo_hit = d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.asid == asid;
+			if(memo_hit && d.fn != nullptr)
 			{
-				// Repeat visitor at the same translation: engage the JIT.
-				if(d.fn != nullptr)
-				{
-					jj.fn		  = d.fn;
-					jj.chain_fn   = d.chain_fn;
-				}
-				else
-				{
-					MemoryReturn mr = mmu.translate(this, AccessType::EXEC, pc, &phys);
-					if(!mr.is_success) [[unlikely]]
-					{
-						trap(mr.exc_code, mr.tval, false);
-						break;
-					}
-					phys_done = true;
-
-					const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
-					const bool mxr		   = status.fields.MXR;
-					const bool sum		   = status.fields.SUM;
-					jj = jctx->lookup(phys, asid, eff_mode, mxr, sum);
-					if(jj.fn == nullptr && jctx->hot_tick(phys))
-						jj = jctx->compile(*this, pc, phys);
-					// Re-read smc after compile() — it may have called
-					// release_arenas() which bumps g_smc_epoch.  Using a
-					// stale smc would let the chain dispatcher validate
-					// against freed arenas.
-					smc = rv64vm::g_smc_epoch.load(std::memory_order_acquire);
-					d.fn		= jj.fn;
-					d.chain_fn	= jj.chain_fn;
-				}
-
-				if(jj.fn != nullptr)
-				{
-					hctx.tlb_entries = mmu.get_tlb().jit_entries();
-					hctx.tlb_gen	 = gen;
-					hctx.satp_asid	 = asid;
-					hctx.smc_key	 = smc;
-					hctx.mode_key	 = mode_key;
-					hctx.chain_budget = (int64_t)jit::x86::CHAIN_CADENCE;
-
-					// Install this block into the chain jump cache so any exit
-					// targeting this guest pc can hop here directly.
-					uint64_t* ce = &hctx.chain_cache[(((uint64_t)pc >> 2) & jit::x86::CHAIN_CACHE_MASK) * 6];
-					ce[0] = (uint64_t)jj.chain_fn;
-					ce[1] = pc;
-					ce[2] = gen;
-					ce[3] = smc;
-					ce[4] = mode_key;
-					ce[5] = (uint64_t)(uint16_t)asid;
-
-					const uint64_t prev_instret = instret;
-					hctx.entry_pc				= pc;
-					jj.fn(&hctx);
-					// The chain dispatcher counts every hop into chain_budget;
-					// the budget released is the whole chain's instruction total.
-					const uint64_t executed = (uint64_t)((int64_t)jit::x86::CHAIN_CADENCE - hctx.chain_budget);
-					pc						= hctx.exit_pc;
-					instret += executed;
-					cycle += executed;
-					total += executed;
-					if(executed != 0)
-					{
-						if((prev_instret & 0x2FFF) + executed >= 0x3000) [[unlikely]]
-						{
-							if((ip.raw & ie.raw) != 0 && check_ints())
-								break;
-						}
-						if(total >= max_insts) [[unlikely]]
-							break;
-						// A JIT block exit lands on another JIT block start;
-						// re-enter the dispatch instead of the interpreter.
-						continue;
-					}
-				}
+				cached.fn		= d.fn;
+				cached.chain_fn = d.chain_fn;
+				phys			= d.phys;
+				phys_done		= true;
 			}
 			else
 			{
-				// First sighting at this translation: run the interpreter once
-				// (no translate/lookup/hot_tick tax) and remember the pc so the
-				// next dispatch decides whether the JIT is worth it.
+				d.va = pc; d.gen = gen; d.mode = mode; d.smc = smc; d.asid = asid;
+				d.seen = true; d.fn = nullptr; d.chain_fn = nullptr;
+			}
+
+			if(!phys_done)
+			{
 				MemoryReturn mr = mmu.translate(this, AccessType::EXEC, pc, &phys);
 				if(!mr.is_success) [[unlikely]]
 				{
@@ -292,8 +228,71 @@ if(d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.a
 					break;
 				}
 				phys_done = true;
-				d.va = pc; d.gen = gen; d.mode = mode; d.smc = smc; d.asid = asid;
-				d.seen = true; d.fn = nullptr;
+			}
+
+			jj = cached;
+			if(jj.fn == nullptr)
+			{
+				d.phys = phys;
+				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
+				const bool mxr		   = status.fields.MXR;
+				const bool sum		   = status.fields.SUM;
+				jj = jctx->lookup(phys, asid, eff_mode, mxr, sum);
+				if(jj.fn == nullptr && jctx->hot_tick(phys))
+				{
+					jj = jctx->compile(*this, pc, phys);
+				}
+				// Re-read smc after compile() — it may have called
+				// release_arenas() which bumps g_smc_epoch.  Using a
+				// stale smc would let the chain dispatcher validate
+				// against freed arenas.
+				smc = rv64vm::g_smc_epoch.load(std::memory_order_acquire);
+				d.fn		= jj.fn;
+				d.chain_fn	= jj.chain_fn;
+			}
+
+			if(jj.fn != nullptr)
+			{
+				hctx.tlb_entries = mmu.get_tlb().jit_entries();
+				hctx.tlb_gen	 = gen;
+				hctx.satp_asid	 = asid;
+				hctx.smc_key	 = smc;
+				hctx.mode_key	 = mode_key;
+				hctx.chain_budget = (int64_t)jit::x86::CHAIN_CADENCE;
+
+				// Install this block into the chain jump cache so any exit
+				// targeting this guest pc can hop here directly.
+				uint64_t* ce = &hctx.chain_cache[(((uint64_t)pc >> 1) & jit::x86::CHAIN_CACHE_MASK) * 6];
+				ce[0] = (uint64_t)jj.chain_fn;
+				ce[1] = pc;
+				ce[2] = gen;
+				ce[3] = smc;
+				ce[4] = mode_key;
+				ce[5] = (uint64_t)(uint16_t)asid;
+
+				const uint64_t prev_instret = instret;
+				hctx.entry_pc				= pc;
+				jj.fn(&hctx);
+				// The chain dispatcher counts every hop into chain_budget;
+				// the budget released is the whole chain's instruction total.
+				const uint64_t executed = (uint64_t)((int64_t)jit::x86::CHAIN_CADENCE - hctx.chain_budget);
+				pc						= hctx.exit_pc;
+				instret += executed;
+				cycle += executed;
+				total += executed;
+				if(executed != 0)
+				{
+					if((prev_instret & 0x2FFF) + executed >= 0x3000) [[unlikely]]
+					{
+						if((ip.raw & ie.raw) != 0 && check_ints())
+							break;
+					}
+					if(total >= max_insts) [[unlikely]]
+						break;
+					// A JIT block exit lands on another JIT block start;
+					// re-enter the dispatch instead of the interpreter.
+					continue;
+				}
 			}
 		}
 #endif

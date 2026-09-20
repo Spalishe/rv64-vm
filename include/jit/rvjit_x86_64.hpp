@@ -29,6 +29,7 @@ Copyright 2026 Spalishe
  * Register numbers are the raw x86-64 encodings (RAX=0 .. R15=15).
  */
 #include "rvjit_cfg.hpp"
+#include "rvjit_ctx.hpp"
 #include <cstddef>
 #include <cstdint>
 
@@ -87,7 +88,7 @@ namespace rv64vm::jit::x86
 
 	// Direct-mapped jump cache inside hctx: index (pc>>2)&MASK, entry stride
 	// CHAIN_CACHE_STRIDE bytes: {chain_fn, pc, gen, smc, mode_key, asid}.
-	constexpr uint32_t CHAIN_CACHE_MASK		= 255;
+	constexpr uint32_t CHAIN_CACHE_MASK		= rv64vm::jit::CHAIN_CACHE_MASK;
 	constexpr uint32_t CHAIN_CACHE_STRIDE	= 48;
 	// Guest instructions per chain before control returns to the C++ runner.
 	constexpr uint64_t CHAIN_CADENCE		= 0x3000;

@@ -103,7 +103,7 @@ namespace rv64vm::jit
 		uint8_t* arena_alloc(size_t nbytes);
 		void mark_block_executed(uint64_t phys_pc, uint64_t guest_bytes);
 		void release_arenas();
-		static uint64_t index_of(uint64_t phys_pc) { return (phys_pc >> 2) & (JIT_CACHE_SIZE - 1); }
+		static uint64_t index_of(uint64_t phys_pc) { return (phys_pc >> 1) & (JIT_CACHE_SIZE - 1); }
 	};
 
 // Each returns true when the instruction was compiled and the block may
