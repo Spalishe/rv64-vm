@@ -21,6 +21,7 @@ Copyright 2026 Spalishe
 #include "memory_map.hpp"
 
 using namespace rv64vm::runner;
+inline std::atomic<uint64_t> g_walk_count{0};
 inline MemoryReturn MMU::translate(Hart* hart, AccessType type, uint64_t va, uint64_t* pa)
 {
 	Hart::PrivilegeMode mode = hart->get_effective_mode(type);
@@ -71,6 +72,7 @@ static constexpr char AccessType_to_Fault[3]{
 template <typename SvMode>
 MemoryReturn MMU::translate_impl(Hart* hart, AccessType type, uint64_t raw_va, uint64_t* pa)
 {
+	g_walk_count.fetch_add(1, std::memory_order_relaxed);
 	typename SvMode::VirtualAddress va;
 	va.raw = raw_va;
 

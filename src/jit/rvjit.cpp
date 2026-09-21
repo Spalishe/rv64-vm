@@ -19,8 +19,10 @@ Copyright 2026 Spalishe
 #include "../../include/hart.hpp"
 #include "../../include/self_mod.hpp"
 
-#include <cstdio>
 #include <cstring>
+#include <unordered_set>
+#include <cstdio>
+#include <cstdlib>
 #include <sys/mman.h>
 
 #ifdef USE_JIT
@@ -80,10 +82,12 @@ namespace rv64vm::jit
 
 		x86::CodeBuf cb;
 
-		// entry = &ctx->chain_cache[((exit_pc >> 1) & MASK) * STRIDE]  (2-byte pc granularity for RV64C)
+		// entry = &ctx->chain_cache[(((uint32_t)(exit_pc >> 1) * 0x9E3779B9u) >> 16 & MASK) * STRIDE]
 		x86::mov_mr(cb, x86::REG_RCX, x86::REG_CTX, x86::CTX_OFF_EXIT);
 		x86::mov_rr(cb, x86::REG_RAX, x86::REG_RCX);
 		x86::shift_r64_imm(cb, 5, x86::REG_RAX, 1);
+		x86::imul_r_imm32(cb, x86::REG_RAX, (int32_t)0x9E3779B9);
+		x86::shift_r64_imm(cb, 5, x86::REG_RAX, 16);
 		x86::and_imm(cb, x86::REG_RAX, x86::CHAIN_CACHE_MASK);
 		x86::mov_rr(cb, x86::REG_RDX, x86::REG_RAX);
 		x86::shift_r64_imm(cb, 4, x86::REG_RAX, 4);
@@ -91,13 +95,6 @@ namespace rv64vm::jit
 		x86::add_rr(cb, x86::REG_RAX, x86::REG_RDX);
 		x86::add_rr(cb, x86::REG_RAX, x86::REG_CTX);
 		x86::add_imm(cb, x86::REG_RAX, x86::CTX_OFF_CHAIN_CACHE);
-
-		// Budget: every executed block counts toward the next C++ cadence
-		// check (interrupt pacing / max_insts), as in the per-block dispatch.
-		x86::mov_mr(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET);
-		x86::arith_rm64(cb, 5, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT);
-		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET, x86::REG_RDX);
-		const uint32_t j_budget = x86::jcc32(cb, 0x8); // js
 
 		// chain_fn != 0, pc == exit_pc
 		x86::mov_mr(cb, x86::REG_R11, x86::REG_RAX, 0);
@@ -120,28 +117,50 @@ namespace rv64vm::jit
 		x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_RAX, 40);
 		const uint32_t j_asid = x86::jcc32(cb, 0x5);
 
+		// hit: re-stamp the calling block's private exit slot (r15 = its base,
+		// set by the exit tail) so subsequent traversals hop directly without
+		// the dispatcher; the keys mirrored here are exactly the ones the exit
+		// tail re-checks, so the fast path can never outlive the validation.
+		if(getenv("JDIS")) // BISECT: disable private-slot refill
+		{ } else {
+		x86::mov_mr(cb, x86::REG_RDX, x86::REG_RAX, 16);
+		x86::mov_rm(cb, x86::REG_R15, 16, x86::REG_RDX);
+		x86::mov_mr(cb, x86::REG_RDX, x86::REG_RAX, 24);
+		x86::mov_rm(cb, x86::REG_R15, 24, x86::REG_RDX);
+		x86::mov_mr(cb, x86::REG_RDX, x86::REG_RAX, 32);
+		x86::mov_rm(cb, x86::REG_R15, 32, x86::REG_RDX);
+		x86::movzx_r64_m16(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_SATP_ASID);
+		x86::mov_rm(cb, x86::REG_R15, 40, x86::REG_RDX);
+		x86::mov_rm(cb, x86::REG_R15, 0, x86::REG_R11);
+		x86::mov_rm(cb, x86::REG_R15, 8, x86::REG_RCX);
+		}
+
 		// hit: set the target block's base pc (exits are computed as
 		// entry_pc + delta_va) and jump in right after its prologue
 		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_ENTRY, x86::REG_RCX);
 		x86::jmp_r(cb, x86::REG_R11);
 
-		const uint32_t miss = cb.pos;
+		// miss: pop the single C++ frame and return to the runner, which
+		// re-dispatches (the exit tail already accounted its own budget).
+		const uint32_t jccs[6] = { j_nofn, j_pc, j_gen, j_smc, j_mode, j_asid };
+		const uint32_t tail	 = cb.pos;
 		x86::pop_r(cb, x86::REG_R12);
 		x86::pop_r(cb, x86::REG_R13);
+		x86::pop_r(cb, x86::REG_R15);
 		x86::pop_r(cb, x86::REG_RBP);
 		x86::ret(cb);
 
-		x86::patch_rel32(cb, j_budget, miss);
-		x86::patch_rel32(cb, j_nofn, miss);
-		x86::patch_rel32(cb, j_pc, miss);
-		x86::patch_rel32(cb, j_gen, miss);
-		x86::patch_rel32(cb, j_smc, miss);
-		x86::patch_rel32(cb, j_mode, miss);
-		x86::patch_rel32(cb, j_asid, miss);
+		for(int i = 0; i < 6; i++)
+			x86::patch_rel32(cb, jccs[i], tail);
 
 		memcpy(p, cb.bytes, cb.pos);
 		if(x86::chain_dispatcher() == 0)
 			x86::chain_dispatcher() = (uint64_t)dispatch;
+		if(getenv("JDUMP"))
+		{
+			FILE* f = fopen("/tmp/opencode/disp.bin", "wb");
+			if(f) { fwrite(cb.bytes, 1, cb.pos, f); fclose(f); }
+		}
 		return dispatch;
 	}
 
@@ -149,19 +168,33 @@ namespace rv64vm::jit
 	{
 		CachedBlock& e = cache[index_of(phys_pc)];
 		JITExec out;
-		// Blocks are keyed by PHYSICAL pc; ASID is deliberately NOT part of
-		// the key;
+		// asid guard keeps a VA->PA resolution honest across guest processes:
+		// exec reuses a VA with a different mapping, and a recycled physical
+		// page can carry stale compiled text for another asid.
 		if(e.valid && e.start_phys == phys_pc && e.asid == asid && e.smc_epoch == g_smc_epoch.load() && e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
 		{
 			out.fn		 = e.fn;
 			out.chain_fn = e.chain_fn;
 			out.count	 = e.count;
+			g_lookup_ok.fetch_add(1, std::memory_order_relaxed);
 		}
+		else if(e.valid && e.start_phys != phys_pc)
+			g_miss_collide.fetch_add(1, std::memory_order_relaxed);
+		else if(e.valid && e.start_phys == phys_pc && e.smc_epoch != g_smc_epoch.load())
+			g_miss_smc.fetch_add(1, std::memory_order_relaxed);
+		else if(e.valid && e.start_phys == phys_pc)
+			g_miss_asid_mode.fetch_add(1, std::memory_order_relaxed);
+		else
+			g_miss_invalid.fetch_add(1, std::memory_order_relaxed);
 		return out;
 	}
 
 	bool JIT_Context::hot_tick(uint64_t phys_pc)
 	{
+		static const uint32_t hot_threshold = [] {
+			const char* s = getenv("RVJIT_HOT");
+			return s ? (uint32_t)atoi(s) : (uint32_t)RVJIT_HOT_THRESHOLD;
+		}();
 		const size_t i = index_of(phys_pc);
 		GiveUpSlot& g  = giveup[i];
 		if(g.skip && g.phys == phys_pc)
@@ -177,11 +210,30 @@ namespace rv64vm::jit
 			e.hot_epoch = (uint32_t)cur_epoch;
 			e.hot		= 0;
 		}
-		return ++e.hot >= RVJIT_HOT_THRESHOLD;
+		return ++e.hot >= hot_threshold;
+	}
+
+	bool JIT_Context::is_giveup(uint64_t phys_pc)
+	{
+		const size_t i = index_of(phys_pc);
+		const GiveUpSlot& g = giveup[i];
+		return g.skip && g.phys == phys_pc;
 	}
 
 	JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 	{
+		g_compile_count.fetch_add(1, std::memory_order_relaxed);
+		struct CompileTimer
+		{
+			std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+			~CompileTimer()
+			{
+				g_compile_ns.fetch_add((uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+										   std::chrono::steady_clock::now() - t0)
+										   .count(),
+									   std::memory_order_relaxed);
+			}
+		} ctimer;
 		ensure_chain_dispatcher();
 		while(mtx.test_and_set(std::memory_order_acquire))
 		{ /* spin */
@@ -191,6 +243,11 @@ namespace rv64vm::jit
 			std::atomic_flag& f;
 			~SpinGuard() { f.clear(std::memory_order_release); }
 		} guard{ mtx };
+		{
+			static std::unordered_set<uint64_t> uniq;
+			uniq.insert(phys_pc);
+			g_unique_blocks.store(uniq.size(), std::memory_order_relaxed);
+		}
 		// Effective access mode (MPRV honored) and the paging flags that the
 		// block policy is baked from; dispatch re-validates them.
 		const uint8_t eff_mode = (uint8_t)h.get_effective_mode(AccessType::STORE);
@@ -250,6 +307,9 @@ namespace rv64vm::jit
 		if(count < RVJIT_MIN_INSTRUCTIONS)
 		{
 			// Not a JIT-able starter; make hot_tick() stop retrying it.
+			static int logged_gv = 0;
+			if(getenv("JLOG") && logged_gv++ < 20)
+				fprintf(stderr, "giveup va=%llx phys=%llx\n", (unsigned long long)va_pc, (unsigned long long)phys_pc);
 			GiveUpSlot& g = giveup[index_of(phys_pc)];
 			g.phys		  = phys_pc;
 			g.skip		  = true;
@@ -258,19 +318,59 @@ namespace rv64vm::jit
 
 		if(!em.exited)
 			em.emit_epilogue(size, count);
+		em.emit_link_stubs();
 		em.emit_miss_stubs();
 		blk.count		= count;
 		blk.bytes_guest = size;
 		blk.asid		= h.satp.fields.asid;
 		blk.smc_epoch	= g_smc_epoch.load();
 
-		// Materialize into an executable (writable) arena
-		uint8_t* dst = arena_alloc(blk.code.pos);
+		// Materialize into an executable (writable) arena, then hang this
+		// block's per-exit private link slots right after the code. Their
+		// addresses are baked into the exit tails RIP-relatively, so the
+		// lea displacements must be located to the final arena address.
+		const uint32_t data_base = (blk.code.pos + 15u) & ~15u;
+		uint8_t* dst = arena_alloc(data_base + blk.n_exits * 48);
 		if(dst == nullptr)
 			return {};
 		memcpy(dst, blk.code.bytes, blk.code.pos);
+		uint8_t* slot = dst + data_base;
+		memset(slot, 0, (size_t)blk.n_exits * 48);
+		for(uint32_t i = 0; i < blk.n_exits; i++, slot += 48)
+		{
+			// lea r15, [rip + disp]; disp = slot - (lea_instr + 7)
+			const uint8_t* lea_inst = dst + blk.exits[i].lea_disp_off - 3;
+			const int32_t rel = (int32_t)((int64_t)slot - (int64_t)(lea_inst + 7));
+			memcpy(dst + blk.exits[i].lea_disp_off, &rel, 4);
+		}
+		if(getenv("JDUMP"))
+		{
+			static int ndump = 0;
+			if(ndump < 32)
+			{
+				char fn[64];
+				snprintf(fn, sizeof(fn), "/tmp/opencode/blk%d.bin", ndump);
+				FILE* f = fopen(fn, "wb");
+				if(f) { fwrite(blk.code.bytes, 1, blk.code.pos, f); fclose(f); }
+				snprintf(fn, sizeof(fn), "/tmp/opencode/blk%d.txt", ndump);
+				FILE* g = fopen(fn, "w");
+				if(g)
+				{
+					fprintf(g, "dst=%p data_base=%u n_exits=%u\n", (void*)dst, data_base, blk.n_exits);
+					for(uint32_t i = 0; i < blk.n_exits; i++)
+						fprintf(g, "exit %u data_idx=%u lea_disp_off=%u budget_js=%u fail=%d %d %d %d %d slot=%p\n",
+								i, blk.exits[i].data_idx, blk.exits[i].lea_disp_off, blk.exits[i].budget_js,
+								blk.exits[i].fail[0], blk.exits[i].fail[1], blk.exits[i].fail[2],
+								blk.exits[i].fail[3], blk.exits[i].fail[4],
+								(void*)(dst + data_base + i * 48));
+					fclose(g);
+				}
+				ndump++;
+			}
+		}
 
 		// Extend the self-modifying-code protection over the block's pages.
+		const uint64_t block_epoch = g_smc_epoch.load();
 		mark_block_executed(phys_pc, blk.bytes_guest);
 
 		// W^X: the inline TLB check honors each entry's write permission, so
@@ -288,7 +388,7 @@ namespace rv64vm::jit
 		e.chain_fn	   = (JITCompiledFunc)(void*)(dst + blk.chain_off);
 		e.start_phys   = phys_pc;
 		e.asid		   = h.satp.fields.asid;
-		e.smc_epoch	   = g_smc_epoch.load();
+		e.smc_epoch	   = block_epoch;
 		e.eff_mode	   = eff_mode;
 		e.mxr		   = mxr;
 		e.sum		   = sum;
@@ -303,11 +403,15 @@ namespace rv64vm::jit
 		const uint64_t p0 = phys_pc & ~0xFFFULL;
 		const uint64_t p1 = (phys_pc + guest_bytes + 0xFFF) & ~0xFFFULL;
 		for(uint64_t p = p0; p < p1; p += 0x1000)
+		{
 			mark_page_executed(p);
+			mark_page_code(p);
+		}
 	}
 
 	void JIT_Context::invalidate_all()
 	{
+		g_inval_count.fetch_add(1, std::memory_order_relaxed);
 		g_smc_epoch.fetch_add(1, std::memory_order_release);
 	}
 }

@@ -36,6 +36,18 @@ namespace rv64vm::jit
 {
 	inline constexpr size_t JIT_ARENA_BYTES = RVJIT_ARENA_PAGES * 4096;
 
+	// Debug counters (temporary).
+	inline std::atomic<uint64_t> g_compile_count{ 0 };
+	inline std::atomic<uint64_t> g_inval_count{ 0 };
+	inline std::atomic<uint64_t> g_compile_ns{ 0 };
+	inline std::atomic<uint64_t> g_unique_blocks{ 0 };
+	// lookup miss classification
+	inline std::atomic<uint64_t> g_miss_collide{ 0 };
+	inline std::atomic<uint64_t> g_miss_smc{ 0 };
+	inline std::atomic<uint64_t> g_miss_asid_mode{ 0 };
+	inline std::atomic<uint64_t> g_lookup_ok{ 0 };
+	inline std::atomic<uint64_t> g_miss_invalid{ 0 };
+
 	// Result of a JIT dispatch attempt.
 	struct JITExec
 	{
@@ -64,6 +76,10 @@ namespace rv64vm::jit
 
 		// Hotness gate: triggers compilation after RVJIT_HOT_THRESHOLD dispatches.
 		bool hot_tick(uint64_t phys_pc);
+
+		// Permanent "not a JIT-able starter" decision (see compile()); lets the
+		// dispatch memo cache the interpreter fallback for this phys.
+		bool is_giveup(uint64_t phys_pc);
 
 		// Flush the cache and drop all compiled code.
 		void invalidate_all();
@@ -103,7 +119,16 @@ namespace rv64vm::jit
 		uint8_t* arena_alloc(size_t nbytes);
 		void mark_block_executed(uint64_t phys_pc, uint64_t guest_bytes);
 		void release_arenas();
-		static uint64_t index_of(uint64_t phys_pc) { return (phys_pc >> 1) & (JIT_CACHE_SIZE - 1); }
+		static uint64_t index_of(uint64_t phys_pc)
+		{
+			// Mix high address bits into the index: kernel text spans tens of
+			// MB, and masking only the low bits aliased every 512 KiB, evicting
+			// live blocks and forcing recompiles.
+			uint64_t h = phys_pc >> 1;
+			h ^= h >> 17;
+			h *= 0x9E3779B97F4A7C15ULL;
+			return (h >> 20) & (JIT_CACHE_SIZE - 1);
+		}
 	};
 
 // Each returns true when the instruction was compiled and the block may

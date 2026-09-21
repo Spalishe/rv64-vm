@@ -99,10 +99,14 @@ ExecReturn exec_SFENCE_VMA(Hart& hart, InstructionData& inst)
 	else
 		tlb.flush_addr_asid(hart.GPR[inst.rs1], (uint16_t)hart.GPR[inst.rs2]);
 #ifdef USE_JIT
-	// SFENCE is the correctness backstop: the guest may remap a VA onto a
-	// physical page that previously held compiled text (memblock reuse, COW),
-	// without writing through the SMC watchdog. Drop compiled code here.
-	if(hart.jctx)
+	// Only a full SFENCE.VMA can have remapped an arbitrary virtual page onto
+	// previously-compiled guest text; drop compiled code for that case. The
+	// address/ASID-granular variants already invalidate the matching TLB
+	// entries in place (generation = 0), which the baked TLB checks in every
+	// compiled block observe at runtime: the affected slot alone falls back
+	// to the C++ page walk that refills it, so unrelated chains survive fast
+	// mmap/munmap/mprotect churn instead of recompiling on every sfence.
+	if(inst.rs1 == 0 && inst.rs2 == 0 && hart.jctx)
 		hart.jctx->invalidate_all();
 #endif
 	return { true, false, 4, 0, 0 };

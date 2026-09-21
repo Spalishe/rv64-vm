@@ -25,10 +25,12 @@ using namespace rv64vm::runner;
 ExecReturn exec_FENCE_I(Hart& hart, InstructionData& inst)
 {
 	hart.clear_decode_cache();
-#ifdef USE_JIT
-	if(hart.jctx) // guest guarantees instruction-fetch sync -> drop all compiled code
-		hart.jctx->invalidate_all();
-#endif
+	// FENCE.I is a no-op for the JIT: instruction fetch is never cached —
+	// compiled blocks validate the SMC epoch at dispatch and are recompiled
+	// from RAM, and any store to a page hosting current-epoch code already
+	// bumps g_smc_epoch through the W^X-stripped TLB paths (see self_mod.hpp:
+	// mark_page_code re-arms the detector on every compile). So the next
+	// dispatch to a rewritten page observes the patched bytes.
 	return { true, false, 4, 0, 0 };
 }
 

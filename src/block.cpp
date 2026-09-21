@@ -17,6 +17,7 @@ Copyright 2026 Spalishe
 
 #include "../include/block_cache.hpp"
 #include "../include/hart.hpp"
+#include <chrono>
 #include <cstdlib>
 #ifdef USE_JIT
 #include "../include/jit/rvjit.hpp"
@@ -25,8 +26,20 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::runner
 {
+#ifdef USE_JIT
+	const bool RTRACE = getenv("RTRACE") != nullptr; // one-time, keeps the hot
+	const bool JPROF	= getenv("JPROF") != nullptr; // dispatch loop env-free
+#endif
 	namespace
 	{
+		std::atomic<uint64_t> g_dispatch{ 0 };	   // JIT chain calls from run_blocks
+		std::atomic<uint64_t> g_dispatch_zero{ 0 }; // ...that ran zero instructions
+		std::atomic<uint64_t> g_interp_insts{ 0 }; // instructions run by the block interpreter
+		std::atomic<uint64_t> g_memo_hit{ 0 };	 // dhot memo hits
+		std::atomic<uint64_t> g_memo_fn{ 0 };	 // memo hits carrying a compiled fn
+		std::atomic<uint64_t> g_interp_disp{ 0 }; // dispatches that fell through to the interpreter
+		std::atomic<uint64_t> g_interp_memo{ 0 }; // ...served by the memoized giveup path
+
 		// Ops that unconditionally write GPR[rd]; a rd==0 one ends the block so
 		// x0 is never corrupted mid-block.
 		inline bool writes_reg(uint32_t inst)
@@ -179,6 +192,18 @@ namespace rv64vm::runner
 			if(total >= max_insts)
 				break;
 
+			if(JPROF)
+			{
+				static bool init_mark = false;
+				if(!init_mark && pc >= 0xffffffff80002078ULL && pc < 0xffffffff80002116ULL)
+				{
+					init_mark = true;
+					auto now = std::chrono::steady_clock::now();
+					uint64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+					fprintf(stderr, "MARK init instret=%llu ns=%llu compiles=%llu uniq=%llu ctime_ms=%llu invals=%llu smc=%llu ok=%llu coll=%llu msmc=%llu masid=%llu minv=%llu disp=%llu z=%llu gf=%llu mm=%llu interp=%llu walk=%llu fc=%llu mh=%llu mfn=%llu idisp=%llu imemo=%llu\n", (unsigned long long)instret, (unsigned long long)ns, (unsigned long long)jit::g_compile_count.load(), (unsigned long long)jit::g_unique_blocks.load(), (unsigned long long)(jit::g_compile_ns.load()/1000000), (unsigned long long)jit::g_inval_count.load(), (unsigned long long)rv64vm::g_smc_epoch.load(), (unsigned long long)jit::g_lookup_ok.load(), (unsigned long long)jit::g_miss_collide.load(), (unsigned long long)jit::g_miss_smc.load(), (unsigned long long)jit::g_miss_asid_mode.load(), (unsigned long long)jit::g_miss_invalid.load(), (unsigned long long)g_dispatch.load(), (unsigned long long)g_dispatch_zero.load(), (unsigned long long)jit::x86::g_chain_guardfail.load(), (unsigned long long)jit::x86::g_chain_memmiss.load(), (unsigned long long)g_interp_insts.load(), (unsigned long long)g_walk_count.load(), (unsigned long long)rv64vm::runner::g_flush_count.load(), (unsigned long long)g_memo_hit.load(), (unsigned long long)g_memo_fn.load(), (unsigned long long)g_interp_disp.load(), (unsigned long long)g_interp_memo.load());
+				}
+			}
+
 			if((instret & 0x2FFF) == 0) [[unlikely]] // interrupt cadence, mirrors tick()
 			{
 				if((ip.raw & ie.raw) != 0 && check_ints())
@@ -202,21 +227,34 @@ namespace rv64vm::runner
 									  (status.fields.MXR ? 0x100ull : 0) |
 									  (status.fields.SUM ? 0x200ull : 0);
 
-			// One-pass JIT: dhot only memorizes the last outcome; a memo hit with a
-			// compiled fn skips the translate+lookup on the re-dispatch.
+			// One-pass JIT: dhot only memorizes the last outcome; a memo hit
+			// with a compiled fn skips the translate+lookup on the re-dispatch.
 			jit::JITExec cached{};
 			const bool memo_hit = d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.asid == asid;
+			bool interp_memo = false;
+			if(JPROF && memo_hit) g_memo_hit.fetch_add(1, std::memory_order_relaxed);
 			if(memo_hit && d.fn != nullptr)
 			{
 				cached.fn		= d.fn;
 				cached.chain_fn = d.chain_fn;
 				phys			= d.phys;
 				phys_done		= true;
+				if(JPROF) g_memo_fn.fetch_add(1, std::memory_order_relaxed);
+			}
+			else if(memo_hit && d.interp)
+			{
+				// Permanent interpreter fallback (giveup block): the translation
+				// and JIT-decision are still valid for this key; reuse phys and
+				// skip translate + lookup + hot_tick entirely.
+				phys		 = d.phys;
+				phys_done	 = true;
+				interp_memo = true;
+				if(JPROF) g_interp_memo.fetch_add(1, std::memory_order_relaxed);
 			}
 			else
 			{
 				d.va = pc; d.gen = gen; d.mode = mode; d.smc = smc; d.asid = asid;
-				d.seen = true; d.fn = nullptr; d.chain_fn = nullptr;
+				d.seen = true; d.fn = nullptr; d.chain_fn = nullptr; d.interp = 0;
 			}
 
 			if(!phys_done)
@@ -231,7 +269,7 @@ namespace rv64vm::runner
 			}
 
 			jj = cached;
-			if(jj.fn == nullptr)
+			if(jj.fn == nullptr && !interp_memo)
 			{
 				d.phys = phys;
 				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
@@ -249,8 +287,14 @@ namespace rv64vm::runner
 				smc = rv64vm::g_smc_epoch.load(std::memory_order_acquire);
 				d.fn		= jj.fn;
 				d.chain_fn	= jj.chain_fn;
+				// Remember a permanent interpreter decision so repeat
+				// dispatches skip the JIT machinery above.
+				if(jj.fn == nullptr && jctx->is_giveup(phys))
+					d.interp = 1;
 			}
 
+			if(jj.fn == nullptr)
+				if(JPROF) g_interp_disp.fetch_add(1, std::memory_order_relaxed);
 			if(jj.fn != nullptr)
 			{
 				hctx.tlb_entries = mmu.get_tlb().jit_entries();
@@ -260,26 +304,59 @@ namespace rv64vm::runner
 				hctx.mode_key	 = mode_key;
 				hctx.chain_budget = (int64_t)jit::x86::CHAIN_CADENCE;
 
-				// Install this block into the chain jump cache so any exit
-				// targeting this guest pc can hop here directly.
-				uint64_t* ce = &hctx.chain_cache[(((uint64_t)pc >> 1) & jit::x86::CHAIN_CACHE_MASK) * 6];
-				ce[0] = (uint64_t)jj.chain_fn;
-				ce[1] = pc;
-				ce[2] = gen;
-				ce[3] = smc;
-				ce[4] = mode_key;
-				ce[5] = (uint64_t)(uint16_t)asid;
+// Install this block into the chain jump cache so any exit
+			// targeting this guest pc can hop here directly. Mirrors the
+			// JIT chain dispatcher's Fibonacci-hashed index.
+			const uint64_t cidx = ((uint64_t)(uint32_t)((uint64_t)pc >> 1) * 0x9E3779B9u) >> 16;
+			uint64_t* ce		  = &hctx.chain_cache[(cidx & jit::x86::CHAIN_CACHE_MASK) * 6];
+			ce[0] = (uint64_t)jj.chain_fn;
+			ce[1] = pc;
+			ce[2] = gen;
+			ce[3] = smc;
+			ce[4] = mode_key;
+			ce[5] = (uint64_t)(uint16_t)asid;
 
 				const uint64_t prev_instret = instret;
 				hctx.entry_pc				= pc;
+				if(JPROF) g_dispatch.fetch_add(1, std::memory_order_relaxed);
 				jj.fn(&hctx);
 				// The chain dispatcher counts every hop into chain_budget;
 				// the budget released is the whole chain's instruction total.
-				const uint64_t executed = (uint64_t)((int64_t)jit::x86::CHAIN_CADENCE - hctx.chain_budget);
-				pc						= hctx.exit_pc;
-				instret += executed;
-				cycle += executed;
-				total += executed;
+const uint64_t executed = (uint64_t)((int64_t)jit::x86::CHAIN_CADENCE - hctx.chain_budget);
+			if(executed == 0)
+				if(JPROF) g_dispatch_zero.fetch_add(1, std::memory_order_relaxed);
+			pc						= hctx.exit_pc;
+			instret += executed;
+			cycle += executed;
+			total += executed;
+			if(JPROF)
+			{
+				static uint64_t sampled = 0;
+				if((++sampled & 0xFFF) == 0)
+				{
+					auto now = std::chrono::steady_clock::now();
+					uint64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+					FILE* f = fopen("/tmp/opencode/prof.log", "a");
+					if(f)
+					{
+						fprintf(f, "%llu %llu %llx\n", (unsigned long long)ns, (unsigned long long)instret, (unsigned long long)pc);
+						fclose(f);
+					}
+				}
+			}
+			if(RTRACE)
+			{
+				static int nt = 0;
+				if(pc >= 0xffffffff80000000ULL && nt++ < 300)
+					fprintf(stderr, "rt: pc=%llx ex=%llu bud=%ld exit=%llx fn=%p cf=%p ge=%llx hops=%llu hopfn=%llx hpc=%llx\n",
+							(unsigned long long)pc, (unsigned long long)executed,
+							(long)hctx.chain_budget, (unsigned long long)hctx.exit_pc,
+							(void*)jj.fn, (void*)jj.chain_fn,
+							(unsigned long long)rv64vm::g_smc_epoch.load(),
+							(unsigned long long)jit::x86::g_jit_hops,
+							(unsigned long long)jit::x86::g_hop_fn,
+							(unsigned long long)jit::x86::g_hop_pc);
+			}
 				if(executed != 0)
 				{
 					if((prev_instret & 0x2FFF) + executed >= 0x3000) [[unlikely]]
@@ -324,6 +401,7 @@ namespace rv64vm::runner
 			uint32_t cause	  = 0;
 			uint64_t tval	  = 0;
 			run_block(*this, *b, executed, fault, cause, tval);
+			if(JPROF) g_interp_insts.fetch_add((uint64_t)executed, std::memory_order_relaxed);
 
 			const uint64_t prev_instret = instret;
 			instret += executed;

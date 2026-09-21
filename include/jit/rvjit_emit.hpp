@@ -44,6 +44,25 @@ namespace rv64vm::jit
 		uint32_t instr_index = 0; // index of the instruction being compiled
 		uint32_t instr_bytes = 0; // guest bytes before the instruction being compiled
 		bool valid			 = false;
+
+		// Per-exit chain-link sites (one shared table per block, filled by
+		// emit_block_exit / emit_block_exit_rax through the emitter). Every
+		// normal block exit emits a self-contained tail that validates its
+		// private link slot (data_idx) before hopping; on staleness it falls
+		// back to the shared chain dispatcher, which re-stamps the slot on
+		// hit. lea_disp_off/budget_js/fail[5] are code-buffer positions whose
+		// rel32 targets are patched by emit_link_stubs(); lea_disp_off is the
+		// slot of the lea's disp32 field, relocated (RIP-relative) by
+		// compile() once the arena address is known.
+		struct ExitLink
+		{
+			uint32_t data_idx;	  // index into this block's private slot region
+			uint32_t lea_disp_off; // disp32 field of "lea r15, [rip+slot]"
+			uint32_t budget_js;	  // js (budget exhausted) -> block return stub
+			uint32_t fail[6];	  // guards that miss -> shared chain dispatcher
+		};
+		ExitLink exits[6];
+		uint32_t n_exits = 0;
 	};
 
 	struct VReg
@@ -168,6 +187,10 @@ namespace rv64vm::jit
 		// translators as their block tail.
 		void emit_block_exit(uint32_t delta_va, uint32_t count);
 		void emit_block_exit_rax(uint32_t count);
+
+		// Emits the shared go-to-dispatcher trampoline and the block return
+		// stub, then patches every exit site's recorded branches onto them.
+		void emit_link_stubs();
 
 		// Branch: continue at entry_pc + off + size unless (rs1 cc rs2), which
 		// takes entry_pc + off + imm. check_align exits an odd taken target as

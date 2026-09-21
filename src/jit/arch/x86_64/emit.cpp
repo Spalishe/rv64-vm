@@ -16,6 +16,7 @@ Copyright 2026 Spalishe
 */
 
 #include "../../../../include/jit/rvjit_emit.hpp"
+#include <cstdlib>
 
 namespace rv64vm::jit
 {
@@ -41,13 +42,65 @@ namespace rv64vm::jit
 		constexpr uint8_t CC_JE	 = 0x4;
 		constexpr uint8_t CC_JNE = 0x5;
 
-		void emit_chain_tail(x86::CodeBuf& cb)
+		void emit_chain_tail(JIT_Emitter& em, uint32_t count)
 		{
-			// Every block exit lands in the shared dispatcher instead of
-			// ret-ing: it resolves the target through the hctx jump cache and
-			// either chains (jmp, frame preserved) or pops the one frame that
-			// the C++ caller's call + this prologue pushed, then returns.
-			x86::mov_imm64(cb, x86::REG_R11, x86::chain_dispatcher());
+			// Self-contained block exit. RAX holds the exit pc (entry + delta).
+			// Writes the runner's EXIT/ENTRY/EXIT_COUNT, accounts this block's
+			// own slice of the chain budget, then either hops straight to the
+			// successor whose private link slot (one per exit, in this block's
+			// arena chunk, reached RIP-relatively through r15) matches the
+			// dispatch snapshot, or falls back to the shared chain dispatcher.
+			// The dispatcher re-stamps that slot on every hit, so no code
+			// patching or invalidation sweep is needed: an smc/gen/asid/mode
+			// change trips a guard and returns control to the C++ runner, which
+			// re-dispatches with fresh keys and eventually re-stamps the slot.
+			x86::CodeBuf& cb = em.code();
+			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
+			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_ENTRY, x86::REG_RAX);
+			x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)count);
+			x86::sub_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET, (int32_t)count);
+
+			JIT_Block::ExitLink& L	= em.blk->exits[em.blk->n_exits];
+			L.data_idx				= em.blk->n_exits;
+			em.blk->n_exits++;
+			L.budget_js = x86::jcc32(cb, 0x8); // js: budget exhausted -> runner
+
+			const uint32_t lea_off = cb.pos; // lea r15, [rip + private slot]
+			x86::lea_r64_rip(cb, x86::REG_R15);
+			L.lea_disp_off = lea_off + 3;
+
+			x86::mov_mr(cb, x86::REG_R11, x86::REG_R15, 0);
+			x86::test_rr(cb, x86::REG_R11, x86::REG_R11);
+			L.fail[0] = x86::jcc32(cb, 0x4); // je: slot empty -> dispatcher
+			// The exit pc (rax = entry + delta) must match the pc the slot was
+			// resolved for. A block is keyed by its PHYSICAL start, so the same
+			// compiled code can be hit from two VAs mapping one page (identity
+			// + linear map during the MMU switch); the site then computes a
+			// different rax and hopping to the slot's chain-fn would continue
+			// at the branch target of the OTHER va.
+			x86::cmp_r64_m64(cb, x86::REG_RAX, x86::REG_R15, 8);
+			L.fail[1] = x86::jcc32(cb, 0x5);
+			x86::mov_mr(cb, x86::REG_RDX, x86::REG_R15, 16);
+			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_TLB_GEN);
+			L.fail[2] = x86::jcc32(cb, 0x5);
+			x86::mov_mr(cb, x86::REG_RDX, x86::REG_R15, 24);
+			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_SMC_KEY);
+			L.fail[3] = x86::jcc32(cb, 0x5);
+			x86::mov_mr(cb, x86::REG_RDX, x86::REG_R15, 32);
+			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_MODE_KEY);
+			L.fail[4] = x86::jcc32(cb, 0x5);
+			x86::movzx_r64_m16(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_SATP_ASID);
+			x86::cmp_r16_m16(cb, x86::REG_RDX, x86::REG_R15, 40);
+			L.fail[5] = x86::jcc32(cb, 0x5);
+			if(getenv("JTRACE"))
+			{
+				x86::mov_imm64(cb, x86::REG_R10, (uint64_t)&x86::g_jit_hops);
+				x86::mov_rm(cb, x86::REG_R10, 8, x86::REG_R11); // fn
+				x86::mov_rm(cb, x86::REG_R10, 16, x86::REG_RAX); // pc
+				x86::mov_mr(cb, x86::REG_RAX, x86::REG_R10, 0);
+				x86::add_imm(cb, x86::REG_RAX, 1);
+				x86::mov_rm(cb, x86::REG_R10, 0, x86::REG_RAX);
+			}
 			x86::jmp_r(cb, x86::REG_R11);
 		}
 
@@ -229,9 +282,13 @@ namespace rv64vm::jit
 
 	void JIT_Emitter::emit_prologue()
 	{
-		// rbp frame keeps our pushes out of the caller's red zone.
+		// rbp frame keeps our pushes out of the caller's red zone. r15 is
+		// pushed alongside the other callee-saved regs: the exit tail loads
+		// it with the private link slot address (and the chain dispatcher
+		// refills through it), so every return path must pop it back.
 		x86::push_r(code(), x86::REG_RBP);
 		x86::mov_rr(code(), x86::REG_RBP, x86::REG_RSP);
+		x86::push_r(code(), x86::REG_R15);
 		x86::push_r(code(), x86::REG_R13);
 		x86::push_r(code(), x86::REG_R12);
 		x86::mov_rr(code(), x86::REG_R12, x86::REG_RDI);
@@ -388,6 +445,7 @@ namespace rv64vm::jit
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET, x86::REG_RDX);
 			x86::pop_r(cb, x86::REG_R12);
 			x86::pop_r(cb, x86::REG_R13);
+			x86::pop_r(cb, x86::REG_R15);
 			x86::pop_r(cb, x86::REG_RBP);
 			x86::ret(cb);
 		}
@@ -428,18 +486,42 @@ namespace rv64vm::jit
 		// compressed + uncompressed instructions inside one block.
 		x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
 		x86::add_imm(cb, x86::REG_RAX, (int32_t)delta_va);
-		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
-		x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)count);
-		emit_chain_tail(cb);
+		emit_chain_tail(*this, count);
 	}
 
 	void JIT_Emitter::emit_block_exit_rax(uint32_t count)
 	{
 		x86::CodeBuf& cb = code();
 		flush_all();
-		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
-		x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)count);
-		emit_chain_tail(cb);
+		emit_chain_tail(*this, count);
+	}
+
+	void JIT_Emitter::emit_link_stubs()
+	{
+		x86::CodeBuf& cb = code();
+		// Shared fallback: hop to the chain dispatcher. r15 already holds this
+		// block's slot base, so a dispatcher hit re-stamps the right private
+		// slot (and a miss pops the block frame and returns to the runner).
+		const uint32_t go_pos = cb.pos;
+		x86::mov_imm64(cb, x86::REG_R11, x86::chain_dispatcher());
+		x86::jmp_r(cb, x86::REG_R11);
+
+		// Shared return stub: the chain budget is exhausted (or a guard
+		// failed and the dispatcher bounced); the exit already wrote
+		// exit_pc/exit_count, so pop the block frame and return to the runner.
+		const uint32_t ret_pos = cb.pos;
+		x86::pop_r(cb, x86::REG_R12);
+		x86::pop_r(cb, x86::REG_R13);
+		x86::pop_r(cb, x86::REG_R15);
+		x86::pop_r(cb, x86::REG_RBP);
+		x86::ret(cb);
+
+		for(uint32_t i = 0; i < blk->n_exits; i++)
+		{
+			x86::patch_rel32(cb, blk->exits[i].budget_js, ret_pos);
+			for(int k = 0; k < 6; k++)
+				x86::patch_rel32(cb, blk->exits[i].fail[k], go_pos);
+		}
 	}
 
 	void JIT_Emitter::emit_cond_exit(uint32_t rs1, uint32_t rs2, uint8_t cc, int64_t imm,

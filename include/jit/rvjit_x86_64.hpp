@@ -32,6 +32,7 @@ Copyright 2026 Spalishe
 #include "rvjit_ctx.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
 
 namespace rv64vm::jit::x86
 {
@@ -49,6 +50,8 @@ namespace rv64vm::jit::x86
 	constexpr uint8_t REG_R11 = 11;
 	constexpr uint8_t REG_R12 = 12;
 	constexpr uint8_t REG_R13 = 13;
+	constexpr uint8_t REG_R14 = 14;
+	constexpr uint8_t REG_R15 = 15;
 
 	// Pinned / temporary registers never enter the allocator pool.
 	constexpr uint8_t REG_CTX  = REG_R12;
@@ -538,6 +541,14 @@ namespace rv64vm::jit::x86
 		cb.b(0xAF);
 		modrm_reg(cb, dst, src);
 	}
+	// imul dst, imm32: low 64-bit product (0x69 /r id, sign-extended imm)
+	inline void imul_r_imm32(CodeBuf& cb, uint8_t dst, int32_t imm)
+	{
+		rex(cb, true, dst >= 8, false, dst >= 8);
+		cb.b(0x69);
+		modrm_reg(cb, dst, dst);
+		cb.dw((uint32_t)imm);
+	}
 	inline void imul_rr32(CodeBuf& cb, uint8_t dst, uint8_t src)
 	{
 		rex(cb, false, dst >= 8, false, src >= 8);
@@ -670,5 +681,33 @@ namespace rv64vm::jit::x86
 	{
 		static uint64_t addr = 0;
 		return addr;
+	}
+
+	// debug: last private-slot hop taken by any exit site (env JTRACE)
+	inline uint64_t g_jit_hops  = 0;
+	inline std::atomic<uint64_t> g_chain_guardfail{ 0 };
+	inline std::atomic<uint64_t> g_chain_memmiss{ 0 };
+	inline uint64_t g_hop_fn	  = 0;
+	inline uint64_t g_hop_pc	  = 0;
+
+	// lea r64, [rip + disp32]: used by exit tails to reach their per-exit
+	// link slot (a 48-byte block hanging off the end of the arena chunk).
+	inline void lea_r64_rip(CodeBuf& cb, uint8_t dst)
+	{
+		rex(cb, true, dst >= 8, false, false);
+		cb.b(0x8D);
+		cb.b(0x05 | ((dst & 7) << 3)); // modrm: mod=00 reg=dst rm=101 (RIP-rel)
+		cb.dw(0);
+	}
+
+	// sub qword [base + disp32], signext(imm32) — the exit tail's own budget
+	// accounting, keeping the C++ cadence check as accurate as before while
+	// removing the shared dispatcher from the steady-state path.
+	inline void sub_m64_imm(CodeBuf& cb, uint8_t base, int32_t disp, int32_t imm)
+	{
+		rex(cb, true, false, false, base >= 8);
+		cb.b(0x81);
+		modrm_mem(cb, 5, base, disp);
+		cb.dw((uint32_t)imm);
 	}
 }

@@ -18,11 +18,13 @@ Copyright 2026 Spalishe
 #pragma once
 #include "defines/traps.hpp"
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
 namespace rv64vm::runner
 {
+	inline std::atomic<uint64_t> g_flush_count{ 0 };
 
 	/**
 	 * @ingroup RV64VM-API
@@ -127,23 +129,44 @@ namespace rv64vm::runner
 		void flush_all()
 		{
 			++generation;
+			g_flush_count.fetch_add(1, std::memory_order_relaxed);
 		}
 
 		/**
-		 * @brief Flushes all TLB entries by address
-		 * @note Currently does nothing; calls flush_all
+		 * @brief Flushes TLB entries by address (SFENCE.VMA rs1)
+		 *
+		 * The TLB is direct-mapped on (va >> 12); any resident entry that
+		 * could serve an access to \p va lives at index(va), regardless of
+		 * page size. Invalidating in place (generation = 0) instead of
+		 * bumping the global generation keeps every unrelated compiled JIT
+		 * block and its baked TLB checks alive; the affected slot alone
+		 * fails its baked check, gets refilled by the C++ page walk, and
+		 * the stale block then runs against the fresh entry.
 		 */
-		void flush_addr(uint64_t) { flush_all(); }
+		void flush_addr(uint64_t va)
+		{
+			TlbEntry& e = entries[index(va)];
+			if(e.generation == generation)
+				e.generation = 0;
+		}
 		/**
-		 * @brief Flushes all TLB entries by ASID
-		 * @note Currently does nothing; calls flush_all
+		 * @brief Flushes all TLB entries of an ASID (SFENCE.VMA x0, rs2)
 		 */
-		void flush_asid(uint16_t) { flush_all(); }
+		void flush_asid(uint16_t asid)
+		{
+			for(TlbEntry& e : entries)
+				if(e.generation == generation && !e.global && e.asid == asid)
+					e.generation = 0;
+		}
 		/**
-		 * @brief Flushes all TLB entries by address and ASID
-		 * @note Currently does nothing; calls flush_all
+		 * @brief Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2)
 		 */
-		void flush_addr_asid(uint64_t, uint16_t) { flush_all(); }
+		void flush_addr_asid(uint64_t va, uint16_t asid)
+		{
+			TlbEntry& e = entries[index(va)];
+			if(e.generation == generation && !e.global && e.asid == asid)
+				e.generation = 0;
+		}
 
 	  private:
 		static inline const size_t index(uint64_t va) { return (va >> 12) & (SIZE - 1); }

@@ -1,11 +1,5 @@
 # rv64-vm
 
-> **⚠️ JIT is WORK IN PROGRESS.** The native x86-64 block JIT is experimental:
-> only a subset of RV64I is translated, loads/stores and control flow fall back
-> to the interpreter, and it is validated by differential tests against the
-> interpreter (same guest binary on both paths, final state compared). Expect
-> rough edges; the interpreter is the reference execution path.
-
 A software emulator for the RISC-V instruction set architecture (ISA) written
 in C++. It supports the RV64GC ISA, the privileged ISA (MmU, Sv39 virtual
 memory, machine/supervisor/user privilege levels) and peripheral devices. See
@@ -61,6 +55,9 @@ The emulator supports the following features:
   - [x] HID-over-I2C: Human Interface Device over Inter-Integrated Circuit
     - [x] Boot keyboard: Basic usable keyboard(for now without Numpad support)
 - [x] FDT
+- [ ] JIT
+  - [x] x86_64
+  - [ ] AArch64
 
 ## Build
 ```bash

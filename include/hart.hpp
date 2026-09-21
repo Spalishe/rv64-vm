@@ -147,6 +147,7 @@ namespace rv64vm::runner
 			uint32_t asid = 0;
 			uint8_t mode = 0;
 			uint8_t seen = 0;
+			uint8_t interp = 0; // memoized permanent interpreter fallback decision
 			jit::JITCompiledFunc fn = nullptr;
 			jit::JITCompiledFunc chain_fn = nullptr; // fn + prologue size
 		};
