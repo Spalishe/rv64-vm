@@ -15,8 +15,8 @@ Copyright 2026 Spalishe
 
 */
 
-#include "../../include/devices/virtio_blk.hpp"
-#include "../../include/machine.hpp"
+#include "../../../include/devices/virtio/virtio_blk.hpp"
+#include "../../../include/machine.hpp"
 
 #include <cassert>
 #include <cstdio>

@@ -272,6 +272,8 @@ int main(int argc, char* argv[])
 	machine.start_init();
 
 	// Place for non SoC
+	auto virtio_rng = machine.get_mmio()->create_device_auto<rv64vm::dev::VirtIO_RNG>(machine);
+
 #ifdef USE_FRAMEBUFFER
 	uint64_t fb_w = 0;
 	uint64_t fb_h = 0;

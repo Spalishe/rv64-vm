@@ -17,12 +17,9 @@ Copyright 2026 Spalishe
 
 #include "../include/machine.hpp"
 #include "../include/defines/rvem.hpp"
-#include "../include/devices/clint.hpp"
-#include "../include/devices/i2c/i2c-core.hpp"
-#include "../include/devices/plic.hpp"
-#include "../include/devices/syscon.hpp"
-#include "../include/devices/uart.hpp"
-#include "../include/devices/virtio_blk.hpp"
+#include "../include/rv64-vm.hpp"
+#include "../include/utils/random.hpp"
+#include <cstdint>
 #ifdef USE_JIT
 #include "../include/jit/rvjit.hpp"
 #endif
@@ -139,12 +136,11 @@ namespace rv64vm::runner
 
 		fdt_node* chosen = fdt_node_create("chosen");
 		std::stringstream rng_seed;
-		std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
 		for(int i = 0; i < 16; i++)
 		{
 			char buf[12];
-			uint32_t rand_val = static_cast<uint32_t>(std::rand());
+			uint32_t rand_val = util_urandom(0, UINT32_MAX);
 			snprintf(buf, sizeof(buf), "0x%08x ", rand_val);
 			rng_seed << buf;
 		}
