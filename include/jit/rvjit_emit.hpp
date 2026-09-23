@@ -35,11 +35,9 @@ namespace rv64vm::jit
 	{
 		x86::CodeBuf code;
 		uint64_t start_phys	 = 0;
-		uint64_t tmp_va		 = 0;
 		uint32_t count		 = 0;
 		uint32_t bytes_guest = 0;
 		uint32_t chain_off	 = 0; // bytes of emit_prologue(); the chain entry target
-		uint64_t asid		 = 0;
 		uint64_t smc_epoch	 = 0;
 		uint32_t instr_index = 0; // index of the instruction being compiled
 		uint32_t instr_bytes = 0; // guest bytes before the instruction being compiled
@@ -120,14 +118,17 @@ namespace rv64vm::jit
 
 		// Translation context baked into the block at compile time. The block
 		// is only dispatched while the hart matches these, so the emitted
-		// permission masks stay valid.
+		// permission masks stay valid. ASID is deliberately NOT baked: the
+		// inline TLB check validates it at runtime (asid match or global),
+		// and blocks never cross a page, so the phys key alone identifies
+		// the instruction stream for every address space (see lookup()).
 		uint8_t eff_mode = 0; // Hart::PrivilegeMode as int (0=U,1=S,3=M)
 		bool mxr		 = false;
 		bool sum		 = false;
 
 		// TLB-miss / branch-misalign fixups: each [rel_pos] is a rel32 jcc
 		// into the stub of [instr], patched by emit_miss_stubs(). Dirty guest
-		// registers + their host slots are snapshotted at the site so the stub
+		// registers + their host slots are snapshotted at this point so the stub
 		// can commit them before the block exits to the interpreter.
 		struct MissSite
 		{
@@ -219,7 +220,9 @@ namespace rv64vm::jit
 
 		void emit_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, ALUOp op, bool wVariant);
 		void emit_i_to(uint8_t dstReg, uint8_t src1Reg, int64_t imm, ALUOp op, bool wVariant);
-		void emit_u_to(uint8_t dstReg, int32_t imm, ALUOp op, uint64_t pc);
+		// AUIPC resolves its pc from CTX_OFF_ENTRY at runtime (block-relative
+		// offset comes from blk->instr_bytes), so no absolute VA is baked.
+		void emit_u_to(uint8_t dstReg, int32_t imm, ALUOp op);
 		void emit_m_r_to(uint8_t dstReg, uint8_t src1Reg, uint8_t src2Reg, MOp op, bool wVariant);
 	};
 }

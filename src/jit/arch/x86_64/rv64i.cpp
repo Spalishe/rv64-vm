@@ -39,11 +39,11 @@ namespace rv64vm::jit
 		em.emit_i_to(d.rd, d.rs1, (int64_t)d.imm, op, w);
 		return !em.eof();
 	}
-	static inline bool alu_u(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& em, ALUOp op)
+	static inline bool alu_u(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, ALUOp op)
 	{
 		if(d.rd == 0)
 			return !em.eof();
-		em.emit_u_to(d.rd, (int32_t)(int64_t)d.imm, op, b.tmp_va);
+		em.emit_u_to(d.rd, (int32_t)(int64_t)d.imm, op);
 		return !em.eof();
 	}
 

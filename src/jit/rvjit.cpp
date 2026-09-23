@@ -55,6 +55,7 @@ namespace rv64vm::jit
 
 	void JIT_Context::release_arenas()
 	{
+		g_arena_gen.fetch_add(1, std::memory_order_release);
 		for(uint8_t* a : arenas)
 			munmap(a, JIT_ARENA_BYTES);
 		arenas.clear();
@@ -164,29 +165,156 @@ namespace rv64vm::jit
 		return dispatch;
 	}
 
-	JITExec JIT_Context::lookup(uint64_t phys_pc, uint64_t asid, uint8_t eff_mode, bool mxr, bool sum)
+	// Key: (start_phys, epoch, eff_mode, mxr, sum) - deliberately asid/VA
+	// free.  See the lookup() declaration for the invariants that make this
+	// sound; the chain dispatcher keeps its asid guard separately, because
+	// the chain cache maps a VA to code and needs an address-space probe
+	// there (it costs one bounce per process switch, never a recompile).
+	JITExec JIT_Context::lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum)
 	{
-		CachedBlock& e = cache[index_of(phys_pc)];
-		JITExec out;
-		// asid guard keeps a VA->PA resolution honest across guest processes:
-		// exec reuses a VA with a different mapping, and a recycled physical
-		// page can carry stale compiled text for another asid.
-		if(e.valid && e.start_phys == phys_pc && e.asid == asid && e.smc_epoch == g_smc_epoch.load() && e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
+		const size_t bucket		= index_of(phys_pc);
+		const size_t base		= bucket * CACHE_WAYS;
+		const uint64_t epoch	= g_smc_epoch.load(std::memory_order_relaxed);
+		bool any_same_phys		= false;
+		bool stale_epoch		= false;
+		int other_phys			= -1;
+		for(size_t w = 0; w < CACHE_WAYS; w++)
 		{
+			CachedBlock& e = cache[base + w];
+			if(!e.valid)
+				continue;
+			if(e.start_phys == phys_pc)
+			{
+				any_same_phys = true;
+				if(e.smc_epoch != epoch)
+				{
+					stale_epoch = true;
+					continue;
+				}
+				if(e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
+				{
+					e.hits++;
+					JITExec out;
+					out.fn		 = e.fn;
+					out.chain_fn = e.chain_fn;
+					out.count	 = e.count;
+					g_lookup_ok.fetch_add(1, std::memory_order_relaxed);
+					return out;
+				}
+			}
+			else if(other_phys < 0)
+				other_phys = (int)w;
+		}
+		// Miss classification for JSTATS, against the bucket as a whole.
+		if(any_same_phys)
+		{
+			if(stale_epoch)
+				g_miss_smc.fetch_add(1, std::memory_order_relaxed);
+			else
+				g_miss_asid_mode.fetch_add(1, std::memory_order_relaxed);
+		}
+		else if(other_phys >= 0)
+			g_miss_collide.fetch_add(1, std::memory_order_relaxed);
+		else
+			g_miss_invalid.fetch_add(1, std::memory_order_relaxed);
+		return JITExec{};
+	}
+
+	bool JIT_Context::text_hash_phys(runner::Hart& h, uint64_t phys, uint32_t len, uint64_t out[2])
+	{
+		MemoryMap* mm = h.get_mmap();
+		if(mm == nullptr || len == 0)
+			return false;
+		rv64vm::runner::MemoryMap::MemoryRegion* r;
+		try
+		{
+			r = mm->find_region(phys);
+		}
+		catch(...)
+		{
+			return false;
+		}
+		if(r == nullptr || phys < r->get_base_addr() || (phys - r->get_base_addr()) + len > r->get_size())
+			return false;
+		const uint8_t* p = r->get_data() + (phys - r->get_base_addr());
+		// Two independent seeded FNV-1a passes over the guest text: a 128-bit
+		// digest keeps the "text unchanged" decision practically exact.
+		static constexpr uint64_t FNV = 0x100000001b3ULL;
+		uint64_t a = 0xcbf29ce484222325ULL;
+		uint64_t b = 0x9ddfea08eb382d69ULL;
+		for(uint32_t i = 0; i < len; i++)
+		{
+			a ^= p[i];
+			a *= FNV;
+			b ^= p[i];
+			b *= FNV;
+		}
+		a ^= len;
+		a *= FNV;
+		b ^= (uint64_t)len << 1;
+		b *= FNV;
+		out[0] = a;
+		out[1] = b;
+		return true;
+	}
+
+	std::atomic<uint64_t> g_slv_ok{ 0 };
+	std::atomic<uint64_t> g_slv_mod{ 0 };
+	std::atomic<uint64_t> g_slv_dead{ 0 };
+	std::atomic<uint64_t> g_slv_text{ 0 };
+	std::atomic<uint64_t> g_slv_unread{ 0 };
+	std::atomic<uint64_t> g_slv_none{ 0 };
+
+	bool JIT_Context::salvage(runner::Hart& h, uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, JITExec& out)
+	{
+		static const bool enabled = getenv("JIT_NOSALVAGE") == nullptr;
+		if(!enabled)
+			return false;
+		const size_t base	 = index_of(phys_pc) * CACHE_WAYS;
+		const uint64_t epoch = g_smc_epoch.load(std::memory_order_relaxed);
+		const uint64_t agen	 = g_arena_gen.load(std::memory_order_relaxed);
+		bool saw_same_phys	 = false;
+		for(size_t w = 0; w < CACHE_WAYS; w++)
+		{
+			CachedBlock& e = cache[base + w];
+			if(!e.valid || e.start_phys != phys_pc)
+				continue;
+			saw_same_phys = true;
+			if(e.eff_mode != eff_mode || e.mxr != mxr || e.sum != sum)
+			{
+				g_slv_mod.fetch_add(1, std::memory_order_relaxed);
+				continue; // baked permission policy differs; must re-emit
+			}
+			if(e.smc_epoch == epoch)
+				continue; // fresh; not what we're here for
+			if(e.arena_gen != agen)
+			{
+				g_slv_dead.fetch_add(1, std::memory_order_relaxed);
+				continue; // its code was freed (UAF guard)
+			}
+			uint64_t cur[2];
+			if(!text_hash_phys(h, phys_pc, e.guest_bytes, cur))
+			{
+				g_slv_unread.fetch_add(1, std::memory_order_relaxed);
+				continue; // unreadable text: let compile re-emit
+			}
+			if(e.text_hash[0] != cur[0] || e.text_hash[1] != cur[1])
+			{
+				g_slv_text.fetch_add(1, std::memory_order_relaxed);
+				continue; // text really changed: recompiling is mandatory
+			}
+			e.smc_epoch = epoch; // text verified identical: re-key, keep code
+			e.hits++;
 			out.fn		 = e.fn;
 			out.chain_fn = e.chain_fn;
 			out.count	 = e.count;
 			g_lookup_ok.fetch_add(1, std::memory_order_relaxed);
+			g_slv_ok.fetch_add(1, std::memory_order_relaxed);
+			return true;
 		}
-		else if(e.valid && e.start_phys != phys_pc)
-			g_miss_collide.fetch_add(1, std::memory_order_relaxed);
-		else if(e.valid && e.start_phys == phys_pc && e.smc_epoch != g_smc_epoch.load())
-			g_miss_smc.fetch_add(1, std::memory_order_relaxed);
-		else if(e.valid && e.start_phys == phys_pc)
-			g_miss_asid_mode.fetch_add(1, std::memory_order_relaxed);
-		else
-			g_miss_invalid.fetch_add(1, std::memory_order_relaxed);
-		return out;
+		if(!saw_same_phys)
+			g_slv_none.fetch_add(1, std::memory_order_relaxed);
+		return false;
 	}
 
 	bool JIT_Context::hot_tick(uint64_t phys_pc)
@@ -199,18 +327,18 @@ namespace rv64vm::jit
 		GiveUpSlot& g  = giveup[i];
 		if(g.skip && g.phys == phys_pc)
 			return false; // known non-JIT starter: let the interpreter have it
-		CachedBlock& e			 = cache[i];
+		HotSlot& hs		   = hotmap[i];
 		const uint64_t cur_epoch = g_smc_epoch.load();
 		// after an invalidation (smc epoch bump) the first
 		// dispatch to a pc re-bases its counter, so one-touch (cold) code is
 		// NOT recompiled after every SFENCE while genuinely hot code still
 		// recompiles after 2 dispatches.
-		if(e.hot_epoch != (uint32_t)cur_epoch)
+		if(hs.hot_epoch != (uint32_t)cur_epoch)
 		{
-			e.hot_epoch = (uint32_t)cur_epoch;
-			e.hot		= 0;
+			hs.hot_epoch = (uint32_t)cur_epoch;
+			hs.hot		= 0;
 		}
-		return ++e.hot >= hot_threshold;
+		return ++hs.hot >= hot_threshold;
 	}
 
 	bool JIT_Context::is_giveup(uint64_t phys_pc)
@@ -255,7 +383,7 @@ namespace rv64vm::jit
 		const bool sum		   = h.status.fields.SUM;
 
 		// Already compiled by a concurrent hart?
-		JITExec fast = lookup(phys_pc, h.satp.fields.asid, eff_mode, mxr, sum);
+		JITExec fast = lookup(phys_pc, eff_mode, mxr, sum);
 		if(fast.fn != nullptr)
 			return fast;
 
@@ -271,6 +399,13 @@ namespace rv64vm::jit
 		uint64_t pc_va = va_pc;
 		uint32_t count = 0;
 		uint32_t size  = 0;
+		// The whole block must live in the start's 4K VA page: dispatch
+		// validates the VA->PA resolution only for the start pc, so page
+		// containment is what lets the phys key identify the instruction
+		// stream for every other asid / VA alias mapping that start (any
+		// page size maps the containing page contiguously).  It also keeps
+		// text_hash_phys()'s contiguous phys-range digest honest.
+		const uint64_t page_end = (va_pc & ~0xFFFULL) + 0x1000;
 		uint32_t guest_words[RVJIT_MAX_INSTRUCTIONS];
 		while(count < RVJIT_MAX_INSTRUCTIONS)
 		{
@@ -288,13 +423,20 @@ namespace rv64vm::jit
 			{
 				break; // illegal instruction
 			}
+			if(pc_va + cache->data.size > page_end)
+			{
+				break; // would straddle the page: next page's phys is dispatch-unverified
+			}
+			if(phys != phys_pc + size)
+			{
+				break; // not physically contiguous: the phys range would not cover the block
+			}
 			if(cache->inst->jit_func == nullptr)
 				break; // not JIT-able (control/mem/system/fence/jmp/ebreak)
 			// jit_func always emits before returning; count it even when it
 			// reports buffer exhaustion (keep==false just ends the block).
 			blk.instr_index	   = count;
 			blk.instr_bytes	   = size;
-			blk.tmp_va		   = pc_va;
 			const bool keep	   = cache->inst->jit_func(h, const_cast<InstructionData&>(cache->data), blk, em);
 			guest_words[count] = cache->data.inst;
 			count++;
@@ -322,7 +464,6 @@ namespace rv64vm::jit
 		em.emit_miss_stubs();
 		blk.count		= count;
 		blk.bytes_guest = size;
-		blk.asid		= h.satp.fields.asid;
 		blk.smc_epoch	= g_smc_epoch.load();
 
 		// Materialize into an executable (writable) arena, then hang this
@@ -383,16 +524,41 @@ namespace rv64vm::jit
 				h.get_mmu().get_tlb().note_exec(p);
 		}
 
-		CachedBlock& e = cache[index_of(phys_pc)];
+		const size_t base	  = index_of(phys_pc) * CACHE_WAYS;
+		size_t victim		  = 0;
+		uint32_t min_hits	  = UINT32_MAX;
+		for(size_t w = 0; w < CACHE_WAYS; w++)
+		{
+			CachedBlock& e = cache[base + w];
+			if(!e.valid)
+			{
+				victim = w;
+				break; // prefer a free way
+			}
+			if(e.hits < min_hits)
+			{
+				min_hits = e.hits;
+				victim	 = w;
+			}
+		}
+		CachedBlock& e = cache[base + victim];
 		e.fn		   = (JITCompiledFunc)(void*)dst;
 		e.chain_fn	   = (JITCompiledFunc)(void*)(dst + blk.chain_off);
 		e.start_phys   = phys_pc;
-		e.asid		   = h.satp.fields.asid;
 		e.smc_epoch	   = block_epoch;
 		e.eff_mode	   = eff_mode;
 		e.mxr		   = mxr;
 		e.sum		   = sum;
 		e.count		   = count;
+		e.guest_bytes  = size;
+		e.arena_gen	   = g_arena_gen.load(std::memory_order_relaxed);
+		if(!text_hash_phys(h, phys_pc, size, e.text_hash))
+		{
+			// Unreadable text now: salvage() can never verify it, so every
+			// invalidation will recompile - correctness unaffected.
+			e.text_hash[0] = e.text_hash[1] = 0;
+		}
+		e.hits		   = 0;
 		e.valid		   = true;
 
 		return { e.fn, e.chain_fn, count };

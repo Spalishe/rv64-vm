@@ -1215,7 +1215,7 @@ void JIT_Emitter::emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
 		if(wVariant)
 			x86::movsxd(code(), D, D);
 	}
-	void JIT_Emitter::emit_u_to(uint8_t dstReg, int32_t imm, ALUOp op, uint64_t pc)
+	void JIT_Emitter::emit_u_to(uint8_t dstReg, int32_t imm, ALUOp op)
 	{
 		uint8_t D = hreg_for_write(dstReg);
 		switch(op)
@@ -1224,7 +1224,15 @@ void JIT_Emitter::emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
 				x86::mov_imm64(code(), D, imm);
 				break;
 			case ALUOp::AUIPC:
-				x86::mov_imm64(code(), D, imm + pc);
+				// rd = entry_pc + instr_bytes + imm, all resolved at runtime:
+				// entry_pc is re-stamped by the runner / chain dispatcher on
+				// every entry, so the block bakes no absolute VA and one
+				// compiled copy serves every VA alias of its phys page.
+				// imm is a multiple of 4096 within int32 and instr_bytes < 4096
+				// (blocks never cross a page), so imm + instr_bytes cannot
+				// overflow the sign-extended imm32 of `add`.
+				x86::mov_mr(code(), D, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+				x86::add_imm(code(), D, (int32_t)((int64_t)imm + (int64_t)blk->instr_bytes));
 				break;
 		}
 		vr[dstReg].dirty = true;

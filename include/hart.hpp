@@ -142,16 +142,24 @@ namespace rv64vm::runner
 		// translate + JIT lookup + hot_tick entirely. "seen" marks that the pc
 		// was already witnessed at this translation; only then does dispatch
 		// engage the JIT machinery at all (cold linear code stays interpreter).
+		// Set-associative dispatch memo: MEMO_WAYS slots per bucket keyed by
+		// (va, gen, smc, mode, asid).  The memo must stay asid-keyed - it
+		// caches a VA->PA resolution, which genuinely differs per address
+		// space - even though the block cache behind it is asid-free: several
+		// ways keep the recent resolutions resident so the same block under a
+		// rotated asid re-dispatches without re-querying the MMU.
+		static constexpr int MEMO_WAYS = 8;
 		struct DispatchHot {
 			uint64_t va = 0, gen = 0, smc = 0, phys = 0;
 			uint32_t asid = 0;
 			uint8_t mode = 0;
 			uint8_t seen = 0;
 			uint8_t interp = 0; // memoized permanent interpreter fallback decision
+			uint8_t lru = 0;	 // pseudo-LRU generation for way eviction
 			jit::JITCompiledFunc fn = nullptr;
 			jit::JITCompiledFunc chain_fn = nullptr; // fn + prologue size
 		};
-		DispatchHot dhot[4096]{};
+		DispatchHot dhot[4096 * MEMO_WAYS]{};
 		jit::JIT_Context* jctx = nullptr;
 #endif
 

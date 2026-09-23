@@ -41,12 +41,16 @@ namespace rv64vm::jit
 	inline std::atomic<uint64_t> g_inval_count{ 0 };
 	inline std::atomic<uint64_t> g_compile_ns{ 0 };
 	inline std::atomic<uint64_t> g_unique_blocks{ 0 };
-	// lookup miss classification
+	// lookup miss classification (asid no longer participates: "asid" misses
+	// below are mode/mxr/sum mismatches on the same phys)
 	inline std::atomic<uint64_t> g_miss_collide{ 0 };
 	inline std::atomic<uint64_t> g_miss_smc{ 0 };
 	inline std::atomic<uint64_t> g_miss_asid_mode{ 0 };
 	inline std::atomic<uint64_t> g_lookup_ok{ 0 };
 	inline std::atomic<uint64_t> g_miss_invalid{ 0 };
+	// Bumped by release_arenas(); a compiled block records the generation its
+	// code was emitted into so salvage() never resurrects freed (UAF) code.
+	inline std::atomic<uint64_t> g_arena_gen{ 0 };
 
 	// Result of a JIT dispatch attempt.
 	struct JITExec
@@ -60,8 +64,16 @@ namespace rv64vm::jit
 	{
 	  public:
 		static constexpr uint64_t JIT_CACHE_SIZE = 1 << 18;
+		// Associativity of the block cache.  The key is asid-free (see
+		// lookup()), so the ways no longer hold per-asid variants of one
+		// phys - they absorb the remaining key dimensions (eff_mode/mxr/sum)
+		// and plain index collisions.  Eviction is LFU by hit count.
+		static constexpr size_t CACHE_WAYS = 8;
 
-		JIT_Context() : cache(JIT_CACHE_SIZE), giveup(JIT_CACHE_SIZE) {}
+		JIT_Context()
+			: cache(JIT_CACHE_SIZE * CACHE_WAYS), giveup(JIT_CACHE_SIZE), hotmap(JIT_CACHE_SIZE)
+		{
+		}
 		~JIT_Context() { release_arenas(); }
 
 		JIT_Context(const JIT_Context&)			   = delete;
@@ -71,11 +83,33 @@ namespace rv64vm::jit
 		// execution; {nullptr,0} when the stream is not JIT-able.
 		JITExec compile(runner::Hart& h, uint64_t va_pc, uint64_t phys_pc);
 
-		// Cache lookup with ASID + SMC-epoch + effective-mode validation.
-		JITExec lookup(uint64_t phys_pc, uint64_t asid, uint8_t eff_mode, bool mxr, bool sum);
+		// Cache lookup keyed by (start_phys, SMC-epoch, eff_mode, mxr, sum).
+		//
+		// ASID is intentionally NOT part of the key: the inline TLB check in
+		// emit_tlb_checks validates the asid (or global bit) of every data
+		// access at runtime, and two structural invariants make the baked
+		// instruction stream asid-independent as well:
+		//   - compile() never crosses a 4K VA page, so dispatch's single
+		//     VA->PA check on the start pc covers the whole block: any asid
+		//     (or VA alias) that resolves the start to the same phys resolves
+		//     every byte of the block to the same phys page;
+		//   - AUIPC/branches read entry_pc at runtime, so no absolute VA is
+		//     baked (see emit_u_to / emit_block_exit).
+		// Without this, ~100 guest processes recompiled the same phys blocks
+		// once per asid and the 8 ways could not hold the variants.
+		JITExec lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum);
 
 		// Hotness gate: triggers compilation after RVJIT_HOT_THRESHOLD dispatches.
 		bool hot_tick(uint64_t phys_pc);
+
+		// After an invalidation (smc-epoch bump) the cache used to rewrite
+		// every block on its next dispatch even though sfences / arena
+		// flushes rarely change guest text at all.  A straight-line compiled
+		// block is fully determined by its guest bytes, so a stale-epoch way
+		// whose text hashes identically to the current physical text is reused
+		// and re-keyed to the current epoch instead of recompiled.  Returns
+		// false when nothing can be salvaged (caller must compile).
+		bool salvage(runner::Hart& h, uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, JITExec& out);
 
 		// Permanent "not a JIT-able starter" decision (see compile()); lets the
 		// dispatch memo cache the interpreter fallback for this phys.
@@ -90,14 +124,15 @@ namespace rv64vm::jit
 			JITCompiledFunc fn		 = nullptr;
 			JITCompiledFunc chain_fn = nullptr; // fn + prologue size
 			uint64_t start_phys		 = 0;
-			uint64_t asid			 = 0;
 			uint64_t smc_epoch		 = 0;
 			uint8_t eff_mode		 = 0; // baked privilege mode (0=U,1=S,3=M)
 			bool mxr				 = false;
 			bool sum				 = false;
-			uint32_t hot			 = 0; // dispatch counter before compiling
-			uint32_t hot_epoch		 = 0; // smc epoch the hot counter is based on
+			uint32_t hits			 = 0; // lookup hits (LFU eviction score)
 			uint32_t count			 = 0;
+			uint32_t guest_bytes	 = 0; // guest text bytes this block decoded
+			uint64_t text_hash[2]	 = { 0, 0 }; // 128-bit digest of that text
+			uint64_t arena_gen		 = 0; // release_arenas generation (UAF guard)
 			bool valid				 = false;
 		};
 
@@ -109,8 +144,21 @@ namespace rv64vm::jit
 			bool skip	  = false;
 		};
 
+		// Per-bucket hotness gate, keyed by phys only (not by asid), so the
+		// "compile this pc" decision matches the single-slot semantics: a hot
+		// phys compiles whichever (asid, ...) variant is currently dispatching.
+		struct HotSlot
+		{
+			uint32_t hot	   = 0; // dispatch counter before compiling
+			uint32_t hot_epoch = 0; // smc epoch the hot counter is based on
+		};
+
+		// JIT_CACHE_SIZE buckets x CACHE_WAYS ways; bucket b lives at
+		// cache[b * CACHE_WAYS + w].  Each way is keyed by
+		// (start_phys, smc_epoch, eff_mode, mxr, sum) - no asid, no VA.
 		std::vector<CachedBlock> cache;
 		std::vector<GiveUpSlot> giveup;
+		std::vector<HotSlot> hotmap;
 		std::vector<uint8_t*> arenas;
 		uint8_t* cur		 = nullptr;
 		size_t cur_used		 = 0;
@@ -119,6 +167,7 @@ namespace rv64vm::jit
 		uint8_t* arena_alloc(size_t nbytes);
 		void mark_block_executed(uint64_t phys_pc, uint64_t guest_bytes);
 		void release_arenas();
+		static bool text_hash_phys(runner::Hart& h, uint64_t phys, uint32_t len, uint64_t out[2]);
 		static uint64_t index_of(uint64_t phys_pc)
 		{
 			// Mix high address bits into the index: kernel text spans tens of
@@ -130,6 +179,13 @@ namespace rv64vm::jit
 			return (h >> 20) & (JIT_CACHE_SIZE - 1);
 		}
 	};
+
+	extern std::atomic<uint64_t> g_slv_ok;
+	extern std::atomic<uint64_t> g_slv_mod;
+	extern std::atomic<uint64_t> g_slv_dead;
+	extern std::atomic<uint64_t> g_slv_text;
+	extern std::atomic<uint64_t> g_slv_unread;
+	extern std::atomic<uint64_t> g_slv_none;
 
 // Each returns true when the instruction was compiled and the block may
 // continue, false when the block should stop right after it.

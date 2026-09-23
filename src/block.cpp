@@ -37,6 +37,7 @@ namespace rv64vm::runner
 		std::atomic<uint64_t> g_interp_insts{ 0 }; // instructions run by the block interpreter
 		std::atomic<uint64_t> g_memo_hit{ 0 };	 // dhot memo hits
 		std::atomic<uint64_t> g_memo_fn{ 0 };	 // memo hits carrying a compiled fn
+		std::atomic<uint64_t> g_dhot_tick{ 0 };	 // global pseudo-LRU generation for memo ways
 		std::atomic<uint64_t> g_interp_disp{ 0 }; // dispatches that fell through to the interpreter
 		std::atomic<uint64_t> g_interp_memo{ 0 }; // ...served by the memoized giveup path
 
@@ -220,42 +221,81 @@ namespace rv64vm::runner
 			uint64_t smc  = rv64vm::g_smc_epoch.load(std::memory_order_relaxed);
 			const uint32_t asid = satp.fields.asid;
 			const size_t di = ((pc >> 1) * 2654435761u + (uint32_t)gen + (uint32_t)smc) & 4095;
-			DispatchHot& d	= dhot[di];
 			jit::JITExec jj{};
 			// Chain key: mirrors what compile() bakes into block TLB checks.
 			const uint64_t mode_key = (uint64_t)get_effective_mode(AccessType::STORE) |
 									  (status.fields.MXR ? 0x100ull : 0) |
 									  (status.fields.SUM ? 0x200ull : 0);
 
-			// One-pass JIT: dhot only memorizes the last outcome; a memo hit
-			// with a compiled fn skips the translate+lookup on the re-dispatch.
+			// Set-associative memo: scan the bucket's ways for a keyed hit, or
+			// install into a free way / the least-recent one.  A hit with a
+			// compiled fn skips the translate+lookup on the re-dispatch.
 			jit::JITExec cached{};
-			const bool memo_hit = d.seen && d.va == pc && d.gen == gen && d.mode == mode && d.smc == smc && d.asid == asid;
-			bool interp_memo = false;
-			if(JPROF && memo_hit) g_memo_hit.fetch_add(1, std::memory_order_relaxed);
-			if(memo_hit && d.fn != nullptr)
+			DispatchHot* dhotw = &dhot[di * MEMO_WAYS];
+			DispatchHot* d	   = nullptr;
+			for(int widx = 0; widx < MEMO_WAYS; widx++)
 			{
-				cached.fn		= d.fn;
-				cached.chain_fn = d.chain_fn;
-				phys			= d.phys;
+				DispatchHot& s = dhotw[widx];
+				if(s.seen && s.va == pc && s.gen == gen && s.mode == mode && s.smc == smc && s.asid == asid)
+				{
+					d = &s;
+					s.lru = (uint8_t)g_dhot_tick.fetch_add(1, std::memory_order_relaxed);
+					break;
+				}
+			}
+			if(d == nullptr)
+			{
+				int slot = 0;
+				uint8_t min_lru = 0xFF;
+				for(int widx = 0; widx < MEMO_WAYS; widx++)
+				{
+					DispatchHot& s = dhotw[widx];
+					if(!s.seen)
+					{
+						slot = widx;
+						break;
+					}
+					if(s.lru < min_lru)
+					{
+						min_lru = s.lru;
+						slot	= widx;
+					}
+				}
+				d = &dhotw[slot];
+				d->va		= pc;
+				d->gen		= gen;
+				d->mode		= mode;
+				d->smc		= smc;
+				d->asid		= asid;
+				d->seen		= true;
+				d->fn		= nullptr;
+				d->chain_fn = nullptr;
+				d->interp	= 0;
+				d->lru		= (uint8_t)g_dhot_tick.fetch_add(1, std::memory_order_relaxed);
+			}
+			const bool memo_hit = true; // `d` always the exact key now
+			bool interp_memo	  = false;
+			if(JPROF) g_memo_hit.fetch_add(1, std::memory_order_relaxed);
+			if(memo_hit && d->fn != nullptr)
+			{
+				cached.fn		= d->fn;
+				cached.chain_fn = d->chain_fn;
+				phys			= d->phys;
 				phys_done		= true;
 				if(JPROF) g_memo_fn.fetch_add(1, std::memory_order_relaxed);
 			}
-			else if(memo_hit && d.interp)
+			else if(memo_hit && d->interp)
 			{
 				// Permanent interpreter fallback (giveup block): the translation
 				// and JIT-decision are still valid for this key; reuse phys and
 				// skip translate + lookup + hot_tick entirely.
-				phys		 = d.phys;
+				phys		 = d->phys;
 				phys_done	 = true;
 				interp_memo = true;
 				if(JPROF) g_interp_memo.fetch_add(1, std::memory_order_relaxed);
 			}
-			else
-			{
-				d.va = pc; d.gen = gen; d.mode = mode; d.smc = smc; d.asid = asid;
-				d.seen = true; d.fn = nullptr; d.chain_fn = nullptr; d.interp = 0;
-			}
+			// else: no compiled fn and no giveup decision yet - fall through to
+			// translate + lookup + hot_tick below (the way is already keyed).
 
 			if(!phys_done)
 			{
@@ -271,26 +311,29 @@ namespace rv64vm::runner
 			jj = cached;
 			if(jj.fn == nullptr && !interp_memo)
 			{
-				d.phys = phys;
+				d->phys = phys;
 				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
 				const bool mxr		   = status.fields.MXR;
 				const bool sum		   = status.fields.SUM;
-				jj = jctx->lookup(phys, asid, eff_mode, mxr, sum);
+				jj = jctx->lookup(phys, eff_mode, mxr, sum);
 				if(jj.fn == nullptr && jctx->hot_tick(phys))
 				{
-					jj = jctx->compile(*this, pc, phys);
+					// An invalidation leaves mostly-intact text; reuse the
+					// compiled block when the guest bytes are unchanged.
+					if(!jctx->salvage(*this, phys, eff_mode, mxr, sum, jj))
+						jj = jctx->compile(*this, pc, phys);
 				}
 				// Re-read smc after compile() — it may have called
 				// release_arenas() which bumps g_smc_epoch.  Using a
 				// stale smc would let the chain dispatcher validate
 				// against freed arenas.
 				smc = rv64vm::g_smc_epoch.load(std::memory_order_acquire);
-				d.fn		= jj.fn;
-				d.chain_fn	= jj.chain_fn;
+				d->fn		= jj.fn;
+				d->chain_fn = jj.chain_fn;
 				// Remember a permanent interpreter decision so repeat
 				// dispatches skip the JIT machinery above.
 				if(jj.fn == nullptr && jctx->is_giveup(phys))
-					d.interp = 1;
+					d->interp = 1;
 			}
 
 			if(jj.fn == nullptr)
@@ -341,6 +384,18 @@ const uint64_t executed = (uint64_t)((int64_t)jit::x86::CHAIN_CADENCE - hctx.cha
 					{
 						fprintf(f, "%llu %llu %llx\n", (unsigned long long)ns, (unsigned long long)instret, (unsigned long long)pc);
 						fclose(f);
+					}
+					FILE* c = fopen("/tmp/opencode/counters.log", "a");
+					if(c)
+					{
+						static uint64_t c_last_ns = 0;
+						if(ns - c_last_ns >= 50000000ULL) // ~20 Hz rate cap
+						{
+							c_last_ns = ns;
+							fprintf(c, "%llu comp=%llu uniq=%llu ctime_ms=%llu invals=%llu smc=%llu slv_ok=%llu slv_mod=%llu slv_dead=%llu slv_text=%llu slv_unr=%llu slv_none=%llu ok=%llu coll=%llu msmc=%llu masid=%llu minv=%llu disp=%llu z=%llu interp=%llu walk=%llu fc=%llu mh=%llu mfn=%llu idisp=%llu imemo=%llu\n",
+								(unsigned long long)ns, (unsigned long long)jit::g_compile_count.load(), (unsigned long long)jit::g_unique_blocks.load(), (unsigned long long)(jit::g_compile_ns.load()/1000000), (unsigned long long)jit::g_inval_count.load(), (unsigned long long)rv64vm::g_smc_epoch.load(), (unsigned long long)jit::g_slv_ok.load(), (unsigned long long)jit::g_slv_mod.load(), (unsigned long long)jit::g_slv_dead.load(), (unsigned long long)jit::g_slv_text.load(), (unsigned long long)jit::g_slv_unread.load(), (unsigned long long)jit::g_slv_none.load(), (unsigned long long)jit::g_lookup_ok.load(), (unsigned long long)jit::g_miss_collide.load(), (unsigned long long)jit::g_miss_smc.load(), (unsigned long long)jit::g_miss_asid_mode.load(), (unsigned long long)jit::g_miss_invalid.load(), (unsigned long long)g_dispatch.load(), (unsigned long long)g_dispatch_zero.load(), (unsigned long long)g_interp_insts.load(), (unsigned long long)g_walk_count.load(), (unsigned long long)rv64vm::runner::g_flush_count.load(), (unsigned long long)g_memo_hit.load(), (unsigned long long)g_memo_fn.load(), (unsigned long long)g_interp_disp.load(), (unsigned long long)g_interp_memo.load());
+						}
+						fclose(c);
 					}
 				}
 			}
