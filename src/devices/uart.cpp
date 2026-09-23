@@ -50,7 +50,7 @@ namespace rv64vm::dev
 		fdt_node_add_prop_reg(uart_fdt, "reg", start, 0x100);
 		fdt_node_add_prop_str(uart_fdt, "compatible", "ns16550a");
 		fdt_node_add_prop_u32(uart_fdt, "clock-frequency", 20000000);
-		fdt_node_add_prop_u32(uart_fdt, "fifo-size", 16);
+		fdt_node_add_prop_u32(uart_fdt, "fifo-size", 512);
 		fdt_node_add_prop_str(uart_fdt, "status", "okay");
 		fdt_node* soc  = fdt_node_find(fdt, "soc");
 		fdt_node* plic = fdt_node_find_reg(soc, "plic", 0x0C000000);
@@ -300,7 +300,7 @@ namespace rv64vm::dev
 	void UART::receive_byte(uint8_t byte)
 	{
 		// FIFO overflow
-		if(fifo_enabled && fifo_buffer.size() >= 16)
+		if(fifo_enabled && fifo_buffer.size() >= 512)
 		{
 			lsr |= LSR_OE; // Overrun Error
 			return;
