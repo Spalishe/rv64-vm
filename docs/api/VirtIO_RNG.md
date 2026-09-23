@@ -1,14 +1,14 @@
 
 
-# VirtIO_BLK
+# VirtIO_RNG
 
 ```cpp
-#include <virtio_blk.hpp>
+#include <virtio_rng.hpp>
 
-class VirtIO_BLK
+class VirtIO_RNG
 ```
 
-Defined in include/devices/virtio/virtio_blk.hpp:32
+Defined in include/devices/virtio/virtio_rng.hpp:32
 
 > **Inherits:** [`Device`](Device.md#device)
 
@@ -16,8 +16,8 @@ Defined in include/devices/virtio/virtio_blk.hpp:32
 
 | Name | Kind | Owner |
 |------|------|-------|
-| [`read`](#read-8) | `function` | Declared here |
-| [`write`](#write-8) | `function` | Declared here |
+| [`read`](#read-9) | `function` | Declared here |
+| [`write`](#write-9) | `function` | Declared here |
 | [`mmap`](Device.md#mmap) | `variable` | Inherited from [`Device`](Device.md#device) |
 | [`start`](Device.md#start) | `variable` | Inherited from [`Device`](Device.md#device) |
 | [`size`](Device.md#size) | `variable` | Inherited from [`Device`](Device.md#device) |
@@ -46,8 +46,8 @@ Defined in include/devices/virtio/virtio_blk.hpp:32
 
 | Return | Name | Description |
 |--------|------|-------------|
-| `uint64_t` | [`read`](#read-8) `virtual` | [Device](Device.md#device) read function. |
-| `void` | [`write`](#write-8) `virtual` | [Device](Device.md#device) write function. |
+| `uint64_t` | [`read`](#read-9) `virtual` | [Device](Device.md#device) read function. |
+| `void` | [`write`](#write-9) `virtual` | [Device](Device.md#device) write function. |
 
 ---
 
@@ -61,7 +61,7 @@ Defined in include/devices/virtio/virtio_blk.hpp:32
 virtual uint64_t read(uint64_t addr, MemorySize size)
 ```
 
-Defined in include/devices/virtio/virtio_blk.hpp:40
+Defined in include/devices/virtio/virtio_rng.hpp:40
 
 [Device](Device.md#device) read function.
 
@@ -81,7 +81,7 @@ Defined in include/devices/virtio/virtio_blk.hpp:40
 virtual void write(uint64_t addr, MemorySize size, uint64_t val)
 ```
 
-Defined in include/devices/virtio/virtio_blk.hpp:41
+Defined in include/devices/virtio/virtio_rng.hpp:41
 
 [Device](Device.md#device) write function.
 

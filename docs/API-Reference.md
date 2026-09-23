@@ -38,6 +38,9 @@ This document contains all Exported API objects.
 * **[VirtIO_BLK](api/VirtIO_BLK.md)**
   * [read](api/VirtIO_BLK.md#read)
   * [write](api/VirtIO_BLK.md#write)
+* **[VirtIO_RNG](api/VirtIO_RNG.md)**
+  * [read](api/VirtIO_RNG.md#read)
+  * [write](api/VirtIO_RNG.md#write)
 
 ## Namespace `rv64vm::runner`
 

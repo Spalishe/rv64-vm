@@ -11,7 +11,7 @@ struct Device
 Defined in include/device.hpp:31
 
 > **Inherits:** `enable_shared_from_this< Device >`
-> **Subclassed by:** [`CLINT`](CLINT.md#clint), [`I2C`](I2C.md#i2c), [`PCI_HEG`](PCI_HEG.md#pci_heg), [`PLIC`](PLIC.md#plic), [`SYSCON`](SYSCON.md#syscon), [`UART`](UART.md#uart), [`VirtIO_BLK`](VirtIO_BLK.md#virtio_blk)
+> **Subclassed by:** [`CLINT`](CLINT.md#clint), [`I2C`](I2C.md#i2c), [`PCI_HEG`](PCI_HEG.md#pci_heg), [`PLIC`](PLIC.md#plic), [`SYSCON`](SYSCON.md#syscon), [`UART`](UART.md#uart), [`VirtIO_BLK`](VirtIO_BLK.md#virtio_blk), [`VirtIO_RNG`](VirtIO_RNG.md#virtio_rng)
 
 [Device](#device) base structure.
 
@@ -148,6 +148,7 @@ Defined in include/device.hpp:65
 - [`read`](SYSCON.md#read-6)
 - [`read`](UART.md#read-4)
 - [`read`](VirtIO_BLK.md#read-8)
+- [`read`](VirtIO_RNG.md#read-9)
 
 ---
 
@@ -173,6 +174,7 @@ Defined in include/device.hpp:69
 - [`write`](PLIC.md#write-3)
 - [`write`](SYSCON.md#write-6)
 - [`write`](VirtIO_BLK.md#write-8)
+- [`write`](VirtIO_RNG.md#write-9)
 - [`write`](UART.md#write-4)
 
 ---
