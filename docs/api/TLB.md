@@ -8,7 +8,7 @@
 class TLB
 ```
 
-Defined in include/tlb.hpp:30
+Defined in include/tlb.hpp:33
 
 RISC-V Translation Lookaside Buffer.
 
@@ -22,9 +22,9 @@ RISC-V Translation Lookaside Buffer.
 | `void` | [`insert`](#insert)  | Inserts new [TLB](#tlb) entry in cache. |
 | `void` | [`note_exec`](#note_exec) `inline` | Strips the write/dirty capability from the entry for `va`. |
 | `void` | [`flush_all`](#flush_all) `inline` | Flushes all [TLB](#tlb) entries. |
-| `void` | [`flush_addr`](#flush_addr) `inline` | Flushes all [TLB](#tlb) entries by address. |
-| `void` | [`flush_asid`](#flush_asid) `inline` | Flushes all [TLB](#tlb) entries by ASID. |
-| `void` | [`flush_addr_asid`](#flush_addr_asid) `inline` | Flushes all [TLB](#tlb) entries by address and ASID. |
+| `void` | [`flush_addr`](#flush_addr) `inline` | Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1) |
+| `void` | [`flush_asid`](#flush_asid) `inline` | Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2) |
+| `void` | [`flush_addr_asid`](#flush_addr_asid) `inline` | Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2) |
 
 ---
 
@@ -38,7 +38,7 @@ RISC-V Translation Lookaside Buffer.
 inline TLB()
 ```
 
-Defined in include/tlb.hpp:36
+Defined in include/tlb.hpp:39
 
 [TLB](#tlb) Constructor.
 
@@ -54,7 +54,7 @@ Defined in include/tlb.hpp:36
 inline ~TLB()
 ```
 
-Defined in include/tlb.hpp:40
+Defined in include/tlb.hpp:43
 
 [TLB](#tlb) Destructor.
 
@@ -68,7 +68,7 @@ Defined in include/tlb.hpp:40
 bool lookup(uint64_t va, AccessType type, uint16_t asid, int mode, bool mxr, bool sum, uint64_t * pa)
 ```
 
-Defined in include/tlb.hpp:87
+Defined in include/tlb.hpp:90
 
 Looks up in cache for [TLB](#tlb) entry.
 
@@ -101,7 +101,7 @@ Is success?
 void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void * host_page = nullptr)
 ```
 
-Defined in include/tlb.hpp:101
+Defined in include/tlb.hpp:104
 
 Inserts new [TLB](#tlb) entry in cache.
 
@@ -131,7 +131,7 @@ Inserts new [TLB](#tlb) entry in cache.
 inline void note_exec(uint64_t va)
 ```
 
-Defined in include/tlb.hpp:114
+Defined in include/tlb.hpp:117
 
 Strips the write/dirty capability from the entry for `va`.
 
@@ -149,7 +149,7 @@ W^X: once a page is executed, JITed stores must miss the [TLB](#tlb) so stores f
 inline void flush_all()
 ```
 
-Defined in include/tlb.hpp:126
+Defined in include/tlb.hpp:129
 
 Flushes all [TLB](#tlb) entries.
 
@@ -162,15 +162,14 @@ Flushes all [TLB](#tlb) entries.
 `inline`
 
 ```cpp
-inline void flush_addr(uint64_t)
+inline void flush_addr(uint64_t va)
 ```
 
-Defined in include/tlb.hpp:132
+Defined in include/tlb.hpp:146
 
-Flushes all [TLB](#tlb) entries by address.
+Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1)
 
-> [!NOTE]
-> Currently does nothing; calls flush_all
+The [TLB](#tlb) is direct-mapped on (va >> 12); any resident entry that could serve an access to `va` lives at index(va), regardless of page size. Invalidating in place (generation = 0) instead of bumping the global generation keeps every unrelated compiled JIT block and its baked [TLB](#tlb) checks alive; the affected slot alone fails its baked check, gets refilled by the C++ page walk, and the stale block then runs against the fresh entry.
 
 ---
 
@@ -181,15 +180,12 @@ Flushes all [TLB](#tlb) entries by address.
 `inline`
 
 ```cpp
-inline void flush_asid(uint16_t)
+inline void flush_asid(uint16_t asid)
 ```
 
-Defined in include/tlb.hpp:137
+Defined in include/tlb.hpp:155
 
-Flushes all [TLB](#tlb) entries by ASID.
-
-> [!NOTE]
-> Currently does nothing; calls flush_all
+Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2)
 
 ---
 
@@ -200,13 +196,10 @@ Flushes all [TLB](#tlb) entries by ASID.
 `inline`
 
 ```cpp
-inline void flush_addr_asid(uint64_t, uint16_t)
+inline void flush_addr_asid(uint64_t va, uint16_t asid)
 ```
 
-Defined in include/tlb.hpp:142
+Defined in include/tlb.hpp:164
 
-Flushes all [TLB](#tlb) entries by address and ASID.
-
-> [!NOTE]
-> Currently does nothing; calls flush_all
+Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2)
 

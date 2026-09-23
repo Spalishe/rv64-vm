@@ -85,7 +85,7 @@ Destroys RISC-V core
 inline PrivilegeMode get_effective_mode(AccessType access_type) const
 ```
 
-Defined in include/hart.hpp:164
+Defined in include/hart.hpp:165
 
 Returns CPU Effective mode for a specific memory access.
 
@@ -107,7 +107,7 @@ Effective mode
 inline MMIO * get_mmio()
 ```
 
-Defined in include/hart.hpp:177
+Defined in include/hart.hpp:178
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -128,7 +128,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/hart.hpp:183
+Defined in include/hart.hpp:184
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -149,7 +149,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline Reservation & get_reservation()
 ```
 
-Defined in include/hart.hpp:189
+Defined in include/hart.hpp:190
 
 Returns CPU Atomic [Reservation](Reservation.md#reservation).
 
@@ -170,7 +170,7 @@ Returns CPU Atomic [Reservation](Reservation.md#reservation).
 inline MMU & get_mmu()
 ```
 
-Defined in include/hart.hpp:195
+Defined in include/hart.hpp:196
 
 Returns CPU Memory Management Unit.
 
@@ -191,7 +191,7 @@ Returns CPU Memory Management Unit.
 inline void clear_decode_cache()
 ```
 
-Defined in include/hart.hpp:199
+Defined in include/hart.hpp:200
 
 Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 
@@ -207,7 +207,7 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 inline const uint64_t get_memsize() const
 ```
 
-Defined in include/hart.hpp:213
+Defined in include/hart.hpp:214
 
 Returns RAM size.
 
@@ -226,7 +226,7 @@ Memory size in bytes
 inline void amo_check_reservation(uint64_t pa)
 ```
 
-Defined in include/hart.hpp:218
+Defined in include/hart.hpp:219
 
 Clears reservation if defined address is within CPU reservation address.
 
@@ -240,7 +240,7 @@ Clears reservation if defined address is within CPU reservation address.
 uint64_t csr_read(uint16_t csr)
 ```
 
-Defined in include/hart.hpp:230
+Defined in include/hart.hpp:231
 
 Returns value stored in CSR.
 
@@ -263,7 +263,7 @@ CSR value
 void csr_write(uint16_t csr, uint64_t val)
 ```
 
-Defined in include/hart.hpp:236
+Defined in include/hart.hpp:237
 
 Stores value to CSR.
 
@@ -284,7 +284,7 @@ Stores value to CSR.
 void trap(uint64_t cause, uint64_t tval, bool interrupt)
 ```
 
-Defined in include/hart.hpp:245
+Defined in include/hart.hpp:246
 
 CPU Trap function.
 
@@ -342,7 +342,7 @@ Current CPU privilege mode.
 uint64_t run_blocks(BlockCache & bc, uint64_t max_insts)
 ```
 
-Defined in include/hart.hpp:273
+Defined in include/hart.hpp:274
 
 Block-chaining fast path (lightweight JIT).
 
