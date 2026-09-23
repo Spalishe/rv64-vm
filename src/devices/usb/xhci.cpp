@@ -356,7 +356,7 @@ namespace rv64vm::dev
 					trb_t evt{};
 					evt.status				   = (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
 					evt.control.fields.type	   = static_cast<uint32_t>(TRBType::PORT_STATUS_CHANGE_EVENT);
-					evt.control.fields.control = (static_cast<uint32_t>(idx + 1) & 0xFF);
+					evt.control.fields.control = ((static_cast<uint32_t>(idx + 1) & 0xFF) << 8); // Port ID (1-based, bits 16-23)
 					push_event(evt);
 				}
 			}
@@ -372,7 +372,7 @@ namespace rv64vm::dev
 				trb_t evt{};
 				evt.status				   = (static_cast<uint32_t>(TRBCompletionCode::SUCCESS) << 24);
 				evt.control.fields.type	   = static_cast<uint32_t>(TRBType::PORT_STATUS_CHANGE_EVENT);
-				evt.control.fields.control = (static_cast<uint32_t>(idx + 1) & 0xFF);
+				evt.control.fields.control = ((static_cast<uint32_t>(idx + 1) & 0xFF) << 8); // Port ID (1-based, bits 16-23)
 				push_event(evt);
 			}
 			return;
