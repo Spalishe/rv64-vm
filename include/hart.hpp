@@ -158,6 +158,17 @@ namespace rv64vm::runner
 			uint8_t lru = 0;	 // pseudo-LRU generation for way eviction
 			jit::JITCompiledFunc fn = nullptr;
 			jit::JITCompiledFunc chain_fn = nullptr; // fn + prologue size
+			// Interpreter block for a memoized giveup pc.  Re-dispatching such a
+			// pc (ecall/sret/fence.i/AMO) is very hot, but the BlockCache behind
+			// it is direct-mapped over only 64 KiB of guest text, so bc.lookup()
+			// misses and compile_block() re-decodes up to BLOCK_MAX_INSTS
+			// instructions - one MMU translate each - on every single dispatch.
+			// The way is re-keyed whenever gen/smc/mode/asid change, and the
+			// block_gen/start_phys/smc checks below mirror BlockCache::lookup()
+			// exactly, so a reused block is always one lookup() would have
+			// returned itself.
+			Block* block = nullptr;
+			uint64_t block_gen = 0;
 		};
 		DispatchHot dhot[4096 * MEMO_WAYS]{};
 		// Chain-key snapshot backing hctx.chain_epoch: the runner bumps the

@@ -199,6 +199,9 @@ namespace rv64vm::runner
 
 		uint64_t phys	= 0;
 		bool phys_done = false;
+		// Carried out of the JIT dispatch section so a re-dispatched pc can
+		// reuse its interpreter block without going through the BlockCache.
+		DispatchHot* memo_way = nullptr;
 #ifdef USE_JIT
 		if(jctx != nullptr && (pc & 0x1) == 0) [[likely]]
 		{
@@ -257,6 +260,7 @@ namespace rv64vm::runner
 				d->fn		= nullptr;
 				d->chain_fn = nullptr;
 				d->interp	= 0;
+				d->block	= nullptr;
 				d->lru		= (uint8_t)g_dhot_tick.fetch_add(1, std::memory_order_relaxed);
 			}
 			const bool memo_hit = true; // `d` always the exact key now
@@ -317,6 +321,8 @@ namespace rv64vm::runner
 				if(jj.fn == nullptr && jctx->is_giveup(phys))
 					d->interp = 1;
 			}
+
+			memo_way = d;
 
 			if(jj.fn != nullptr)
 			{
@@ -384,9 +390,25 @@ namespace rv64vm::runner
 			}
 		}
 
-			Block* b = bc.lookup(phys);
-			if(b == nullptr)
-				b = compile_block(bc, phys);
+			Block* b = nullptr;
+			if(memo_way != nullptr && memo_way->block != nullptr && memo_way->block_gen == bc.generation
+			   && memo_way->block->start_phys == phys && memo_way->block->smc == rv64vm::g_smc_epoch.load())
+			{
+				// Same answer BlockCache::lookup() would give, without the
+				// direct-mapped 64 KiB collision that makes it miss here.
+				b = memo_way->block;
+			}
+			else
+			{
+				b = bc.lookup(phys);
+				if(b == nullptr)
+					b = compile_block(bc, phys);
+				if(b != nullptr && memo_way != nullptr)
+				{
+					memo_way->block		= b;
+					memo_way->block_gen	= bc.generation;
+				}
+			}
 			if(b == nullptr) // can't form a block: single interpreter step
 			{
 				tick();
