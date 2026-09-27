@@ -165,7 +165,7 @@ namespace rv64vm::jit
 		std::atomic_flag mtx = ATOMIC_FLAG_INIT;
 
 		uint8_t* arena_alloc(size_t nbytes);
-		void mark_block_executed(uint64_t phys_pc, uint64_t guest_bytes);
+		void mark_block_executed(uint64_t phys_pc, uint64_t guest_bytes, runner::TLB& tlb);
 		void release_arenas();
 		static bool text_hash_phys(runner::Hart& h, uint64_t phys, uint32_t len, uint64_t out[2]);
 		static uint64_t index_of(uint64_t phys_pc)

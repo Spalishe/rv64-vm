@@ -160,6 +160,14 @@ namespace rv64vm::runner
 			jit::JITCompiledFunc chain_fn = nullptr; // fn + prologue size
 		};
 		DispatchHot dhot[4096 * MEMO_WAYS]{};
+		// Chain-key snapshot backing hctx.chain_epoch: the runner bumps the
+		// epoch whenever any of (tlb gen, smc, store-mode|MXR|SUM, asid) differs
+		// from the last dispatch, which is what lets the generated block exits
+		// revalidate the whole set with a single compare.
+		struct ChainKey {
+			uint64_t gen = 0, smc = 0, mode_key = ~0ull;
+			uint32_t asid = ~0u;
+		} chain_key{};
 		jit::JIT_Context* jctx = nullptr;
 #endif
 

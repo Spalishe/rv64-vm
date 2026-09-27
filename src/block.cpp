@@ -156,8 +156,19 @@ namespace rv64vm::runner
 		b.count = n;
 		b.gen	= bc.generation;
 		b.smc	= g_smc_epoch.load();
-		mark_page_executed(start_phys);
-		mark_page_executed(start_phys + (uint64_t)n * 4);
+		// Same W^X invariant as the JIT compile path: a page that starts hosting
+		// code must not stay reachable through a resident W|D TLB entry.  These
+		// are PHYSICAL page addresses; note_exec() resolves them by physical
+		// coverage and is a no-op unless such an entry really exists.
+		{
+			const uint64_t p0 = start_phys & ~0xFFFULL;
+			const uint64_t p1 = (start_phys + (uint64_t)n * 4) & ~0xFFFULL;
+			for(uint64_t p = p0; p <= p1; p += 0x1000)
+			{
+				mark_page_executed(p);
+				mmu.get_tlb().note_exec(p);
+			}
+		}
 		return &b;
 	}
 
@@ -191,7 +202,7 @@ namespace rv64vm::runner
 #ifdef USE_JIT
 		if(jctx != nullptr && (pc & 0x1) == 0) [[likely]]
 		{
-			const uint64_t gen  = mmu.get_tlb().current_generation();
+			uint64_t gen	  = mmu.get_tlb().current_generation();
 			const uint8_t  mode = (uint8_t)get_effective_mode(AccessType::EXEC);
 			uint64_t smc  = rv64vm::g_smc_epoch.load(std::memory_order_relaxed);
 			const uint32_t asid = satp.fields.asid;
@@ -295,10 +306,9 @@ namespace rv64vm::runner
 					if(!jctx->salvage(*this, phys, eff_mode, mxr, sum, jj))
 						jj = jctx->compile(*this, pc, phys);
 				}
-				// Re-read smc after compile() — it may have called
-				// release_arenas() which bumps g_smc_epoch.  Using a
-				// stale smc would let the chain dispatcher validate
-				// against freed arenas.
+				// Re-read smc and tlb generation after compile(): it may have
+				// flushed the TLB (W^X transition) and/or bumped the SMC epoch.
+				gen = mmu.get_tlb().current_generation();
 				smc = rv64vm::g_smc_epoch.load(std::memory_order_acquire);
 				d->fn		= jj.fn;
 				d->chain_fn = jj.chain_fn;
@@ -310,35 +320,43 @@ namespace rv64vm::runner
 
 			if(jj.fn != nullptr)
 			{
+				// Fold the chain keys into one stamp.  Bumping on any change is
+				// what makes a single compare in the generated exit tail exactly
+				// as strong as re-checking (gen, smc, mode_key, asid) separately.
+				if(gen != chain_key.gen || smc != chain_key.smc ||
+				   mode_key != chain_key.mode_key || asid != chain_key.asid)
+				{
+					chain_key.gen	   = gen;
+					chain_key.smc	   = smc;
+					chain_key.mode_key = mode_key;
+					chain_key.asid	   = asid;
+					hctx.chain_epoch++;
+				}
+
 				hctx.tlb_entries = mmu.get_tlb().jit_entries();
-				hctx.tlb_gen	 = gen;
-				hctx.satp_asid	 = asid;
-				hctx.smc_key	 = smc;
-				hctx.mode_key	 = mode_key;
+				hctx.tlb_gen	  = gen;
+				hctx.satp_asid	  = asid;
 				hctx.chain_budget = (int64_t)jit::x86::CHAIN_CADENCE;
 
-// Install this block into the chain jump cache so any exit
-			// targeting this guest pc can hop here directly. Mirrors the
-			// JIT chain dispatcher's Fibonacci-hashed index.
-			const uint64_t cidx = ((uint64_t)(uint32_t)((uint64_t)pc >> 1) * 0x9E3779B9u) >> 16;
-			uint64_t* ce		  = &hctx.chain_cache[(cidx & jit::x86::CHAIN_CACHE_MASK) * 6];
-			ce[0] = (uint64_t)jj.chain_fn;
-			ce[1] = pc;
-			ce[2] = gen;
-			ce[3] = smc;
-			ce[4] = mode_key;
-			ce[5] = (uint64_t)(uint16_t)asid;
+				// Install this block into the chain jump cache so any exit
+				// targeting this guest pc can hop here directly. Mirrors the
+				// JIT chain dispatcher's hashed index.
+				uint64_t* ce = &hctx.chain_cache[(size_t)jit::chain_cache_index(pc) * 3];
+				ce[0] = (uint64_t)jj.chain_fn;
+				ce[1] = pc;
+				ce[2] = hctx.chain_epoch;
 
 				const uint64_t prev_instret = instret;
 				hctx.entry_pc				= pc;
 				jj.fn(&hctx);
 				// The chain dispatcher counts every hop into chain_budget;
 				// the budget released is the whole chain's instruction total.
-const uint64_t executed = (uint64_t)((int64_t)jit::x86::CHAIN_CADENCE - hctx.chain_budget);
+				const uint64_t executed = (uint64_t)((int64_t)jit::x86::CHAIN_CADENCE - hctx.chain_budget);
 			pc						= hctx.exit_pc;
 			instret += executed;
 			cycle += executed;
 			total += executed;
+
 				if(executed != 0)
 				{
 					if((prev_instret & 0x2FFF) + executed >= 0x3000) [[unlikely]]

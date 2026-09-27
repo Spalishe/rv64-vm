@@ -45,21 +45,23 @@ namespace rv64vm::jit
 		void emit_chain_tail(JIT_Emitter& em, uint32_t count)
 		{
 			// Self-contained block exit. RAX holds the exit pc (entry + delta).
-			// Writes the runner's EXIT/ENTRY/EXIT_COUNT, accounts this block's
-			// own slice of the chain budget, then either hops straight to the
-			// successor whose private link slot (one per exit, in this block's
-			// arena chunk, reached RIP-relatively through r15) matches the
-			// dispatch snapshot, or falls back to the shared chain dispatcher.
+			// Writes the runner's EXIT/ENTRY, accounts this block's own slice of
+			// the chain budget, then either hops straight to the successor whose
+			// private link slot (one per exit, in this block's arena chunk,
+			// reached RIP-relatively through r15) matches the dispatch snapshot,
+			// or falls back to the shared chain dispatcher.
 			// The dispatcher re-stamps that slot on every hit, so no code
-			// patching or invalidation sweep is needed: an smc/gen/asid/mode
-			// change trips a guard and returns control to the C++ runner, which
-			// re-dispatches with fresh keys and eventually re-stamps the slot.
+			// patching or invalidation sweep is needed: a tlb_gen/smc/asid/mode
+			// change bumps chain_epoch, which trips the single epoch guard and
+			// returns control to the C++ runner, which re-dispatches with a fresh
+			// epoch and eventually re-stamps the slot.
 			x86::CodeBuf& cb = em.code();
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_ENTRY, x86::REG_RAX);
-			x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)count);
 			x86::sub_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET, (int32_t)count);
 
+			// A silent overflow here would corrupt the arena, so fail loudly.
+			if(em.blk->n_exits >= JIT_Block::MAX_EXITS) __builtin_trap();
 			JIT_Block::ExitLink& L	= em.blk->exits[em.blk->n_exits];
 			L.data_idx				= em.blk->n_exits;
 			em.blk->n_exits++;
@@ -80,18 +82,12 @@ namespace rv64vm::jit
 			// at the branch target of the OTHER va.
 			x86::cmp_r64_m64(cb, x86::REG_RAX, x86::REG_R15, 8);
 			L.fail[1] = x86::jcc32(cb, 0x5);
-			x86::mov_mr(cb, x86::REG_RDX, x86::REG_R15, 16);
-			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_TLB_GEN);
+			// One epoch compare covers tlb_gen + smc + mode_key + asid: the
+			// runner bumps ctx->chain_epoch whenever any of them changes, so a
+			// slot stamped with the current epoch cannot outlive its validity.
+			x86::mov_mr(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_CHAIN_EPOCH);
+			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_R15, 16);
 			L.fail[2] = x86::jcc32(cb, 0x5);
-			x86::mov_mr(cb, x86::REG_RDX, x86::REG_R15, 24);
-			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_SMC_KEY);
-			L.fail[3] = x86::jcc32(cb, 0x5);
-			x86::mov_mr(cb, x86::REG_RDX, x86::REG_R15, 32);
-			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_MODE_KEY);
-			L.fail[4] = x86::jcc32(cb, 0x5);
-			x86::movzx_r64_m16(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_SATP_ASID);
-			x86::cmp_r16_m16(cb, x86::REG_RDX, x86::REG_R15, 40);
-			L.fail[5] = x86::jcc32(cb, 0x5);
 			if(getenv("JTRACE"))
 			{
 				x86::mov_imm64(cb, x86::REG_R10, (uint64_t)&x86::g_jit_hops);
@@ -439,10 +435,7 @@ namespace rv64vm::jit
 			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
 			x86::add_imm(cb, x86::REG_RAX, (int32_t)bytes);
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
-			x86::mov_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT, (int32_t)instr);
-			x86::mov_mr(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET);
-			x86::arith_rm64(cb, 5, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_EXIT_COUNT);
-			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET, x86::REG_RDX);
+			x86::sub_m64_imm(cb, x86::REG_CTX, x86::CTX_OFF_CHAIN_BUDGET, (int32_t)instr);
 			x86::pop_r(cb, x86::REG_R12);
 			x86::pop_r(cb, x86::REG_R13);
 			x86::pop_r(cb, x86::REG_R15);
@@ -519,21 +512,46 @@ namespace rv64vm::jit
 		for(uint32_t i = 0; i < blk->n_exits; i++)
 		{
 			x86::patch_rel32(cb, blk->exits[i].budget_js, ret_pos);
-			for(int k = 0; k < 6; k++)
+			for(int k = 0; k < 3; k++)
 				x86::patch_rel32(cb, blk->exits[i].fail[k], go_pos);
 		}
 	}
 
-	void JIT_Emitter::emit_cond_exit(uint32_t rs1, uint32_t rs2, uint8_t cc, int64_t imm,
+	bool JIT_Emitter::emit_cond_exit(uint32_t rs1, uint32_t rs2, uint8_t cc, int64_t imm,
 									 uint32_t off, uint32_t size, uint32_t count_before, bool check_align)
 	{
 		x86::CodeBuf& cb = code();
 		uint8_t S1		 = hreg_for_read(rs1);
 		uint8_t S2		 = (rs2 == rs1) ? S1 : hreg_for_read(rs2, rs1);
-		// Flush dirty regs before the branch: the not-taken exit's flush would
-		// otherwise clear them before the taken exit runs, losing the updates.
+		// Flush dirty regs before the branch.  This is required for the
+		// superblock form below as well: the taken tail and the inline
+		// fall-through share one compile-time register image, so it must be
+		// consistent on both paths - only flushing unconditionally gives that.
 		flush_all();
 		x86::cmp_rr(cb, S1, S2);
+
+		if(n_super < SUPERBLOCK_MAX && !eof())
+		{
+			// Superblock: keep the fall-through inline, leave only the taken
+			// side as a chain exit.  The not-taken path jumps over the tail and
+			// pays nothing beyond the jcc it always executed, which removes a
+			// chain hop, a block prologue/epilogue and (on a chain break) a C++
+			// dispatch.  cc's low bit is x86's condition-invert flag, so cc^1
+			// selects the fall-through.
+			const uint32_t skip = x86::jcc32(cb, cc ^ 1);
+			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+			x86::add_imm(cb, x86::REG_RAX, (int32_t)((int64_t)off + imm));
+			if(check_align)
+			{
+				x86::test_imm(cb, x86::REG_RAX, 1);
+				push_miss(x86::jcc32(cb, CC_JNE), count_before);
+			}
+			emit_chain_tail(*this, count_before + 1);
+			x86::patch_rel32(cb, skip, cb.pos);
+			n_super++;
+			return true;
+		}
+
 		const uint32_t taken_rel = x86::jcc32(cb, cc);
 		emit_block_exit(off + size, count_before + 1);
 		const uint32_t taken_target = cb.pos;
@@ -547,15 +565,27 @@ namespace rv64vm::jit
 		emit_block_exit_rax(count_before + 1);
 		x86::patch_rel32(cb, taken_rel, taken_target);
 		exited = true;
+		return false;
 	}
-
-void JIT_Emitter::emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
-									  uint32_t off, uint32_t count_before)
+	bool JIT_Emitter::emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
+										  uint32_t off, uint32_t count_before)
 	{
 		x86::CodeBuf& cb = code();
 		uint8_t S		 = hreg_for_read(rs);
 		flush_all();
 		x86::test_rr(cb, S, S);
+
+		if(n_super < SUPERBLOCK_MAX && !eof())
+		{
+			const uint32_t skip = x86::jcc32(cb, cc ^ 1);
+			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
+			x86::add_imm(cb, x86::REG_RAX, (int32_t)((int64_t)off + imm));
+			emit_chain_tail(*this, count_before + 1);
+			x86::patch_rel32(cb, skip, cb.pos);
+			n_super++;
+			return true;
+		}
+
 		const uint32_t taken_rel = x86::jcc32(cb, cc);
 		emit_block_exit(off + 2, count_before + 1);
 		const uint32_t taken_target = cb.pos;
@@ -564,7 +594,9 @@ void JIT_Emitter::emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
 		emit_block_exit_rax(count_before + 1);
 		x86::patch_rel32(cb, taken_rel, taken_target);
 		exited = true;
+		return false;
 	}
+
 
 	void JIT_Emitter::emit_jump(uint32_t link_rd, uint32_t src_rs1, int64_t imm,
 								uint32_t off, uint32_t size, uint32_t count_before,

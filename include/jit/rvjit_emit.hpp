@@ -48,7 +48,7 @@ namespace rv64vm::jit
 		// normal block exit emits a self-contained tail that validates its
 		// private link slot (data_idx) before hopping; on staleness it falls
 		// back to the shared chain dispatcher, which re-stamps the slot on
-		// hit. lea_disp_off/budget_js/fail[5] are code-buffer positions whose
+		// hit. lea_disp_off/budget_js/fail[2] are code-buffer positions whose
 		// rel32 targets are patched by emit_link_stubs(); lea_disp_off is the
 		// slot of the lea's disp32 field, relocated (RIP-relative) by
 		// compile() once the arena address is known.
@@ -57,9 +57,10 @@ namespace rv64vm::jit
 			uint32_t data_idx;	  // index into this block's private slot region
 			uint32_t lea_disp_off; // disp32 field of "lea r15, [rip+slot]"
 			uint32_t budget_js;	  // js (budget exhausted) -> block return stub
-			uint32_t fail[6];	  // guards that miss -> shared chain dispatcher
+			uint32_t fail[3];	  // guards that miss -> shared chain dispatcher
 		};
-		ExitLink exits[6];
+		static constexpr uint32_t MAX_EXITS = 6;
+		ExitLink exits[MAX_EXITS];
 		uint32_t n_exits = 0;
 	};
 
@@ -146,6 +147,15 @@ namespace rv64vm::jit
 		// default emit_epilogue() must be skipped.
 		bool exited = false;
 
+		// Conditional branches taken mid-block (superblocks): the fall-through
+		// continues inline and only the taken side leaves the block.  Bounded so
+		// that a block's exits always fit JIT_Block::exits[] and the tail does
+		// not grow without limit; past the cap a branch ends the block as before.
+		// Each superblock adds one exit, plus one for the block's own last exit.
+		static constexpr uint32_t SUPERBLOCK_MAX = JIT_Block::MAX_EXITS - 2;
+		static_assert(SUPERBLOCK_MAX >= 1);
+		uint32_t n_super = 0;
+
 		JIT_Emitter(JIT_Block* b);
 
 		x86::CodeBuf& code() const;
@@ -196,11 +206,13 @@ namespace rv64vm::jit
 		// Branch: continue at entry_pc + off + size unless (rs1 cc rs2), which
 		// takes entry_pc + off + imm. check_align exits an odd taken target as
 		// a miss so the interpreter can trap on it.
-		void emit_cond_exit(uint32_t rs1, uint32_t rs2, uint8_t cc, int64_t imm,
+		// Returns true when the fall-through was superblocked into this block
+		// (caller keeps decoding), false when the branch ends the block.
+		bool emit_cond_exit(uint32_t rs1, uint32_t rs2, uint8_t cc, int64_t imm,
 							uint32_t off, uint32_t size, uint32_t count_before, bool check_align);
 
 		// C.BEQZ / C.BNEZ form: single register tested against zero.
-		void emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
+		bool emit_cond_exit_zero(uint32_t rs, uint8_t cc, int64_t imm,
 								 uint32_t off, uint32_t count_before);
 
 		// Jump ending the block: from_rs1 targets (GPR[src_rs1] + imm) & ~1

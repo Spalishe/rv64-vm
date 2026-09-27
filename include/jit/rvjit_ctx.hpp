@@ -36,11 +36,34 @@ namespace rv64vm::jit
 	struct JIT_HartContext;
 	using JITCompiledFunc = void (*)(JIT_HartContext*);
 
-	// Direct-mapped jump cache size: 2^14 slots.  Kernel boot compiles far
-	// more live blocks than 256, so a small direct-mapped table thrash-chains
-	// nearly every hop back into C++.  Tuned upward from 256 after sampling.
-	constexpr uint32_t CHAIN_CACHE_SLOTS = 1 << 16;
+	// Direct-mapped jump cache: the chain dispatcher probes it on every private
+	// slot miss to find the target block's post-prologue entry.
+	//
+	// Sizing note: this table is the only thing that lets a chain hop into a
+	// successor *without* a C++ round trip, and it is filled exclusively by the
+	// C++ dispatch loop (one install per block it enters).  Kernel boot
+	// compiles ~90k distinct block starts, so a table smaller than that
+	// overflows chronically and every overflow turns into a chain break: the
+	// target's slot is either still zeroed (dispatcher's "nofn") or holds a
+	// different block at the same index ("pc").  Keep the table comfortably
+	// above the live block count.
+#ifndef USE_JCHAIN
+	#define USE_JCHAIN 18
+#endif
+	constexpr uint32_t CHAIN_CACHE_SLOTS = 1u << USE_JCHAIN;
 	constexpr uint32_t CHAIN_CACHE_MASK  = CHAIN_CACHE_SLOTS - 1;
+
+	// Index of `pc` in the chain cache: the top CHAIN_SLOTS_LOG2 bits of the
+	// 64-bit golden-ratio product of (pc>>1).  Guest pcs are 2-byte aligned
+	// (and 4-byte aligned for any uncompressed instruction), so pc>>1 is odd
+	// or even uniformly and the multiply mixes the low address bits up into
+	// the high ones.  The C++ dispatch loop and the generated dispatcher must
+	// agree on this exactly; the generated form is in
+	// JIT_Context::ensure_chain_dispatcher().
+	inline uint32_t chain_cache_index(uint64_t pc)
+	{
+		return (uint32_t)(((pc >> 1) * 0x9E3779B97F4A7C15ULL) >> (64 - USE_JCHAIN)) & CHAIN_CACHE_MASK;
+	}
 
 	struct JIT_HartContext
 	{
@@ -58,11 +81,20 @@ namespace rv64vm::jit
 		uint16_t satp_asid;
 		uint16_t pad;
 		uint64_t exit_count; // instructions executed, written by the block exits
-		uint64_t smc_key;	 // g_smc_epoch at dispatch time (chain key)
-		uint64_t mode_key;	 // eff_mode | MXR<<8 | SUM<<9 (chain key)
+		/*
+		 * Folds (tlb_gen, smc_key, mode_key, satp_asid) into one stamp.  The
+		 * runner bumps it whenever any of those four changes, so a link slot or
+		 * chain-cache entry stamped with the current epoch is exactly as valid
+		 * as revalidating all four - which is what the generated block exits
+		 * used to do, at three instructions each, on every single block exit.
+		 */
+		uint64_t chain_epoch;
 		int64_t chain_budget; // instructions until the chain must return to C++
 		uint64_t chain_reserved;
-		uint64_t chain_cache[CHAIN_CACHE_SLOTS * 6]; // CHAIN_CACHE_STRIDE-sized slots
+		// Keep the table cache-line aligned and at a stable offset: it is
+		// probed on every chain hop.
+		uint64_t chain_cache_pad;
+		uint64_t chain_cache[CHAIN_CACHE_SLOTS * 3]; // CHAIN_CACHE_STRIDE-sized slots
 	};
 
 	static_assert(offsetof(JIT_HartContext, regs) == 0);
@@ -77,10 +109,10 @@ namespace rv64vm::jit
 	static_assert(offsetof(JIT_HartContext, tlb_gen) == 72);
 	static_assert(offsetof(JIT_HartContext, satp_asid) == 80);
 	static_assert(offsetof(JIT_HartContext, exit_count) == 88);
-	static_assert(offsetof(JIT_HartContext, smc_key) == 96);
-	static_assert(offsetof(JIT_HartContext, mode_key) == 104);
-	static_assert(offsetof(JIT_HartContext, chain_budget) == 112);
+	static_assert(offsetof(JIT_HartContext, chain_epoch) == 96);
+	static_assert(offsetof(JIT_HartContext, chain_budget) == 104);
 	static_assert(offsetof(JIT_HartContext, chain_cache) == 128);
+	static_assert(offsetof(JIT_HartContext, chain_cache) % 64 == 0);
 
 	// Layout mirrors of TLB::TlbEntry, sanity-checked against offsetof above.
 	// Do not change the TlbEntry field order without updating these.

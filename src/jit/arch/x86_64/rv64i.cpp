@@ -236,33 +236,27 @@ namespace rv64vm::jit
 	// interpreter raises the misalignment trap.
 	bool jit_BEQ(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
-		e.emit_cond_exit(d.rs1, d.rs2, 0x4, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
-		return false;
+		return e.emit_cond_exit(d.rs1, d.rs2, 0x4, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
 	}
 	bool jit_BNE(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
-		e.emit_cond_exit(d.rs1, d.rs2, 0x5, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
-		return false;
+		return e.emit_cond_exit(d.rs1, d.rs2, 0x5, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
 	}
 	bool jit_BLT(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
-		e.emit_cond_exit(d.rs1, d.rs2, 0xC, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
-		return false;
+		return e.emit_cond_exit(d.rs1, d.rs2, 0xC, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
 	}
 	bool jit_BGE(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
-		e.emit_cond_exit(d.rs1, d.rs2, 0xD, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
-		return false;
+		return e.emit_cond_exit(d.rs1, d.rs2, 0xD, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
 	}
 	bool jit_BLTU(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
-		e.emit_cond_exit(d.rs1, d.rs2, 0x2, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
-		return false;
+		return e.emit_cond_exit(d.rs1, d.rs2, 0x2, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
 	}
 	bool jit_BGEU(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
-		e.emit_cond_exit(d.rs1, d.rs2, 0x3, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
-		return false;
+		return e.emit_cond_exit(d.rs1, d.rs2, 0x3, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
 	}
 
 	// JAL: link rd (rd != 0) = branch_pc + 4. JALR never misaligns (target is

@@ -234,13 +234,11 @@ namespace rv64vm::jit
 	}
 	bool jit_C_BEQZ(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
 	{
-		em.emit_cond_exit_zero(8 + (uint8_t)d_c_rs1(d.inst), 0x4, (int64_t)d.imm, b.instr_bytes, b.instr_index);
-		return false;
+		return em.emit_cond_exit_zero(8 + (uint8_t)d_c_rs1(d.inst), 0x4, (int64_t)d.imm, b.instr_bytes, b.instr_index);
 	}
 	bool jit_C_BNEZ(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
 	{
-		em.emit_cond_exit_zero(8 + (uint8_t)d_c_rs1(d.inst), 0x5, (int64_t)d.imm, b.instr_bytes, b.instr_index);
-		return false;
+		return em.emit_cond_exit_zero(8 + (uint8_t)d_c_rs1(d.inst), 0x5, (int64_t)d.imm, b.instr_bytes, b.instr_index);
 	}
 	bool jit_C_JR(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& em)
 	{

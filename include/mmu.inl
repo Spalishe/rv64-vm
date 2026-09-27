@@ -97,12 +97,22 @@ MemoryReturn MMU::translate_impl(Hart* hart, AccessType type, uint64_t raw_va, u
 		uint64_t index = va.get_vpn(i);
 		addr		   = a + index * SvMode::PTESIZE;
 		// pte.raw		   = mmap->load(addr, SvMode::PTESIZE * 8);
-		auto* ram_ptr  = mmap->get_ram_direct()->get_data() + (addr - 0x80000000);
-		if(ram_ptr) [[likely]]
+		// The page table itself is only addressable through the RAM region:
+		// computing data() + (addr - 0x80000000) and testing the result for
+		// null can never fail, so a page-table level outside RAM used to be
+		// dereferenced directly, reading (and, for the A/D update below,
+		// writing) arbitrary host memory.  Range-check the physical address
+		// and fall back to the bounds-checked MMIO path.
+		auto* ram_direct = mmap->get_ram_direct();
+		const uint64_t ram_base = ram_direct->get_base_addr();
+		// Written as a subtraction so a bogus near-UINT64_MAX page-table
+		// address cannot wrap the bound and pass the check.
+		const uint64_t ram_len  = ram_direct->get_size();
+		if(addr >= ram_base && addr - ram_base <= ram_len - SvMode::PTESIZE * 8) [[likely]]
 		{
 			if constexpr(SvMode::PTESIZE == 8)
 			{
-				pte.raw = *reinterpret_cast<const uint64_t*>(ram_ptr);
+				pte.raw = *reinterpret_cast<const uint64_t*>(ram_direct->get_data() + (addr - ram_base));
 			}
 			else
 			{
@@ -196,7 +206,19 @@ MemoryReturn MMU::translate_impl(Hart* hart, AccessType type, uint64_t raw_va, u
 				pte.fields.D = 1;
 			if constexpr(SvMode::PTESIZE == 8)
 			{
-				*reinterpret_cast<uint64_t*>(mmap->get_ram_direct()->get_data() + (addr - 0x80000000)) = pte.raw;
+				auto* ram_direct = mmap->get_ram_direct();
+				const uint64_t ram_base = ram_direct->get_base_addr();
+				const uint64_t ram_len  = ram_direct->get_size();
+				// Same range check as the PTE fetch above: never write the A/D
+				// update through a page-table address that is not in RAM.
+				if(addr >= ram_base && addr - ram_base <= ram_len - SvMode::PTESIZE * 8)
+				{
+					*reinterpret_cast<uint64_t*>(ram_direct->get_data() + (addr - ram_base)) = pte.raw;
+				}
+				else
+				{
+					mmap->store(addr, SvMode::PTESIZE * 8, pte.raw);
+				}
 			}
 			else
 			{

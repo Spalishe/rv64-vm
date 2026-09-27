@@ -21,9 +21,11 @@ Copyright 2026 Spalishe
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace rv64vm::runner
 {
+
 	inline std::atomic<uint64_t> g_flush_count{ 0 };
 
 	/**
@@ -109,17 +111,33 @@ namespace rv64vm::runner
 		inline uint64_t current_generation() const { return generation; }
 
 		/**
-		 * @brief Strips the write/dirty capability from the entry for \p va
+		 * @brief Drops W|D from the TLB entries that map \p phys
 		 * @details W^X: once a page is executed, JITed stores must miss the TLB
 		 *          so stores fall back to the interpreter, which detects
 		 *          self-modifying writes and invalidates compiled code.
+		 *
+		 *          \p phys is a PHYSICAL page address - the code page the JIT has
+		 *          just compiled into - not a virtual one.  The TLB is
+		 *          direct-mapped by VA and one physical page can be aliased by
+		 *          any number of VAs (identity vs. linear map, per-process
+		 *          mm), so the entries to fix are found by physical coverage,
+		 *          never by hashing \p phys as if it were a VA.
+		 *
+		 *          w_writable answers in O(1) whether any resident entry still
+		 *          advertises W|D for this page.  Kernel text is mapped
+		 *          read+execute, so that count is normally zero and this is a
+		 *          no-op; only a page that really was writable data before it
+		 *          started hosting code pays for an invalidation.
 		 */
-		inline void note_exec(uint64_t va)
+		inline void note_exec(uint64_t phys)
 		{
-			TlbEntry& e = entries[index(va)];
-			if(e.generation == generation && (e.perm & (int)TLBPermissions::PERM_W))
+			const uint64_t page = phys >> 12;
+			if(!w_writable_oversized && page < w_writable.size() && w_writable[page] != 0)
 			{
-				e.perm &= ~((int)TLBPermissions::PERM_W | (int)TLBPermissions::PERM_D);
+				// The resident entries were filled while the page was still data.
+				// Drop them; every refill then goes through insert()'s physical
+				// was_page_executed() rule and comes back without W|D.
+				flush_all();
 			}
 		}
 
@@ -129,6 +147,8 @@ namespace rv64vm::runner
 		void flush_all()
 		{
 			++generation;
+			std::fill(w_writable.begin(), w_writable.end(), 0);
+			w_writable_oversized = false;
 			g_flush_count.fetch_add(1, std::memory_order_relaxed);
 		}
 
@@ -147,7 +167,10 @@ namespace rv64vm::runner
 		{
 			TlbEntry& e = entries[index(va)];
 			if(e.generation == generation)
+			{
+				drop_writable(e);
 				e.generation = 0;
+			}
 		}
 		/**
 		 * @brief Flushes all TLB entries of an ASID (SFENCE.VMA x0, rs2)
@@ -156,7 +179,10 @@ namespace rv64vm::runner
 		{
 			for(TlbEntry& e : entries)
 				if(e.generation == generation && !e.global && e.asid == asid)
+				{
+					drop_writable(e);
 					e.generation = 0;
+				}
 		}
 		/**
 		 * @brief Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2)
@@ -165,7 +191,10 @@ namespace rv64vm::runner
 		{
 			TlbEntry& e = entries[index(va)];
 			if(e.generation == generation && !e.global && e.asid == asid)
+			{
+				drop_writable(e);
 				e.generation = 0;
+			}
 		}
 
 	  private:
@@ -174,5 +203,60 @@ namespace rv64vm::runner
 
 		std::array<TlbEntry, SIZE> entries{};
 		uint64_t generation = 1;
+		// Physical page -> how many resident entries still advertise W|D for it
+		// (saturating; a page needs only a truthy count).  Lets note_exec()
+		// decide in O(1) whether a page that just started hosting code has
+		// anything to invalidate, instead of scanning all SIZE entries - the
+		// TLB is direct-mapped by VA, so the wanted slots cannot be addressed
+		// from a physical page number.
+		//
+		// A writable mapping wider than the cap cannot be credited page by page
+		// (a 512 MiB guest page would be 128Ki credits per insert), so it sets
+		// w_writable_oversized and note_exec() falls back to flushing whenever
+		// it cannot prove the page is clean.  Kernel text is mapped r-x, so the
+		// fallback is off in the common case.
+		static constexpr uint64_t W_CREDIT_CAP_PAGES = 512; // 2 MiB, i.e. one THP
+		std::vector<uint8_t> w_writable;
+		bool w_writable_oversized = false;
+
+		inline void add_writable(const TlbEntry& e)
+		{
+			if(!(e.perm & (int)TLBPermissions::PERM_W))
+				return;
+			const uint64_t first = e.ppage_base >> 12;
+			const uint64_t pages = 1ULL << (e.page_bits - 12);
+			if(pages > W_CREDIT_CAP_PAGES)
+			{
+				w_writable_oversized = true;
+				return;
+			}
+			if(first + pages > w_writable.size())
+				w_writable.resize(first + pages + 8192, 0);
+			for(uint64_t i = 0; i < pages; i++)
+				if(w_writable[first + i] != 0xFF)
+					w_writable[first + i]++;
+		}
+
+		// Account for an entry that is about to stop being a resident W|D
+		// mapping (overwritten by insert(), or invalidated by a flush).
+		inline void drop_writable(const TlbEntry& e)
+		{
+			if(e.generation != generation || !(e.perm & (int)TLBPermissions::PERM_W))
+				return;
+			const uint64_t first = e.ppage_base >> 12;
+			const uint64_t pages = 1ULL << (e.page_bits - 12);
+			if(pages > W_CREDIT_CAP_PAGES)
+			{
+				w_writable_oversized = true;
+				return;
+			}
+			for(uint64_t i = 0; first + i < w_writable.size(); i++)
+			{
+				if(i >= pages)
+					break;
+				if(w_writable[first + i] != 0)
+					w_writable[first + i]--;
+			}
+		}
 	};
 }

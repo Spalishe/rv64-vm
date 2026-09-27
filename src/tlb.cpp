@@ -70,6 +70,9 @@ namespace rv64vm::runner
 	void TLB::insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void* host_page)
 	{
 		TlbEntry& e		   = entries[index(va)];
+		// This slot is about to stop being whatever it used to be, so drop its
+		// contribution to the writable-page census before it is overwritten.
+		drop_writable(e);
 		uint64_t page_mask = (1ULL << page_bits) - 1;
 		uint64_t vpage	   = va & ~page_mask;
 		e.vpage_mask_inv   = ~page_mask;
@@ -83,14 +86,27 @@ namespace rv64vm::runner
 		e.global		   = global;
 
 		// W^X invariant: once a page has ever been executed (see
-		// self_mod.hpp), no TLB entry for it may advertise W|D. Fresh walks
-		// would otherwise hand JITed stores a writable entry and let them
+		// self_mod.hpp), no TLB entry covering it may advertise W|D. Fresh
+		// walks would otherwise hand JITed stores a writable entry and let them
 		// silently rewrite compiled text, skipping the self-modifying-code
 		// detector (smc_store_hit) that invalidates stale blocks. With the
 		// bit stripped, stores fall back to the interpreter, which refills a
 		// full-perm entry, performs the write, and bumps the SMC epoch.
-		if((e.perm & (int)TLBPermissions::PERM_W) && was_page_executed(e.ppage_base))
+		//
+		// The test must be on the page this access actually touches, not on the
+		// entry's physical base.  For a huge-page mapping those differ by up to
+		// 2MiB: executed-page marks are recorded per 4K page (mark_page_executed
+		// is called with the code page), so a huge-page entry whose *base* is
+		// unmarked would keep W|D even when it covers compiled text, and the JIT
+		// store would then bypass smc_store_hit entirely and leave a stale block
+		// live.  Denying W|D whenever the accessed page is executed is the
+		// conservative direction: the entry may lose write permission for a
+		// neighbour that is not code, which only costs an interpreter round trip.
+		const uint64_t leaf_pa = e.ppage_base + (va & page_mask);
+		if((e.perm & (int)TLBPermissions::PERM_W) && was_page_executed(leaf_pa))
 			e.perm &= ~((int)TLBPermissions::PERM_W | (int)TLBPermissions::PERM_D);
+
+		add_writable(e);
 	}
 
 	__attribute__((always_inline)) inline bool TLB::check_perm(uint8_t perm, AccessType type, int mode, bool mxr, bool sum)
