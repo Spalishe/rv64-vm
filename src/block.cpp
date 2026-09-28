@@ -326,31 +326,39 @@ namespace rv64vm::runner
 
 			if(jj.fn != nullptr)
 			{
-				// Fold the chain keys into one stamp.  Bumping on any change is
-				// what makes a single compare in the generated exit tail exactly
-				// as strong as re-checking (gen, smc, mode_key, asid) separately.
-				if(gen != chain_key.gen || smc != chain_key.smc ||
-				   mode_key != chain_key.mode_key || asid != chain_key.asid)
+				// Fold the *global* chain keys into one stamp.  Bumping on any
+				// change is what makes a single compare in the generated exit
+				// tail exactly as strong as re-checking (gen, smc, asid)
+				// separately.  mode_key is deliberately excluded: it is checked
+				// per entry against hctx.chain_mode instead, so a syscall no
+				// longer invalidates the whole table (it was 97% of all epoch
+				// bumps, and left chains covering ~11 instructions instead of
+				// CHAIN_CADENCE).  A chain is mode-homogeneous by construction -
+				// every mode change goes through a give-up op and re-enters the
+				// runner - so a hop can never cross a privilege boundary.
+				if(gen != chain_key.gen || smc != chain_key.smc || asid != chain_key.asid)
 				{
-					chain_key.gen	   = gen;
-					chain_key.smc	   = smc;
-					chain_key.mode_key = mode_key;
-					chain_key.asid	   = asid;
+					chain_key.gen = gen;
+					chain_key.smc = smc;
+					chain_key.asid = asid;
 					hctx.chain_epoch++;
 				}
+				chain_key.mode_key = mode_key;
 
 				hctx.tlb_entries = mmu.get_tlb().jit_entries();
 				hctx.tlb_gen	  = gen;
 				hctx.satp_asid	  = asid;
 				hctx.chain_budget = (int64_t)jit::x86::CHAIN_CADENCE;
+				hctx.chain_mode   = mode_key;
 
 				// Install this block into the chain jump cache so any exit
-				// targeting this guest pc can hop here directly. Mirrors the
-				// JIT chain dispatcher's hashed index.
-				uint64_t* ce = &hctx.chain_cache[(size_t)jit::chain_cache_index(pc) * 3];
+				// targeting this guest pc (in this mode) can hop here directly.
+				// Mirrors the JIT chain dispatcher's hashed index and layout.
+				uint64_t* ce = &hctx.chain_cache[(size_t)jit::chain_cache_index(pc, mode_key) * 4];
 				ce[0] = (uint64_t)jj.chain_fn;
 				ce[1] = pc;
 				ce[2] = hctx.chain_epoch;
+				ce[3] = mode_key;
 
 				const uint64_t prev_instret = instret;
 				hctx.entry_pc				= pc;

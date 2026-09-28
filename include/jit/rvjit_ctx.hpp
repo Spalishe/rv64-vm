@@ -57,12 +57,25 @@ namespace rv64vm::jit
 	// 64-bit golden-ratio product of (pc>>1).  Guest pcs are 2-byte aligned
 	// (and 4-byte aligned for any uncompressed instruction), so pc>>1 is odd
 	// or even uniformly and the multiply mixes the low address bits up into
-	// the high ones.  The C++ dispatch loop and the generated dispatcher must
-	// agree on this exactly; the generated form is in
-	// JIT_Context::ensure_chain_dispatcher().
-	inline uint32_t chain_cache_index(uint64_t pc)
+	// the high ones.
+	//
+	// The privilege mode is mixed in so that the same pc compiled for
+	// different modes lands in different slots and they can coexist.  A mode
+	// change used to bump chain_epoch, which invalidated *every* entry at
+	// once; on a syscall-heavy workload that is 97% of all invalidations, and
+	// it left the chain cache permanently cold (measured 9% hit rate, ~11
+	// guest instructions per C++ entry instead of the 12288 the budget
+	// allows).  Blocks still bake their own mode into their TLB checks, so
+	// keeping modes apart here is a pure cache-locality fix, not a change of
+	// the validation rules: the mode is still checked, per entry.
+	//
+	// The C++ dispatch loop and the generated dispatcher must agree on this
+	// exactly; the generated form is in JIT_Context::ensure_chain_dispatcher().
+	inline uint32_t chain_cache_index(uint64_t pc, uint64_t mode_key)
 	{
-		return (uint32_t)(((pc >> 1) * 0x9E3779B97F4A7C15ULL) >> (64 - USE_JCHAIN)) & CHAIN_CACHE_MASK;
+		const uint64_t a = ((pc >> 1) * 0x9E3779B97F4A7C15ULL) >> (64 - USE_JCHAIN);
+		const uint64_t b = (mode_key * 0xD1B54A32D192ED03ULL) >> (64 - USE_JCHAIN);
+		return (uint32_t)((a ^ b) & CHAIN_CACHE_MASK);
 	}
 
 	struct JIT_HartContext
@@ -82,19 +95,24 @@ namespace rv64vm::jit
 		uint16_t pad;
 		uint64_t exit_count; // instructions executed, written by the block exits
 		/*
-		 * Folds (tlb_gen, smc_key, mode_key, satp_asid) into one stamp.  The
-		 * runner bumps it whenever any of those four changes, so a link slot or
-		 * chain-cache entry stamped with the current epoch is exactly as valid
-		 * as revalidating all four - which is what the generated block exits
-		 * used to do, at three instructions each, on every single block exit.
+		 * Folds (tlb_gen, smc_key, satp_asid) into one stamp.  The runner bumps
+		 * it whenever any of those three changes, so a link slot or chain-cache
+		 * entry stamped with the current epoch is exactly as valid as
+		 * revalidating all three - which is what the generated block exits used
+		 * to do, at three instructions each, on every single block exit.
+		 *
+		 * mode_key is deliberately NOT folded in: it is checked per entry
+		 * instead (see chain_cache_index and the mode word at slot offset 24).
+		 * Folding it here meant one syscall wiped the whole chain cache, which
+		 * is what left chains covering ~11 instructions instead of 12288.
 		 */
 		uint64_t chain_epoch;
 		int64_t chain_budget; // instructions until the chain must return to C++
-		uint64_t chain_reserved;
+		uint64_t chain_mode;  // mode_key of the blocks valid in this chain
 		// Keep the table cache-line aligned and at a stable offset: it is
 		// probed on every chain hop.
 		uint64_t chain_cache_pad;
-		uint64_t chain_cache[CHAIN_CACHE_SLOTS * 3]; // CHAIN_CACHE_STRIDE-sized slots
+		uint64_t chain_cache[CHAIN_CACHE_SLOTS * 4]; // CHAIN_CACHE_STRIDE-sized slots
 	};
 
 	static_assert(offsetof(JIT_HartContext, regs) == 0);
@@ -111,6 +129,7 @@ namespace rv64vm::jit
 	static_assert(offsetof(JIT_HartContext, exit_count) == 88);
 	static_assert(offsetof(JIT_HartContext, chain_epoch) == 96);
 	static_assert(offsetof(JIT_HartContext, chain_budget) == 104);
+	static_assert(offsetof(JIT_HartContext, chain_mode) == 112);
 	static_assert(offsetof(JIT_HartContext, chain_cache) == 128);
 	static_assert(offsetof(JIT_HartContext, chain_cache) % 64 == 0);
 

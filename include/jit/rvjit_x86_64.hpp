@@ -84,22 +84,25 @@ namespace rv64vm::jit::x86
 	// Block-chaining keys: the runner fills these before every JIT call and the
 	// chain dispatcher (see rvjit.cpp) revalidates them on each hop, mirroring
 	// the dhot dispatch signature so a stale target can never be entered.
-	// chain_epoch is a single stamp covering (tlb_gen, smc_key, mode_key,
-	// satp_asid): the runner bumps it whenever any of them changes, so one
-	// compare replaces the four the exit tails used to re-check per block exit.
+	// chain_epoch is a single stamp covering (tlb_gen, smc_key, satp_asid):
+	// the runner bumps it whenever any of them changes, so one compare
+	// replaces the three the exit tails used to re-check per block exit.
+	// mode_key is checked separately, per entry, against chain_mode - folding
+	// it into the epoch made every syscall wipe the whole chain cache.
 	constexpr uint16_t CTX_OFF_CHAIN_EPOCH	= 96;
 	constexpr uint16_t CTX_OFF_CHAIN_BUDGET	= 104;	// instrs left before the next C++ cadence check
+	constexpr uint16_t CTX_OFF_CHAIN_MODE	= 112;	// mode_key of the blocks valid in this chain
 	constexpr uint16_t CTX_OFF_CHAIN_CACHE	= 128;
 
 	// Direct-mapped jump cache inside hctx, indexed by chain_cache_index()
 	// (see rvjit_ctx.hpp); entry stride CHAIN_CACHE_STRIDE bytes:
-	// {chain_fn, pc, chain_epoch}.
+	// {chain_fn, pc, chain_epoch, mode_key}.
 	constexpr uint32_t CHAIN_CACHE_MASK		= rv64vm::jit::CHAIN_CACHE_MASK;
-	constexpr uint32_t CHAIN_CACHE_STRIDE	= 24;
+	constexpr uint32_t CHAIN_CACHE_STRIDE	= 32;
 
 	// The runner indexes the table in uint64_t units and the generated code in
 	// byte offsets; both must agree on the entry stride.
-	static_assert(CHAIN_CACHE_STRIDE == 3 * sizeof(uint64_t));
+	static_assert(CHAIN_CACHE_STRIDE == 4 * sizeof(uint64_t));
 	static_assert(CHAIN_CACHE_STRIDE % 8 == 0);
 	// Guest instructions per chain before control returns to the C++ runner.
 	constexpr uint64_t CHAIN_CADENCE		= 0x3000;

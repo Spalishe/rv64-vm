@@ -83,24 +83,28 @@ namespace rv64vm::jit
 
 		x86::CodeBuf cb;
 
-		// entry = &ctx->chain_cache[chain_cache_index(exit_pc) * STRIDE]
-		// Mirrors chain_cache_index() in rvjit_ctx.hpp: 64-bit golden-ratio
-		// multiply of (pc>>1), keep the top USE_JCHAIN bits, mask.
+		// entry = &ctx->chain_cache[chain_cache_index(exit_pc, mode) * 4]
+		// Mirrors chain_cache_index() in rvjit_ctx.hpp: top USE_JCHAIN bits of
+		// the golden-ratio product of (pc>>1), xored with the top bits of the
+		// golden-ratio product of mode_key, masked, times 4 words.
 		x86::mov_mr(cb, x86::REG_RCX, x86::REG_CTX, x86::CTX_OFF_EXIT);
 		x86::mov_rr(cb, x86::REG_RAX, x86::REG_RCX);
 		x86::shift_r64_imm(cb, 5, x86::REG_RAX, 1); // rax = exit_pc >> 1
-		x86::mov_imm64(cb, x86::REG_RDX, 0x9E3779B97F4A7C15ULL);
-		x86::imul_rr(cb, x86::REG_RAX, x86::REG_RDX);
+		x86::mov_imm64(cb, x86::REG_R10, 0x9E3779B97F4A7C15ULL);
+		x86::imul_rr(cb, x86::REG_RAX, x86::REG_R10);
 		x86::shift_r64_imm(cb, 5, x86::REG_RAX, 64 - USE_JCHAIN);
+		x86::mov_mr(cb, x86::REG_R10, x86::REG_CTX, x86::CTX_OFF_CHAIN_MODE);
+		x86::mov_imm64(cb, x86::REG_RDX, 0xD1B54A32D192ED03ULL);
+		x86::imul_rr(cb, x86::REG_R10, x86::REG_RDX);
+		x86::shift_r64_imm(cb, 5, x86::REG_R10, 64 - USE_JCHAIN);
+		x86::xor_rr(cb, x86::REG_RAX, x86::REG_R10);
 		x86::and_imm(cb, x86::REG_RAX, x86::CHAIN_CACHE_MASK);
-		x86::mov_rr(cb, x86::REG_RDX, x86::REG_RAX);
-		x86::shift_r64_imm(cb, 4, x86::REG_RAX, 4); // rax = idx * 16
-		x86::shift_r64_imm(cb, 4, x86::REG_RDX, 3); // rdx = idx * 8
-		x86::add_rr(cb, x86::REG_RAX, x86::REG_RDX); // idx * CHAIN_CACHE_STRIDE (24)
+		x86::shift_r64_imm(cb, 4, x86::REG_RAX, 5); // rax = idx * 32 (CHAIN_CACHE_STRIDE)
 		x86::add_rr(cb, x86::REG_RAX, x86::REG_CTX);
 		x86::add_imm(cb, x86::REG_RAX, x86::CTX_OFF_CHAIN_CACHE);
 
-		// chain_fn != 0, pc == exit_pc, epoch == ctx.chain_epoch
+		// chain_fn != 0, pc == exit_pc, epoch == ctx.chain_epoch,
+		// mode == ctx.chain_mode
 		x86::mov_mr(cb, x86::REG_R11, x86::REG_RAX, 0);
 		x86::test_rr(cb, x86::REG_R11, x86::REG_R11);
 		const uint32_t j_nofn = x86::jcc32(cb, 0x4); // je
@@ -109,18 +113,23 @@ namespace rv64vm::jit
 		x86::mov_mr(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_CHAIN_EPOCH);
 		x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_RAX, 16);
 		const uint32_t j_epoch = x86::jcc32(cb, 0x5); // jne
+		x86::mov_mr(cb, x86::REG_R10, x86::REG_CTX, x86::CTX_OFF_CHAIN_MODE);
+		x86::cmp_r64_m64(cb, x86::REG_R10, x86::REG_RAX, 24);
+		const uint32_t j_mode = x86::jcc32(cb, 0x5); // jne
 
 		// hit: re-stamp the calling block's private exit slot (r15 = its base,
 		// set by the exit tail) so subsequent traversals hop directly without
-		// the dispatcher.  chain_epoch folds (tlb_gen, smc, mode_key, asid) into
-		// one value that the runner bumps whenever any of them changes, so the
-		// stamped epoch is exactly as strong a guard as the four comparisons it
-		// replaces - the fast path can never outlive the validation.
+		// the dispatcher.  chain_epoch folds (tlb_gen, smc, asid) into one value
+		// that the runner bumps whenever any of them changes, and the mode is
+		// compared per entry - together exactly as strong a guard as the four
+		// comparisons it replaces, so the fast path can never outlive the
+		// validation.  A mode change no longer invalidates the whole table.
 		if(getenv("JDIS")) // BISECT: disable private-slot refill
 		{ } else {
 		x86::mov_rm(cb, x86::REG_R15, 16, x86::REG_RDX);
 		x86::mov_rm(cb, x86::REG_R15, 0, x86::REG_R11);
 		x86::mov_rm(cb, x86::REG_R15, 8, x86::REG_RCX);
+		x86::mov_rm(cb, x86::REG_R15, 24, x86::REG_R10);
 		}
 
 		// hit: set the target block's base pc (exits are computed as
@@ -137,7 +146,7 @@ namespace rv64vm::jit
 		x86::pop_r(cb, x86::REG_RBP);
 		x86::ret(cb);
 
-		for(uint32_t j : { j_nofn, j_pc, j_epoch })
+		for(uint32_t j : { j_nofn, j_pc, j_epoch, j_mode })
 			x86::patch_rel32(cb, j, tail);
 
 		memcpy(p, cb.bytes, cb.pos);

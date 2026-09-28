@@ -48,7 +48,7 @@ namespace rv64vm::jit
 		// normal block exit emits a self-contained tail that validates its
 		// private link slot (data_idx) before hopping; on staleness it falls
 		// back to the shared chain dispatcher, which re-stamps the slot on
-		// hit. lea_disp_off/budget_js/fail[2] are code-buffer positions whose
+		// hit. lea_disp_off/budget_js/fail[3] are code-buffer positions whose
 		// rel32 targets are patched by emit_link_stubs(); lea_disp_off is the
 		// slot of the lea's disp32 field, relocated (RIP-relative) by
 		// compile() once the arena address is known.
@@ -57,7 +57,7 @@ namespace rv64vm::jit
 			uint32_t data_idx;	  // index into this block's private slot region
 			uint32_t lea_disp_off; // disp32 field of "lea r15, [rip+slot]"
 			uint32_t budget_js;	  // js (budget exhausted) -> block return stub
-			uint32_t fail[3];	  // guards that miss -> shared chain dispatcher
+			uint32_t fail[4];	  // guards that miss -> shared chain dispatcher
 		};
 		static constexpr uint32_t MAX_EXITS = 6;
 		ExitLink exits[MAX_EXITS];

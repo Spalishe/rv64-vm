@@ -51,10 +51,11 @@ namespace rv64vm::jit
 			// reached RIP-relatively through r15) matches the dispatch snapshot,
 			// or falls back to the shared chain dispatcher.
 			// The dispatcher re-stamps that slot on every hit, so no code
-			// patching or invalidation sweep is needed: a tlb_gen/smc/asid/mode
-			// change bumps chain_epoch, which trips the single epoch guard and
-			// returns control to the C++ runner, which re-dispatches with a fresh
-			// epoch and eventually re-stamps the slot.
+			// patching or invalidation sweep is needed: a tlb_gen/smc/asid
+			// change bumps chain_epoch, and a mode change trips the mode
+			// guard, so a stale slot always falls back to the shared
+			// dispatcher, which re-dispatches through the C++ runner and
+			// eventually re-stamps the slot.
 			x86::CodeBuf& cb = em.code();
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_ENTRY, x86::REG_RAX);
@@ -82,12 +83,20 @@ namespace rv64vm::jit
 			// at the branch target of the OTHER va.
 			x86::cmp_r64_m64(cb, x86::REG_RAX, x86::REG_R15, 8);
 			L.fail[1] = x86::jcc32(cb, 0x5);
-			// One epoch compare covers tlb_gen + smc + mode_key + asid: the
-			// runner bumps ctx->chain_epoch whenever any of them changes, so a
-			// slot stamped with the current epoch cannot outlive its validity.
+			// One epoch compare covers tlb_gen + smc + asid: the runner bumps
+			// ctx->chain_epoch whenever any of them changes, so a slot stamped
+			// with the current epoch cannot outlive its validity.
 			x86::mov_mr(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_CHAIN_EPOCH);
 			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_R15, 16);
 			L.fail[2] = x86::jcc32(cb, 0x5);
+			// The mode is checked per entry rather than folded into the epoch,
+			// so that a syscall no longer invalidates every other chain link.
+			// Blocks bake their own mode into their TLB checks, so this must
+			// match exactly or the hop would enter code compiled for a
+			// different privilege level.
+			x86::mov_mr(cb, x86::REG_R10, x86::REG_CTX, x86::CTX_OFF_CHAIN_MODE);
+			x86::cmp_r64_m64(cb, x86::REG_R10, x86::REG_R15, 24);
+			L.fail[3] = x86::jcc32(cb, 0x5);
 			if(getenv("JTRACE"))
 			{
 				x86::mov_imm64(cb, x86::REG_R10, (uint64_t)&x86::g_jit_hops);
@@ -512,7 +521,7 @@ namespace rv64vm::jit
 		for(uint32_t i = 0; i < blk->n_exits; i++)
 		{
 			x86::patch_rel32(cb, blk->exits[i].budget_js, ret_pos);
-			for(int k = 0; k < 3; k++)
+			for(int k = 0; k < 4; k++)
 				x86::patch_rel32(cb, blk->exits[i].fail[k], go_pos);
 		}
 	}
