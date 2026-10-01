@@ -59,7 +59,6 @@ namespace rv64vm::jit
 		return !em.eof();
 	}
 
-	// R-Type
 	bool jit_ADD(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
 		return alu_r(h, d, b, e, ALUOp::ADD, false);
@@ -121,7 +120,6 @@ namespace rv64vm::jit
 		return alu_r(h, d, b, e, ALUOp::SLTU, false);
 	}
 
-	// I-Type
 	bool jit_ADDI(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
 		return alu_i(h, d, b, e, ALUOp::ADD, false);
@@ -183,8 +181,6 @@ namespace rv64vm::jit
 		return alu_u(h, d, b, e, ALUOp::AUIPC);
 	}
 
-	// S-Type
-
 	bool jit_LB(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
 		return ld(h, d, b, e, 1, true);
@@ -231,7 +227,7 @@ namespace rv64vm::jit
 		return st(h, d, b, e, 8);
 	}
 
-	// B-Type / jump: end the block with a native exit. cc is the x86 condition
+	// B-Type / jump: end the block with a native exit.  cc is the x86 condition
 	// for the taken side; an odd taken target exits as a miss so the
 	// interpreter raises the misalignment trap.
 	bool jit_BEQ(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
@@ -259,8 +255,8 @@ namespace rv64vm::jit
 		return e.emit_cond_exit(d.rs1, d.rs2, 0x3, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true);
 	}
 
-	// JAL: link rd (rd != 0) = branch_pc + 4. JALR never misaligns (target is
-	// masked); the align check only guards JAL's odd targets.
+	// JALR never misaligns (the target is masked); the align check only guards
+	// JAL's odd targets.
 	bool jit_JAL(Hart&, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
 		e.emit_jump(d.rd, 0, (int64_t)d.imm, b.instr_bytes, 4, b.instr_index, true, false);

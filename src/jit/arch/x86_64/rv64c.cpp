@@ -35,14 +35,12 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// C.ADDI4SPN: x[8+rd'] = sp + nzuimm (rd' in inst[4:2]).
 	bool jit_C_ADDI4SPN(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		em.emit_i_to(8 + (uint8_t)d_c_rd(d.inst), 2, (int64_t)d.imm, ALUOp::ADD, false);
 		return c_keep(em);
 	}
 
-	// C.ADDI: rd += sext6(imm); C.NOP / hints write nothing.
 	bool jit_C_ADDI(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		if(d.rd == 0)
@@ -51,7 +49,6 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// C.ADDIW: rd = (int32)(rd + sext6(imm)).
 	bool jit_C_ADDIW(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		if(d.rd == 0)
@@ -60,7 +57,6 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// C.LI: rd = sext6(imm).
 	bool jit_C_LI(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		if(d.rd == 0)
@@ -69,7 +65,6 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// C.ADDI16SP (rd == 2): sp += nzimm[9:4]; otherwise C.LUI: rd = sext6(imm)<<12.
 	bool jit_C_LUI_ADDI16SP(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		if(d.rd == 2)
@@ -83,7 +78,6 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// C.SLLI: rd <<= shamt; hints (rd == 0) write nothing.
 	bool jit_C_SLLI(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		if(d.rd == 0)
@@ -92,7 +86,7 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// CB register-form helpers: rd' lives in inst[9:7], shamt/imm[4:0] in inst[6:2].
+	// CB register form: rd' is inst[9:7], the shift/imm field is inst[6:2].
 	static inline bool c_shift(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, ALUOp op)
 	{
 		const uint8_t rd = 8 + (uint8_t)d_c_rs1(d.inst);
@@ -109,7 +103,6 @@ namespace rv64vm::jit
 		return c_shift(h, d, b, em, ALUOp::SRA);
 	}
 
-	// C.ANDI: rd &= sext6(imm).
 	bool jit_C_ANDI(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		const uint8_t rd = 8 + (uint8_t)d_c_rs1(d.inst);
@@ -117,7 +110,7 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// CA register form: rd' in inst[9:7], rs2' in inst[4:2].
+	// CA register form: rd' is inst[9:7], rs2' is inst[4:2].
 	static inline bool c_alu(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em, ALUOp op, bool w)
 	{
 		const uint8_t rd = 8 + (uint8_t)d_c_rs1(d.inst);
@@ -151,7 +144,6 @@ namespace rv64vm::jit
 		return c_alu(h, d, b, em, ALUOp::ADD, true);
 	}
 
-	// C.MV: rd = rs2 (rs2 in inst[6:2]); hints (rd == 0) write nothing.
 	bool jit_C_MV(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		if(d.rd == 0)
@@ -160,7 +152,6 @@ namespace rv64vm::jit
 		return c_keep(em);
 	}
 
-	// C.ADD: rd += rs2; hints (rd == 0) write nothing.
 	bool jit_C_ADD(Hart&, InstructionData& d, JIT_Block&, JIT_Emitter& em)
 	{
 		if(d.rd == 0)

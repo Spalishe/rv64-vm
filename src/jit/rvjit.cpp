@@ -63,12 +63,11 @@ namespace rv64vm::jit
 		cur_used = 0;
 	}
 
-	// One shared chain dispatcher per process: every block exit lands here
-	// (via emit.cpp's chain tail) instead of ret-ing into C++. It resolves the
-	// exit pc through the direct-mapped hctx jump cache and either jumps into
-	// the chained block's post-prologue entry or, on any key mismatch or cadence
-	// budget exhaustion, pops the single C++ frame and returns to the runner.
-	// R12 (ctx) is preserved here; the pooled/scratch regs are dead at block end.
+	// One shared chain dispatcher per process: every block exit that cannot hop
+	// through its private slot lands here instead of ret-ing into C++. It
+	// resolves the exit pc through the direct-mapped hctx jump cache and either
+	// jumps into the successor's post-prologue entry or pops the single C++
+	// frame.  R12 (ctx) is preserved here; pooled/scratch regs are dead.
 	uint8_t* ensure_chain_dispatcher()
 	{
 		static uint8_t* dispatch = nullptr;
@@ -83,10 +82,8 @@ namespace rv64vm::jit
 
 		x86::CodeBuf cb;
 
-		// entry = &ctx->chain_cache[chain_cache_index(exit_pc, mode) * 4]
-		// Mirrors chain_cache_index() in rvjit_ctx.hpp: top USE_JCHAIN bits of
-		// the golden-ratio product of (pc>>1), xored with the top bits of the
-		// golden-ratio product of mode_key, masked, times 4 words.
+		// entry = &ctx->chain_cache[chain_cache_index(exit_pc, mode) * 4];
+		// must stay in sync with chain_cache_index() in rvjit_ctx.hpp.
 		x86::mov_mr(cb, x86::REG_RCX, x86::REG_CTX, x86::CTX_OFF_EXIT);
 		x86::mov_rr(cb, x86::REG_RAX, x86::REG_RCX);
 		x86::shift_r64_imm(cb, 5, x86::REG_RAX, 1); // rax = exit_pc >> 1
@@ -117,13 +114,10 @@ namespace rv64vm::jit
 		x86::cmp_r64_m64(cb, x86::REG_R10, x86::REG_RAX, 24);
 		const uint32_t j_mode = x86::jcc32(cb, 0x5); // jne
 
-		// hit: re-stamp the calling block's private exit slot (r15 = its base,
-		// set by the exit tail) so subsequent traversals hop directly without
-		// the dispatcher.  chain_epoch folds (tlb_gen, smc, asid) into one value
-		// that the runner bumps whenever any of them changes, and the mode is
-		// compared per entry - together exactly as strong a guard as the four
-		// comparisons it replaces, so the fast path can never outlive the
-		// validation.  A mode change no longer invalidates the whole table.
+		// Hit: re-stamp the calling block's private exit slot (r15 = its base,
+		// set by the exit tail) so later traversals hop directly without the
+		// dispatcher.  The epoch/mode guards already ran, so re-stamping is
+		// exactly as strong as the four comparisons it replaces.
 		if(getenv("JDIS")) // BISECT: disable private-slot refill
 		{ } else {
 		x86::mov_rm(cb, x86::REG_R15, 16, x86::REG_RDX);
@@ -132,12 +126,12 @@ namespace rv64vm::jit
 		x86::mov_rm(cb, x86::REG_R15, 24, x86::REG_R10);
 		}
 
-		// hit: set the target block's base pc (exits are computed as
+		// Hit: set the target block's base pc (exits are computed as
 		// entry_pc + delta_va) and jump in right after its prologue
 		x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_ENTRY, x86::REG_RCX);
 		x86::jmp_r(cb, x86::REG_R11);
 
-		// miss: pop the single C++ frame and return to the runner, which
+		// Miss: pop the single C++ frame and return to the runner, which
 		// re-dispatches (the exit tail already accounted its own budget).
 		const uint32_t tail = cb.pos;
 		x86::pop_r(cb, x86::REG_R12);
@@ -161,10 +155,8 @@ namespace rv64vm::jit
 	}
 
 	// Key: (start_phys, epoch, eff_mode, mxr, sum) - deliberately asid/VA
-	// free.  See the lookup() declaration for the invariants that make this
-	// sound; the chain dispatcher keeps its asid guard separately, because
-	// the chain cache maps a VA to code and needs an address-space probe
-	// there (it costs one bounce per process switch, never a recompile).
+	// free; see the lookup() declaration for the invariants that make this
+	// sound.
 	JITExec JIT_Context::lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum)
 	{
 		const size_t bucket		= index_of(phys_pc);
@@ -232,8 +224,8 @@ namespace rv64vm::jit
 		if(r == nullptr || phys < r->get_base_addr() || (phys - r->get_base_addr()) + len > r->get_size())
 			return false;
 		const uint8_t* p = r->get_data() + (phys - r->get_base_addr());
-		// Two independent seeded FNV-1a passes over the guest text: a 128-bit
-		// digest keeps the "text unchanged" decision practically exact.
+		// Two independent seeded FNV-1a passes: a 128-bit digest keeps the
+		// "text unchanged" decision practically exact.
 		static constexpr uint64_t FNV = 0x100000001b3ULL;
 		uint64_t a = 0xcbf29ce484222325ULL;
 		uint64_t b = 0x9ddfea08eb382d69ULL;
@@ -300,13 +292,10 @@ namespace rv64vm::jit
 			}
 			e.smc_epoch = epoch; // text verified identical: re-key, keep code
 			// Re-keying makes this code live at the current epoch, so the
-			// per-page code generation must follow.  smc_store_hit() decides
-			// whether a store to this page invalidates anything by comparing
-			// g_code_page_gen[page] against g_smc_epoch; leaving the old epoch
-			// here made it classify the page as "no live block", clear the
-			// executed bit and skip the invalidation, so a later patch to this
-			// text left a stale compiled block running - the emulated CPU then
-			// executed instructions the guest had already rewritten.
+			// per-page code generation must follow; smc_store_hit() classifies
+			// a page as invalidated by comparing g_code_page_gen[page] against
+			// g_smc_epoch, and leaving the old epoch here would make it skip the
+			// invalidation and run stale compiled code.
 			{
 				const uint64_t p0 = phys_pc & ~0xFFFULL;
 				const uint64_t p1 = (phys_pc + e.guest_bytes + 0xFFF) & ~0xFFFULL;
@@ -338,10 +327,9 @@ namespace rv64vm::jit
 			return false; // known non-JIT starter: let the interpreter have it
 		HotSlot& hs		   = hotmap[i];
 		const uint64_t cur_epoch = g_smc_epoch.load();
-		// after an invalidation (smc epoch bump) the first
-		// dispatch to a pc re-bases its counter, so one-touch (cold) code is
-		// NOT recompiled after every SFENCE while genuinely hot code still
-		// recompiles after 2 dispatches.
+		// after an invalidation (smc epoch bump) the first dispatch to a pc
+		// re-bases its counter, so one-touch (cold) code is NOT recompiled
+		// after every SFENCE while genuinely hot code still recompiles.
 		if(hs.hot_epoch != (uint32_t)cur_epoch)
 		{
 			hs.hot_epoch = (uint32_t)cur_epoch;
@@ -411,9 +399,8 @@ namespace rv64vm::jit
 		// The whole block must live in the start's 4K VA page: dispatch
 		// validates the VA->PA resolution only for the start pc, so page
 		// containment is what lets the phys key identify the instruction
-		// stream for every other asid / VA alias mapping that start (any
-		// page size maps the containing page contiguously).  It also keeps
-		// text_hash_phys()'s contiguous phys-range digest honest.
+		// stream for every other asid / VA alias mapping that start.  It also
+		// keeps text_hash_phys()'s contiguous phys-range digest honest.
 		const uint64_t page_end = (va_pc & ~0xFFFULL) + 0x1000;
 		uint32_t guest_words[RVJIT_MAX_INSTRUCTIONS];
 		while(count < RVJIT_MAX_INSTRUCTIONS)
@@ -573,9 +560,9 @@ namespace rv64vm::jit
 			mark_page_executed(p);
 			mark_page_code(p);
 			// W^X: this is a PHYSICAL page address, while the TLB is
-			// direct-mapped by virtual address.  note_exec() takes the physical
-			// page and finds the entries by physical coverage itself, which also
-			// covers every VA aliasing the page and any huge page over it.
+			// direct-mapped by virtual address.  note_exec() finds the entries
+			// by physical coverage itself, which also covers every VA aliasing
+			// the page and any huge page over it.
 			tlb.note_exec(p);
 		}
 	}

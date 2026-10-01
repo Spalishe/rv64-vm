@@ -82,13 +82,9 @@ namespace rv64vm::jit::x86
 	constexpr uint16_t CTX_OFF_EXIT_COUNT	= 88;
 
 	// Block-chaining keys: the runner fills these before every JIT call and the
-	// chain dispatcher (see rvjit.cpp) revalidates them on each hop, mirroring
-	// the dhot dispatch signature so a stale target can never be entered.
-	// chain_epoch is a single stamp covering (tlb_gen, smc_key, satp_asid):
-	// the runner bumps it whenever any of them changes, so one compare
-	// replaces the three the exit tails used to re-check per block exit.
-	// mode_key is checked separately, per entry, against chain_mode - folding
-	// it into the epoch made every syscall wipe the whole chain cache.
+	// chain dispatcher revalidates them on each hop.  chain_epoch is one stamp
+	// covering (tlb_gen, smc_key, satp_asid); chain_mode is checked separately,
+	// per entry, so a syscall does not wipe the whole chain cache.
 	constexpr uint16_t CTX_OFF_CHAIN_EPOCH	= 96;
 	constexpr uint16_t CTX_OFF_CHAIN_BUDGET	= 104;	// instrs left before the next C++ cadence check
 	constexpr uint16_t CTX_OFF_CHAIN_MODE	= 112;	// mode_key of the blocks valid in this chain
@@ -185,14 +181,12 @@ namespace rv64vm::jit::x86
 		cb.b(0x89);
 		modrm_mem(cb, src, base, disp);
 	}
-	// lea r64, [base + disp32]
 	inline void lea_r64_mem(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
 	{
 		rex(cb, true, dst >= 8, false, base >= 8);
 		cb.b(0x8D);
 		modrm_mem(cb, dst, base, disp);
 	}
-	// Zero/sign-extending memory loads (REX.W gives the r64 form).
 	inline void movzx_r64_m8(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
 	{
 		rex(cb, true, dst >= 8, false, base >= 8);
@@ -221,21 +215,18 @@ namespace rv64vm::jit::x86
 		cb.b(0xBF);
 		modrm_mem(cb, dst, base, disp);
 	}
-	// movsxd r64, dword [mem]: sign-extends a 32-bit load.
 	inline void movsxd_r64_m32(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
 	{
 		rex(cb, true, dst >= 8, false, base >= 8);
 		cb.b(0x63);
 		modrm_mem(cb, dst, base, disp);
 	}
-	// mov r32, [mem] (32-bit load; zero-extends into the 64-bit register).
 	inline void mov_r32_m32(CodeBuf& cb, uint8_t dst, uint8_t base, int32_t disp)
 	{
 		rex(cb, false, dst >= 8, false, base >= 8);
 		cb.b(0x8B);
 		modrm_mem(cb, dst, base, disp);
 	}
-	// Memory stores. REX always covers SIL/DIL/R8B..R11B for the byte form.
 	inline void mov_m8_r8(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t src)
 	{
 		rex(cb, false, src >= 8, false, base >= 8);
@@ -255,7 +246,6 @@ namespace rv64vm::jit::x86
 		cb.b(0x89);
 		modrm_mem(cb, src, base, disp);
 	}
-	// mov r64, signext(imm32)
 	inline void mov_imm32(CodeBuf& cb, uint8_t dst, int32_t imm)
 	{
 		rex(cb, true, false, false, dst >= 8);
@@ -263,7 +253,6 @@ namespace rv64vm::jit::x86
 		modrm_reg(cb, 0, dst);
 		cb.dw((uint32_t)imm);
 	}
-	// mov [base+disp32], signext(imm32): REX.W makes the imm32 sign-extend.
 	inline void mov_m64_imm(CodeBuf& cb, uint8_t base, int32_t disp, int32_t imm)
 	{
 		rex(cb, true, false, false, base >= 8);
@@ -284,7 +273,6 @@ namespace rv64vm::jit::x86
 		cb.b(0xB6);
 		modrm_reg(cb, dst, src);
 	}
-	// REX grants SIL/DIL/R8L..R11L access.
 	inline void movzx_ecx_r8(CodeBuf& cb, uint8_t src)
 	{
 		rex(cb, false, false, false, src >= 8);
@@ -364,7 +352,6 @@ namespace rv64vm::jit::x86
 	{
 		arith_rr64(cb, 7, a, b);
 	}
-	// R-m forms: dst-reg op [mem] (3B/23/33/0B/03 /r).
 	inline void arith_rm64(CodeBuf& cb, uint8_t regfield, uint8_t dst, uint8_t base, int32_t disp)
 	{
 		rex(cb, true, dst >= 8, false, base >= 8);
@@ -510,7 +497,6 @@ namespace rv64vm::jit::x86
 		modrm_reg(cb, 0, dst);
 	}
 
-	// mov r32, r32 (zero-extends to r64)
 	inline void mov_rr32(CodeBuf& cb, uint8_t dst, uint8_t src)
 	{
 		rex(cb, false, src >= 8, false, dst >= 8);
@@ -544,7 +530,6 @@ namespace rv64vm::jit::x86
 		cb.b(0xF7);
 		modrm_reg(cb, 5, rm);
 	}
-	// imul dst, src: dst = dst * src (low half)
 	inline void imul_rr(CodeBuf& cb, uint8_t dst, uint8_t src)
 	{
 		rex(cb, true, dst >= 8, false, src >= 8);
@@ -552,7 +537,6 @@ namespace rv64vm::jit::x86
 		cb.b(0xAF);
 		modrm_reg(cb, dst, src);
 	}
-	// imul dst, imm32: low 64-bit product (0x69 /r id, sign-extended imm)
 	inline void imul_r_imm32(CodeBuf& cb, uint8_t dst, int32_t imm)
 	{
 		rex(cb, true, dst >= 8, false, dst >= 8);
@@ -610,7 +594,6 @@ namespace rv64vm::jit::x86
 		cb.b(0x85);
 		modrm_mem(cb, dst, base, disp);
 	}
-	// test r64, r64 (sets ZF/SF like AND)
 	inline void test_rr(CodeBuf& cb, uint8_t a, uint8_t b)
 	{
 		rex(cb, true, a >= 8, false, b >= 8);

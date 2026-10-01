@@ -31,7 +31,7 @@ namespace rv64vm::jit
 		constexpr uint8_t PERM_D = 1u << 5;
 
 		// Upper bound for a single miss-stub (dirty-register flush stores +
-		// mov/add/mov/mov64imm/pop/pop/pop/ret). Reserve conservatively so
+		// mov/add/mov/mov64imm/pop/pop/pop/ret), reserved conservatively so
 		// eof() can stop the block before the stubs overflow the buffer.
 		constexpr uint32_t STUB_BYTES = 104;
 
@@ -49,13 +49,8 @@ namespace rv64vm::jit
 			// the chain budget, then either hops straight to the successor whose
 			// private link slot (one per exit, in this block's arena chunk,
 			// reached RIP-relatively through r15) matches the dispatch snapshot,
-			// or falls back to the shared chain dispatcher.
-			// The dispatcher re-stamps that slot on every hit, so no code
-			// patching or invalidation sweep is needed: a tlb_gen/smc/asid
-			// change bumps chain_epoch, and a mode change trips the mode
-			// guard, so a stale slot always falls back to the shared
-			// dispatcher, which re-dispatches through the C++ runner and
-			// eventually re-stamps the slot.
+			// or falls back to the shared chain dispatcher, which re-stamps the
+			// slot on every hit - so no invalidation sweep is ever needed.
 			x86::CodeBuf& cb = em.code();
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_ENTRY, x86::REG_RAX);
@@ -75,25 +70,20 @@ namespace rv64vm::jit
 			x86::mov_mr(cb, x86::REG_R11, x86::REG_R15, 0);
 			x86::test_rr(cb, x86::REG_R11, x86::REG_R11);
 			L.fail[0] = x86::jcc32(cb, 0x4); // je: slot empty -> dispatcher
-			// The exit pc (rax = entry + delta) must match the pc the slot was
-			// resolved for. A block is keyed by its PHYSICAL start, so the same
-			// compiled code can be hit from two VAs mapping one page (identity
-			// + linear map during the MMU switch); the site then computes a
-			// different rax and hopping to the slot's chain-fn would continue
-			// at the branch target of the OTHER va.
+			// The exit pc must match the pc the slot was resolved for: a block
+			// is keyed by its PHYSICAL start, so the same code can be hit from
+			// two VAs mapping one page, and the site would otherwise hop to the
+			// branch target of the *other* VA.
 			x86::cmp_r64_m64(cb, x86::REG_RAX, x86::REG_R15, 8);
 			L.fail[1] = x86::jcc32(cb, 0x5);
-			// One epoch compare covers tlb_gen + smc + asid: the runner bumps
-			// ctx->chain_epoch whenever any of them changes, so a slot stamped
-			// with the current epoch cannot outlive its validity.
+			// One epoch compare covers tlb_gen + smc + asid.
 			x86::mov_mr(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_CHAIN_EPOCH);
 			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_R15, 16);
 			L.fail[2] = x86::jcc32(cb, 0x5);
-			// The mode is checked per entry rather than folded into the epoch,
-			// so that a syscall no longer invalidates every other chain link.
-			// Blocks bake their own mode into their TLB checks, so this must
-			// match exactly or the hop would enter code compiled for a
-			// different privilege level.
+			// The mode is checked per entry, not folded into the epoch, so a
+			// syscall no longer invalidates every other chain link.  Blocks bake
+			// their own mode into their TLB checks, so a mismatch would enter
+			// code compiled for a different privilege level.
 			x86::mov_mr(cb, x86::REG_R10, x86::REG_CTX, x86::CTX_OFF_CHAIN_MODE);
 			x86::cmp_r64_m64(cb, x86::REG_R10, x86::REG_R15, 24);
 			L.fail[3] = x86::jcc32(cb, 0x5);
@@ -112,9 +102,8 @@ namespace rv64vm::jit
 		/*
 		 * Inline TLB lookup, adapted from RVVM's rvjit_tlb_lookup but validated
 		 * at runtime instead of recompiling on miss: every check that can fail
-		 * jumps to the stub of `instr` at the end of the block, which exits to
-		 * the interpreter at a precise pc. On success H ends up as the host
-		 * address and the caller emits the actual memory access.
+		 * jumps to the stub of `instr`, which exits to the interpreter at a
+		 * precise pc.  On success H ends up as the host address.
 		 *
 		 * Temp usage: RCX = TLB entry base, RAX/RDX scratch. H must be an
 		 * allocator-pool register (never RAX/RDX/RCX).
@@ -134,8 +123,8 @@ namespace rv64vm::jit
 			x86::shift_r64_imm(cb, 4, x86::REG_RCX, x86::TLB_ENTRY_LOG2);
 			x86::add_r64_m64(cb, x86::REG_RCX, x86::REG_CTX, x86::CTX_OFF_TLB_ENTRIES);
 
-			// generation: entry.generation == ctx.tlb_gen (flush detection, also
-			// guards against entries installed by other harts after a flush).
+			// generation == ctx.tlb_gen: flush detection, also guarding against
+			// entries installed by other harts after a flush.
 			x86::mov_mr(cb, x86::REG_RDX, x86::REG_RCX, x86::TLB_OFF_GENERATION);
 			x86::cmp_r64_m64(cb, x86::REG_RDX, x86::REG_CTX, x86::CTX_OFF_TLB_GEN);
 			miss_jump(CC_JNE);
@@ -287,10 +276,9 @@ namespace rv64vm::jit
 
 	void JIT_Emitter::emit_prologue()
 	{
-		// rbp frame keeps our pushes out of the caller's red zone. r15 is
-		// pushed alongside the other callee-saved regs: the exit tail loads
-		// it with the private link slot address (and the chain dispatcher
-		// refills through it), so every return path must pop it back.
+		// rbp frame keeps our pushes out of the caller's red zone. r15 holds the
+		// private link slot base in the exit tails, so every return path must
+		// pop it back.
 		x86::push_r(code(), x86::REG_RBP);
 		x86::mov_rr(code(), x86::REG_RBP, x86::REG_RSP);
 		x86::push_r(code(), x86::REG_R15);
@@ -312,12 +300,9 @@ namespace rv64vm::jit
 
 	bool JIT_Emitter::eof() const
 	{
-		// The decode loop must leave room for the epilogue, every miss stub,
-		// and a margin that absorbs the emission overshoot of the last
-		// instruction (the check runs before each instruction, so the buffer
-		// can still grow by one instruction past this point). With STUB_BYTES
-		// and EPILOGUE_BYTES as true upper bounds the epilogue + stubs then
-		// always fit inside RVJIT_FUNC_SIZE.
+		// Leave room for the epilogue, every miss stub, and a margin absorbing
+		// the emission overshoot of the last instruction (the check runs before
+		// each one, so the buffer can still grow by one instruction past this).
 		return code().pos + EPILOGUE_BYTES + RVJIT_FUNC_MARGIN + stub_reserve >= RVJIT_FUNC_SIZE;
 	}
 
@@ -383,7 +368,6 @@ namespace rv64vm::jit
 	void JIT_Emitter::emit_store(uint32_t rs1, int64_t imm, uint32_t rs2, uint8_t width)
 	{
 		x86::CodeBuf& cb = code();
-		// See emit_load().
 		const uint32_t instr = blk->instr_index;
 
 		// Load the value first, then protect both operands while the address
@@ -436,8 +420,8 @@ namespace rv64vm::jit
 			}
 			// Commit the dirty cached registers, then exit with the pc/count
 			// captured before the faulting instruction. A TLB miss is a yield
-			// to C++ (softmmu refill), not a chainable handoff: account its
-			// instructions into the chain budget and return via the single
+			// to C++ (softmmu refill), not a chainable handoff, so it accounts
+			// its instructions into the chain budget and returns via the single
 			// C++ frame, which the chain tail must not bypass.
 			for(uint8_t k = 0; k < dcnt; k++)
 				x86::mov_rm(cb, x86::REG_REGS, (int32_t)(dv[k] * 8), phys(ds[k]));
@@ -532,10 +516,10 @@ namespace rv64vm::jit
 		x86::CodeBuf& cb = code();
 		uint8_t S1		 = hreg_for_read(rs1);
 		uint8_t S2		 = (rs2 == rs1) ? S1 : hreg_for_read(rs2, rs1);
-		// Flush dirty regs before the branch.  This is required for the
-		// superblock form below as well: the taken tail and the inline
-		// fall-through share one compile-time register image, so it must be
-		// consistent on both paths - only flushing unconditionally gives that.
+		// Flush dirty regs before the branch.  Required for the superblock form
+		// too: the taken tail and the inline fall-through share one compile-time
+		// register image, so it must be consistent on both paths - only flushing
+		// unconditionally gives that.
 		flush_all();
 		x86::cmp_rr(cb, S1, S2);
 
@@ -913,9 +897,9 @@ namespace rv64vm::jit
 		}
 		if(!r1 && (mulF || rem))
 		{
-			// 0 * y = 0 and 0 % y = 0 regardless of y's value (y==0 yields
-			// dividend==0, still 0). DIV needs the runtime divisor check, so
-			// it falls through to the general path with a zero dividend.
+			// 0 * y = 0 and 0 % y = 0 regardless of y's value. DIV needs the
+			// runtime divisor check, so it falls through to the general path
+			// with a zero dividend.
 			uint8_t D = hreg_for_write(dstReg, src1Reg, 0xFFFFFFFFu);
 			x86::xor_rr(cb, D, D);
 			vr[dstReg].dirty = true;
@@ -930,8 +914,8 @@ namespace rv64vm::jit
 
 		if(op == MOp::MUL)
 		{
-			// Low half of the product (MUL is commutative, so the aliasing
-			// shifts the multiply to whichever operand's slot D shares).
+			// Low half of the product (MUL is commutative, so the aliasing shifts
+			// the multiply to whichever operand's slot D shares).
 			if(D == S1)
 			{
 				if(wVariant)
@@ -1265,13 +1249,11 @@ namespace rv64vm::jit
 				x86::mov_imm64(code(), D, imm);
 				break;
 			case ALUOp::AUIPC:
-				// rd = entry_pc + instr_bytes + imm, all resolved at runtime:
-				// entry_pc is re-stamped by the runner / chain dispatcher on
-				// every entry, so the block bakes no absolute VA and one
-				// compiled copy serves every VA alias of its phys page.
-				// imm is a multiple of 4096 within int32 and instr_bytes < 4096
-				// (blocks never cross a page), so imm + instr_bytes cannot
-				// overflow the sign-extended imm32 of `add`.
+			// AUIPC resolves entry_pc + instr_bytes + imm entirely at runtime,
+			// so the block bakes no absolute VA and one compiled copy serves
+			// every VA alias of its phys page.  imm is a multiple of 4096
+			// within int32 and instr_bytes < 4096 (blocks never cross a page),
+			// so imm + instr_bytes cannot overflow the sign-extended imm32.
 				x86::mov_mr(code(), D, x86::REG_CTX, x86::CTX_OFF_ENTRY);
 				x86::add_imm(code(), D, (int32_t)((int64_t)imm + (int64_t)blk->instr_bytes));
 				break;

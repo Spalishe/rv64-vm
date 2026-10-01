@@ -64,10 +64,7 @@ namespace rv64vm::jit
 	{
 	  public:
 		static constexpr uint64_t JIT_CACHE_SIZE = 1 << 18;
-		// Associativity of the block cache.  The key is asid-free (see
-		// lookup()), so the ways no longer hold per-asid variants of one
-		// phys - they absorb the remaining key dimensions (eff_mode/mxr/sum)
-		// and plain index collisions.  Eviction is LFU by hit count.
+		// Associativity of the block cache.  Eviction is LFU by hit count.
 		static constexpr size_t CACHE_WAYS = 8;
 
 		JIT_Context()
@@ -87,28 +84,21 @@ namespace rv64vm::jit
 		//
 		// ASID is intentionally NOT part of the key: the inline TLB check in
 		// emit_tlb_checks validates the asid (or global bit) of every data
-		// access at runtime, and two structural invariants make the baked
-		// instruction stream asid-independent as well:
-		//   - compile() never crosses a 4K VA page, so dispatch's single
-		//     VA->PA check on the start pc covers the whole block: any asid
-		//     (or VA alias) that resolves the start to the same phys resolves
-		//     every byte of the block to the same phys page;
-		//   - AUIPC/branches read entry_pc at runtime, so no absolute VA is
-		//     baked (see emit_u_to / emit_block_exit).
-		// Without this, ~100 guest processes recompiled the same phys blocks
-		// once per asid and the 8 ways could not hold the variants.
+		// access at runtime, and compile() never crosses a 4K VA page, so any
+		// asid (or VA alias) resolving the start to the same phys resolves
+		// every byte of the block to the same phys page.  AUIPC/branches read
+		// entry_pc at runtime, so no absolute VA is baked.  Without this, every
+		// guest process recompiled the same phys blocks once per asid.
 		JITExec lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum);
 
 		// Hotness gate: triggers compilation after RVJIT_HOT_THRESHOLD dispatches.
 		bool hot_tick(uint64_t phys_pc);
 
-		// After an invalidation (smc-epoch bump) the cache used to rewrite
-		// every block on its next dispatch even though sfences / arena
-		// flushes rarely change guest text at all.  A straight-line compiled
-		// block is fully determined by its guest bytes, so a stale-epoch way
-		// whose text hashes identically to the current physical text is reused
-		// and re-keyed to the current epoch instead of recompiled.  Returns
-		// false when nothing can be salvaged (caller must compile).
+		// After an invalidation (smc-epoch bump) a straight-line compiled block
+		// is fully determined by its guest bytes, so a stale-epoch way whose
+		// text hashes identically to the current physical text is reused and
+		// re-keyed to the current epoch instead of recompiled.  Returns false
+		// when nothing can be salvaged (caller must compile).
 		bool salvage(runner::Hart& h, uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, JITExec& out);
 
 		// Permanent "not a JIT-able starter" decision (see compile()); lets the
@@ -144,9 +134,7 @@ namespace rv64vm::jit
 			bool skip	  = false;
 		};
 
-		// Per-bucket hotness gate, keyed by phys only (not by asid), so the
-		// "compile this pc" decision matches the single-slot semantics: a hot
-		// phys compiles whichever (asid, ...) variant is currently dispatching.
+		// Per-bucket hotness gate, keyed by phys only (not by asid).
 		struct HotSlot
 		{
 			uint32_t hot	   = 0; // dispatch counter before compiling
@@ -171,8 +159,7 @@ namespace rv64vm::jit
 		static uint64_t index_of(uint64_t phys_pc)
 		{
 			// Mix high address bits into the index: kernel text spans tens of
-			// MB, and masking only the low bits aliased every 512 KiB, evicting
-			// live blocks and forcing recompiles.
+			// MB, and masking only the low bits aliased every 512 KiB.
 			uint64_t h = phys_pc >> 1;
 			h ^= h >> 17;
 			h *= 0x9E3779B97F4A7C15ULL;

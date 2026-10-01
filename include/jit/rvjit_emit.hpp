@@ -18,7 +18,7 @@ Copyright 2026 Spalishe
 #pragma once
 
 /*
- * Block buffer + virtual/host register allocator for the RV64I translators.
+ * Block buffer + guest->host register allocator.
  *
  * Guest registers live in memory at &hart.GPR[0]; the allocator caches a
  * window of them in host registers and flushes dirty values at the end of
@@ -43,15 +43,13 @@ namespace rv64vm::jit
 		uint32_t instr_bytes = 0; // guest bytes before the instruction being compiled
 		bool valid			 = false;
 
-		// Per-exit chain-link sites (one shared table per block, filled by
-		// emit_block_exit / emit_block_exit_rax through the emitter). Every
-		// normal block exit emits a self-contained tail that validates its
-		// private link slot (data_idx) before hopping; on staleness it falls
-		// back to the shared chain dispatcher, which re-stamps the slot on
-		// hit. lea_disp_off/budget_js/fail[3] are code-buffer positions whose
-		// rel32 targets are patched by emit_link_stubs(); lea_disp_off is the
-		// slot of the lea's disp32 field, relocated (RIP-relative) by
-		// compile() once the arena address is known.
+		// Per-exit chain-link sites (one shared table per block, filled through
+		// the emitter). Every block exit emits a tail that validates its private
+		// link slot (data_idx) before hopping, falling back to the shared chain
+		// dispatcher on staleness; the dispatcher re-stamps the slot on hit.
+		// The offsets are code-buffer positions whose rel32 targets are patched
+		// by emit_link_stubs(), except lea_disp_off, which compile() relocates
+		// RIP-relative once the arena address is known.
 		struct ExitLink
 		{
 			uint32_t data_idx;	  // index into this block's private slot region
@@ -117,20 +115,18 @@ namespace rv64vm::jit
 		VReg vr[32];
 		uint8_t hr_vreg[x86::RVJIT_HOST_REGS]; // 0xFF = free
 
-		// Translation context baked into the block at compile time. The block
-		// is only dispatched while the hart matches these, so the emitted
-		// permission masks stay valid. ASID is deliberately NOT baked: the
-		// inline TLB check validates it at runtime (asid match or global),
-		// and blocks never cross a page, so the phys key alone identifies
-		// the instruction stream for every address space (see lookup()).
+		// Translation context baked into the block at compile time and
+		// revalidated by dispatch, so the emitted permission masks stay valid.
+		// ASID is deliberately NOT baked: the inline TLB check validates it at
+		// runtime, and blocks never cross a page (see lookup()).
 		uint8_t eff_mode = 0; // Hart::PrivilegeMode as int (0=U,1=S,3=M)
 		bool mxr		 = false;
 		bool sum		 = false;
 
-		// TLB-miss / branch-misalign fixups: each [rel_pos] is a rel32 jcc
-		// into the stub of [instr], patched by emit_miss_stubs(). Dirty guest
-		// registers + their host slots are snapshotted at this point so the stub
-		// can commit them before the block exits to the interpreter.
+		// TLB-miss / branch-misalign fixups: each [rel_pos] is a rel32 jcc into
+		// the stub of [instr], patched by emit_miss_stubs(). Dirty guest
+		// registers are snapshotted here so the stub can commit them before
+		// exiting to the interpreter.
 		struct MissSite
 		{
 			uint32_t rel_pos;
@@ -148,10 +144,9 @@ namespace rv64vm::jit
 		bool exited = false;
 
 		// Conditional branches taken mid-block (superblocks): the fall-through
-		// continues inline and only the taken side leaves the block.  Bounded so
-		// that a block's exits always fit JIT_Block::exits[] and the tail does
-		// not grow without limit; past the cap a branch ends the block as before.
-		// Each superblock adds one exit, plus one for the block's own last exit.
+		// continues inline and only the taken side leaves the block. Bounded so
+		// the exits always fit JIT_Block::exits[]; past the cap a branch ends the
+		// block as before.
 		static constexpr uint32_t SUPERBLOCK_MAX = JIT_Block::MAX_EXITS - 2;
 		static_assert(SUPERBLOCK_MAX >= 1);
 		uint32_t n_super = 0;
@@ -180,7 +175,7 @@ namespace rv64vm::jit
 		void emit_prologue();
 
 		// Nothing else may emit code after emit_epilogue() except the miss
-		// stubs (which the epilogue must not fall through into). guest_bytes /
+		// stubs, which the epilogue must not fall through into. guest_bytes /
 		// guest_count are the total guest bytes / instructions of the block.
 		void emit_epilogue(uint32_t guest_bytes, uint32_t guest_count);
 
@@ -224,7 +219,7 @@ namespace rv64vm::jit
 
 		// Native guest loads/stores with an inline TLB lookup. width = bytes
 		// (1/2/4/8); sign_extend only matters for narrow signed loads. The
-		// instruction that faults is reported through blk->instr_index.
+		// faulting instruction is reported through blk->instr_index.
 		void emit_load(uint32_t rd, uint32_t rs1, int64_t imm, uint8_t width, bool sign_extend);
 		void emit_store(uint32_t rs1, int64_t imm, uint32_t rs2, uint8_t width);
 
