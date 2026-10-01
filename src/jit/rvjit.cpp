@@ -20,9 +20,6 @@ Copyright 2026 Spalishe
 #include "../../include/self_mod.hpp"
 
 #include <cstring>
-#include <unordered_set>
-#include <cstdio>
-#include <cstdlib>
 #include <sys/mman.h>
 
 #ifdef USE_JIT
@@ -118,13 +115,10 @@ namespace rv64vm::jit
 		// set by the exit tail) so later traversals hop directly without the
 		// dispatcher.  The epoch/mode guards already ran, so re-stamping is
 		// exactly as strong as the four comparisons it replaces.
-		if(getenv("JDIS")) // BISECT: disable private-slot refill
-		{ } else {
 		x86::mov_rm(cb, x86::REG_R15, 16, x86::REG_RDX);
 		x86::mov_rm(cb, x86::REG_R15, 0, x86::REG_R11);
 		x86::mov_rm(cb, x86::REG_R15, 8, x86::REG_RCX);
 		x86::mov_rm(cb, x86::REG_R15, 24, x86::REG_R10);
-		}
 
 		// Hit: set the target block's base pc (exits are computed as
 		// entry_pc + delta_va) and jump in right after its prologue
@@ -146,11 +140,6 @@ namespace rv64vm::jit
 		memcpy(p, cb.bytes, cb.pos);
 		if(x86::chain_dispatcher() == 0)
 			x86::chain_dispatcher() = (uint64_t)dispatch;
-		if(getenv("JDUMP"))
-		{
-			FILE* f = fopen("/tmp/opencode/disp.bin", "wb");
-			if(f) { fwrite(cb.bytes, 1, cb.pos, f); fclose(f); }
-		}
 		return dispatch;
 	}
 
@@ -159,51 +148,24 @@ namespace rv64vm::jit
 	// sound.
 	JITExec JIT_Context::lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum)
 	{
-		const size_t bucket		= index_of(phys_pc);
-		const size_t base		= bucket * CACHE_WAYS;
-		const uint64_t epoch	= g_smc_epoch.load(std::memory_order_relaxed);
-		bool any_same_phys		= false;
-		bool stale_epoch		= false;
-		int other_phys			= -1;
+		const size_t base	 = index_of(phys_pc) * CACHE_WAYS;
+		const uint64_t epoch = g_smc_epoch.load(std::memory_order_relaxed);
 		for(size_t w = 0; w < CACHE_WAYS; w++)
 		{
 			CachedBlock& e = cache[base + w];
-			if(!e.valid)
+			if(!e.valid || e.start_phys != phys_pc)
 				continue;
-			if(e.start_phys == phys_pc)
-			{
-				any_same_phys = true;
-				if(e.smc_epoch != epoch)
-				{
-					stale_epoch = true;
-					continue;
-				}
-				if(e.eff_mode == eff_mode && e.mxr == mxr && e.sum == sum)
-				{
-					e.hits++;
-					JITExec out;
-					out.fn		 = e.fn;
-					out.chain_fn = e.chain_fn;
-					out.count	 = e.count;
-					g_lookup_ok.fetch_add(1, std::memory_order_relaxed);
-					return out;
-				}
-			}
-			else if(other_phys < 0)
-				other_phys = (int)w;
+			if(e.smc_epoch != epoch)
+				continue;
+			if(e.eff_mode != eff_mode || e.mxr != mxr || e.sum != sum)
+				continue;
+			e.hits++;
+			JITExec out;
+			out.fn		 = e.fn;
+			out.chain_fn = e.chain_fn;
+			out.count	 = e.count;
+			return out;
 		}
-		// Miss classification for JSTATS, against the bucket as a whole.
-		if(any_same_phys)
-		{
-			if(stale_epoch)
-				g_miss_smc.fetch_add(1, std::memory_order_relaxed);
-			else
-				g_miss_asid_mode.fetch_add(1, std::memory_order_relaxed);
-		}
-		else if(other_phys >= 0)
-			g_miss_collide.fetch_add(1, std::memory_order_relaxed);
-		else
-			g_miss_invalid.fetch_add(1, std::memory_order_relaxed);
 		return JITExec{};
 	}
 
@@ -245,51 +207,27 @@ namespace rv64vm::jit
 		return true;
 	}
 
-	std::atomic<uint64_t> g_slv_ok{ 0 };
-	std::atomic<uint64_t> g_slv_mod{ 0 };
-	std::atomic<uint64_t> g_slv_dead{ 0 };
-	std::atomic<uint64_t> g_slv_text{ 0 };
-	std::atomic<uint64_t> g_slv_unread{ 0 };
-	std::atomic<uint64_t> g_slv_none{ 0 };
-
 	bool JIT_Context::salvage(runner::Hart& h, uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, JITExec& out)
 	{
-		static const bool enabled = getenv("JIT_NOSALVAGE") == nullptr;
-		if(!enabled)
-			return false;
 		const size_t base	 = index_of(phys_pc) * CACHE_WAYS;
 		const uint64_t epoch = g_smc_epoch.load(std::memory_order_relaxed);
 		const uint64_t agen	 = g_arena_gen.load(std::memory_order_relaxed);
-		bool saw_same_phys	 = false;
 		for(size_t w = 0; w < CACHE_WAYS; w++)
 		{
 			CachedBlock& e = cache[base + w];
 			if(!e.valid || e.start_phys != phys_pc)
 				continue;
-			saw_same_phys = true;
 			if(e.eff_mode != eff_mode || e.mxr != mxr || e.sum != sum)
-			{
-				g_slv_mod.fetch_add(1, std::memory_order_relaxed);
 				continue; // baked permission policy differs; must re-emit
-			}
 			if(e.smc_epoch == epoch)
 				continue; // fresh; not what we're here for
 			if(e.arena_gen != agen)
-			{
-				g_slv_dead.fetch_add(1, std::memory_order_relaxed);
 				continue; // its code was freed (UAF guard)
-			}
 			uint64_t cur[2];
 			if(!text_hash_phys(h, phys_pc, e.guest_bytes, cur))
-			{
-				g_slv_unread.fetch_add(1, std::memory_order_relaxed);
 				continue; // unreadable text: let compile re-emit
-			}
 			if(e.text_hash[0] != cur[0] || e.text_hash[1] != cur[1])
-			{
-				g_slv_text.fetch_add(1, std::memory_order_relaxed);
 				continue; // text really changed: recompiling is mandatory
-			}
 			e.smc_epoch = epoch; // text verified identical: re-key, keep code
 			// Re-keying makes this code live at the current epoch, so the
 			// per-page code generation must follow; smc_store_hit() classifies
@@ -306,21 +244,13 @@ namespace rv64vm::jit
 			out.fn		 = e.fn;
 			out.chain_fn = e.chain_fn;
 			out.count	 = e.count;
-			g_lookup_ok.fetch_add(1, std::memory_order_relaxed);
-			g_slv_ok.fetch_add(1, std::memory_order_relaxed);
 			return true;
 		}
-		if(!saw_same_phys)
-			g_slv_none.fetch_add(1, std::memory_order_relaxed);
 		return false;
 	}
 
 	bool JIT_Context::hot_tick(uint64_t phys_pc)
 	{
-		static const uint32_t hot_threshold = [] {
-			const char* s = getenv("RVJIT_HOT");
-			return s ? (uint32_t)atoi(s) : (uint32_t)RVJIT_HOT_THRESHOLD;
-		}();
 		const size_t i = index_of(phys_pc);
 		GiveUpSlot& g  = giveup[i];
 		if(g.skip && g.phys == phys_pc)
@@ -335,7 +265,7 @@ namespace rv64vm::jit
 			hs.hot_epoch = (uint32_t)cur_epoch;
 			hs.hot		= 0;
 		}
-		return ++hs.hot >= hot_threshold;
+		return ++hs.hot >= RVJIT_HOT_THRESHOLD;
 	}
 
 	bool JIT_Context::is_giveup(uint64_t phys_pc)
@@ -347,18 +277,6 @@ namespace rv64vm::jit
 
 	JITExec JIT_Context::compile(Hart& h, uint64_t va_pc, uint64_t phys_pc)
 	{
-		g_compile_count.fetch_add(1, std::memory_order_relaxed);
-		struct CompileTimer
-		{
-			std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
-			~CompileTimer()
-			{
-				g_compile_ns.fetch_add((uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
-										   std::chrono::steady_clock::now() - t0)
-										   .count(),
-									   std::memory_order_relaxed);
-			}
-		} ctimer;
 		ensure_chain_dispatcher();
 		while(mtx.test_and_set(std::memory_order_acquire))
 		{ /* spin */
@@ -368,11 +286,7 @@ namespace rv64vm::jit
 			std::atomic_flag& f;
 			~SpinGuard() { f.clear(std::memory_order_release); }
 		} guard{ mtx };
-		{
-			static std::unordered_set<uint64_t> uniq;
-			uniq.insert(phys_pc);
-			g_unique_blocks.store(uniq.size(), std::memory_order_relaxed);
-		}
+
 		// Effective access mode (MPRV honored) and the paging flags that the
 		// block policy is baked from; dispatch re-validates them.
 		const uint8_t eff_mode = (uint8_t)h.get_effective_mode(AccessType::STORE);
@@ -445,9 +359,6 @@ namespace rv64vm::jit
 		if(count < RVJIT_MIN_INSTRUCTIONS)
 		{
 			// Not a JIT-able starter; make hot_tick() stop retrying it.
-			static int logged_gv = 0;
-			if(getenv("JLOG") && logged_gv++ < 20)
-				fprintf(stderr, "giveup va=%llx phys=%llx\n", (unsigned long long)va_pc, (unsigned long long)phys_pc);
 			GiveUpSlot& g = giveup[index_of(phys_pc)];
 			g.phys		  = phys_pc;
 			g.skip		  = true;
@@ -480,31 +391,6 @@ namespace rv64vm::jit
 			const uint8_t* lea_inst = dst + blk.exits[i].lea_disp_off - 3;
 			const int32_t rel = (int32_t)((int64_t)slot - (int64_t)(lea_inst + 7));
 			memcpy(dst + blk.exits[i].lea_disp_off, &rel, 4);
-		}
-		if(getenv("JDUMP"))
-		{
-			static int ndump = 0;
-			if(ndump < 32)
-			{
-				char fn[64];
-				snprintf(fn, sizeof(fn), "/tmp/opencode/blk%d.bin", ndump);
-				FILE* f = fopen(fn, "wb");
-				if(f) { fwrite(blk.code.bytes, 1, blk.code.pos, f); fclose(f); }
-				snprintf(fn, sizeof(fn), "/tmp/opencode/blk%d.txt", ndump);
-				FILE* g = fopen(fn, "w");
-				if(g)
-				{
-					fprintf(g, "dst=%p data_base=%u n_exits=%u\n", (void*)dst, data_base, blk.n_exits);
-					for(uint32_t i = 0; i < blk.n_exits; i++)
-						fprintf(g, "exit %u data_idx=%u lea_disp_off=%u budget_js=%u fail=%d %d %d %d %d slot=%p\n",
-								i, blk.exits[i].data_idx, blk.exits[i].lea_disp_off, blk.exits[i].budget_js,
-								blk.exits[i].fail[0], blk.exits[i].fail[1], blk.exits[i].fail[2],
-								blk.exits[i].fail[3], blk.exits[i].fail[4],
-								(void*)(dst + data_base + i * 48));
-					fclose(g);
-				}
-				ndump++;
-			}
 		}
 
 		// Extend the self-modifying-code protection over the block's pages.
@@ -569,7 +455,6 @@ namespace rv64vm::jit
 
 	void JIT_Context::invalidate_all()
 	{
-		g_inval_count.fetch_add(1, std::memory_order_relaxed);
 		g_smc_epoch.fetch_add(1, std::memory_order_release);
 	}
 

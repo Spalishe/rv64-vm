@@ -32,7 +32,6 @@ Copyright 2026 Spalishe
 #include "rvjit_ctx.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <atomic>
 
 namespace rv64vm::jit::x86
 {
@@ -676,13 +675,6 @@ namespace rv64vm::jit::x86
 		static uint64_t addr = 0;
 		return addr;
 	}
-
-	// debug: last private-slot hop taken by any exit site (env JTRACE)
-	inline uint64_t g_jit_hops  = 0;
-	inline std::atomic<uint64_t> g_chain_guardfail{ 0 };
-	inline std::atomic<uint64_t> g_chain_memmiss{ 0 };
-	inline uint64_t g_hop_fn	  = 0;
-	inline uint64_t g_hop_pc	  = 0;
 
 	// lea r64, [rip + disp32]: used by exit tails to reach their per-exit
 	// link slot (a 48-byte block hanging off the end of the arena chunk).

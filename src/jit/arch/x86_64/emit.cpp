@@ -16,7 +16,6 @@ Copyright 2026 Spalishe
 */
 
 #include "../../../../include/jit/rvjit_emit.hpp"
-#include <cstdlib>
 
 namespace rv64vm::jit
 {
@@ -87,15 +86,6 @@ namespace rv64vm::jit
 			x86::mov_mr(cb, x86::REG_R10, x86::REG_CTX, x86::CTX_OFF_CHAIN_MODE);
 			x86::cmp_r64_m64(cb, x86::REG_R10, x86::REG_R15, 24);
 			L.fail[3] = x86::jcc32(cb, 0x5);
-			if(getenv("JTRACE"))
-			{
-				x86::mov_imm64(cb, x86::REG_R10, (uint64_t)&x86::g_jit_hops);
-				x86::mov_rm(cb, x86::REG_R10, 8, x86::REG_R11); // fn
-				x86::mov_rm(cb, x86::REG_R10, 16, x86::REG_RAX); // pc
-				x86::mov_mr(cb, x86::REG_RAX, x86::REG_R10, 0);
-				x86::add_imm(cb, x86::REG_RAX, 1);
-				x86::mov_rm(cb, x86::REG_R10, 0, x86::REG_RAX);
-			}
 			x86::jmp_r(cb, x86::REG_R11);
 		}
 

@@ -36,18 +36,6 @@ namespace rv64vm::jit
 {
 	inline constexpr size_t JIT_ARENA_BYTES = RVJIT_ARENA_PAGES * 4096;
 
-	// Debug counters (temporary).
-	inline std::atomic<uint64_t> g_compile_count{ 0 };
-	inline std::atomic<uint64_t> g_inval_count{ 0 };
-	inline std::atomic<uint64_t> g_compile_ns{ 0 };
-	inline std::atomic<uint64_t> g_unique_blocks{ 0 };
-	// lookup miss classification (asid no longer participates: "asid" misses
-	// below are mode/mxr/sum mismatches on the same phys)
-	inline std::atomic<uint64_t> g_miss_collide{ 0 };
-	inline std::atomic<uint64_t> g_miss_smc{ 0 };
-	inline std::atomic<uint64_t> g_miss_asid_mode{ 0 };
-	inline std::atomic<uint64_t> g_lookup_ok{ 0 };
-	inline std::atomic<uint64_t> g_miss_invalid{ 0 };
 	// Bumped by release_arenas(); a compiled block records the generation its
 	// code was emitted into so salvage() never resurrects freed (UAF) code.
 	inline std::atomic<uint64_t> g_arena_gen{ 0 };
@@ -166,13 +154,6 @@ namespace rv64vm::jit
 			return (h >> 20) & (JIT_CACHE_SIZE - 1);
 		}
 	};
-
-	extern std::atomic<uint64_t> g_slv_ok;
-	extern std::atomic<uint64_t> g_slv_mod;
-	extern std::atomic<uint64_t> g_slv_dead;
-	extern std::atomic<uint64_t> g_slv_text;
-	extern std::atomic<uint64_t> g_slv_unread;
-	extern std::atomic<uint64_t> g_slv_none;
 
 // Each returns true when the instruction was compiled and the block may
 // continue, false when the block should stop right after it.
