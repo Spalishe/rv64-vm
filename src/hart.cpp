@@ -23,8 +23,8 @@ Copyright 2026 Spalishe
 #include "../include/jit/rvjit.hpp"
 #endif
 #include <assert.h>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 
 namespace rv64vm::runner
 {
@@ -166,25 +166,20 @@ namespace rv64vm::runner
 		uint64_t pending_all = ip.raw & ie.raw;
 		if(!pending_all) return false;
 
-		// Убедитесь, что csrs - это плоский массив uint64_t[4096], а не std::map!
 		uint64_t mideleg = csrs[CSR_MIDELEG];
 
-		// 1. Проверка Machine mode
 		bool m_global = (mode == PrivilegeMode::Machine) ? status.fields.MIE : (mode < PrivilegeMode::Machine);
 		if(m_global)
 		{
 			uint64_t pending_m = pending_all & ~mideleg;
 			if(pending_m) [[likely]]
 			{
-				// Находим старший установленный бит (высший приоритет).
-				// __builtin_clzll гарантированно безопасен, т.к. pending_m != 0
 				int irq = 63 - __builtin_clzll(pending_m);
 				trap(irq, 0, true);
 				return true;
 			}
 		}
 
-		// 2. Проверка Supervisor mode
 		bool s_global = (mode == PrivilegeMode::Supervisor) ? status.fields.SIE : (mode < PrivilegeMode::Supervisor);
 		if(s_global)
 		{
