@@ -122,7 +122,12 @@ namespace rv64vm::runner
 
 	Block* Hart::compile_block(BlockCache& bc, uint64_t start_phys)
 	{
-		Block& b	 = bc.slots[(start_phys >> 2) & (BlockCache::CACHE_SIZE - 1)];
+		uint64_t h = start_phys >> 2;
+		h ^= h >> 21;
+		h *= 0x9E3779B97F4A7C15ULL;
+		h ^= h >> 23;
+		size_t idx = (h >> (64 - BlockCache::CACHE_BITS)) & (BlockCache::CACHE_SIZE - 1);
+		Block& b	 = bc.slots[idx];
 		b.gen		 = 0; // invalidate until fully built
 		b.start_phys = start_phys;
 
@@ -151,7 +156,7 @@ namespace rv64vm::runner
 				break;
 			pc_va += bi.increase_pc;
 		}
-		if(n == 0)
+		if(n == 0 || n <= 2)
 			return nullptr;
 		b.count = n;
 		b.gen	= bc.generation;
@@ -295,7 +300,7 @@ namespace rv64vm::runner
 				phys_done = true;
 			}
 
-			jj = cached;
+				jj = cached;
 			if(jj.fn == nullptr && !interp_memo)
 			{
 				d->phys = phys;
@@ -399,22 +404,30 @@ namespace rv64vm::runner
 		}
 
 			Block* b = nullptr;
-			if(memo_way != nullptr && memo_way->block != nullptr && memo_way->block_gen == bc.generation
-			   && memo_way->block->start_phys == phys && memo_way->block->smc == rv64vm::g_smc_epoch.load())
+			// Skip block cache for sequential accesses (freerange-style memory ops)
+			// that won't be re-executed, preventing cache thrashing.
+			bool is_sequential = has_last_phys && phys >= last_phys_for_block && phys <= last_phys_for_block + 1024;
+			has_last_phys = true;
+			last_phys_for_block = phys;
+			if(!is_sequential)
 			{
-				// Same answer BlockCache::lookup() would give, without the
-				// direct-mapped 64 KiB collision that makes it miss here.
-				b = memo_way->block;
-			}
-			else
-			{
-				b = bc.lookup(phys);
-				if(b == nullptr)
-					b = compile_block(bc, phys);
-				if(b != nullptr && memo_way != nullptr)
+				if(memo_way != nullptr && memo_way->block != nullptr && memo_way->block_gen == bc.generation
+				   && memo_way->block->start_phys == phys && memo_way->block->smc == rv64vm::g_smc_epoch.load())
 				{
-					memo_way->block		= b;
-					memo_way->block_gen	= bc.generation;
+					// Same answer BlockCache::lookup() would give, without the
+					// direct-mapped 64 KiB collision that makes it miss here.
+					b = memo_way->block;
+				}
+				else
+				{
+					b = bc.lookup(phys);
+					if(b == nullptr)
+						b = compile_block(bc, phys);
+					if(b != nullptr && memo_way != nullptr)
+					{
+						memo_way->block		= b;
+						memo_way->block_gen	= bc.generation;
+					}
 				}
 			}
 			if(b == nullptr) // can't form a block: single interpreter step

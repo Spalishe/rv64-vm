@@ -104,10 +104,9 @@ namespace rv64vm::runner
 	{
 		GPR[0] = 0;
 		cycle++;
-		if((instret & 0x2FFF) == 0) [[unlikely]]
+		if((ip.raw & ie.raw) != 0) [[unlikely]]
 		{
-			if((ip.raw & ie.raw) != 0)
-				check_ints();
+			check_ints();
 		}
 		if(WFI) [[unlikely]]
 		{

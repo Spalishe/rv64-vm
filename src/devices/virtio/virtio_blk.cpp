@@ -25,7 +25,7 @@ Copyright 2026 Spalishe
 namespace rv64vm::dev
 {
 	VirtIO_BLK::VirtIO_BLK(uint64_t base, uint64_t size, rv64vm::runner::Machine& cpu, fdt_node* fdt, FILE* image)
-		: Device(base, size, fdt, cpu.get_mmap()), plic(cpu.get_mmio()->get<PLIC>().get()), irq_num(plic->acquire_irq()), disk(image)
+		: Device(base, size, fdt, cpu.get_mmap()), plic(cpu.get_mmio()->get<PLIC>().get()), irq_num(plic->acquire_irq(1 + (uint32_t)((base - 0x10001000ULL) / 0x1000ULL))), disk(image)
 	{
 		cpu.get_mmap()->add_region(base, size);
 

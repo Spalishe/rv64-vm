@@ -35,7 +35,7 @@ namespace rv64vm::dev
 		void write(uint64_t addr, MemorySize size, uint64_t val);
 		void tick();
 		static std::shared_ptr<PLIC> init_auto(runner::Machine& cpu);
-		int acquire_irq();
+		int acquire_irq(uint32_t forced_id = 0);
 		int last_irq();
 
 	  private:

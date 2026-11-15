@@ -104,8 +104,13 @@ namespace rv64vm::dev
 		return std::make_shared<PLIC>(0x0C000000, 0x400000, cpu, 64, cpu.get_fdt());
 	}
 
-	int PLIC::acquire_irq()
+	int PLIC::acquire_irq(uint32_t forced_id)
 	{
+		if(forced_id != 0 && forced_id <= max_sources)
+		{
+			if(forced_id >= last_irq_registered) last_irq_registered = forced_id + 1;
+			return (int)forced_id;
+		}
 		uint32_t val = last_irq_registered;
 		last_irq_registered++;
 		return val;

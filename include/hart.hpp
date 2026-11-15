@@ -171,6 +171,10 @@ namespace rv64vm::runner
 			uint64_t block_gen = 0;
 		};
 		DispatchHot dhot[4096 * MEMO_WAYS]{};
+		// Track last physical address for block cache: skip caching sequential
+		// accesses (freerange-style) that won't be re-executed.
+		uint64_t last_phys_for_block = 0;
+		bool has_last_phys = false;
 		// Chain-key snapshot backing hctx.chain_epoch: the runner bumps the
 		// epoch whenever any of (tlb gen, smc, store-mode|MXR|SUM, asid) differs
 		// from the last dispatch, which is what lets the generated block exits

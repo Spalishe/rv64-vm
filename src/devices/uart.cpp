@@ -24,7 +24,7 @@ Copyright 2026 Spalishe
 namespace rv64vm::dev
 {
 	UART::UART(uint64_t start, uint64_t size, runner::Machine& cpu, fdt_node* fdt, FILE* out)
-		: Device(start, size, fdt, cpu.get_mmap()), plic(cpu.get_mmio()->get<PLIC>().get()), irq_num(plic->acquire_irq()),
+		: Device(start, size, fdt, cpu.get_mmap()), plic(cpu.get_mmio()->get<PLIC>().get()), irq_num(plic->acquire_irq(10)),
 		  dlab(false),
 		  dll(0),
 		  dlm(0),
