@@ -22,9 +22,9 @@ RISC-V Translation Lookaside Buffer.
 | `void` | [`insert`](#insert)  | Inserts new [TLB](#tlb) entry in cache. |
 | `void` | [`note_exec`](#note_exec) `inline` | Drops W\|D from the [TLB](#tlb) entries that map `phys`. |
 | `void` | [`flush_all`](#flush_all) `inline` | Flushes all [TLB](#tlb) entries. |
-| `void` | [`flush_addr`](#flush_addr) `inline` | Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1) |
-| `void` | [`flush_asid`](#flush_asid) `inline` | Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2) |
-| `void` | [`flush_addr_asid`](#flush_addr_asid) `inline` | Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2) |
+| `void` | [`flush_addr`](#flush_addr) `inline` | Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1). |
+| `void` | [`flush_asid`](#flush_asid) `inline` | Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2). |
+| `void` | [`flush_addr_asid`](#flush_addr_asid) `inline` | Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2). |
 
 ---
 
@@ -84,7 +84,7 @@ Is success?
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `va` | `uint64_t` | Virtual Address |
-| `type` | [`AccessType`](#traps_8hpp_1a36b9a80a5a835ac5371a96e3eed57b9b) | Access type |
+| `type` | `AccessType` | Access type |
 | `asid` | `uint16_t` | ASID |
 | `mode` | `int` | Privilage Mode casted to integer |
 | `mxr` | `bool` | [Hart](Hart.md#hart) Status MXR bit |
@@ -171,7 +171,7 @@ inline void flush_addr(uint64_t va)
 
 Defined in include/tlb.hpp:166
 
-Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1)
+Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1).
 
 The [TLB](#tlb) is direct-mapped on (va >> 12); any resident entry that could serve an access to `va` lives at index(va), regardless of page size. Invalidating in place (generation = 0) instead of bumping the global generation keeps every unrelated compiled JIT block and its baked [TLB](#tlb) checks alive; the affected slot alone fails its baked check, gets refilled by the C++ page walk, and the stale block then runs against the fresh entry.
 
@@ -189,7 +189,7 @@ inline void flush_asid(uint16_t asid)
 
 Defined in include/tlb.hpp:178
 
-Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2)
+Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2).
 
 ---
 
@@ -205,5 +205,5 @@ inline void flush_addr_asid(uint64_t va, uint16_t asid)
 
 Defined in include/tlb.hpp:190
 
-Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2)
+Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2).
 

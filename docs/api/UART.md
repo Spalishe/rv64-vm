@@ -67,7 +67,7 @@ Defined in include/devices/uart.hpp:76
 
 #### Reimplements
 
-- [`read`](Device.md#read)
+- [`Device::read`](Device.md#read)
 
 ---
 
@@ -87,5 +87,5 @@ Defined in include/devices/uart.hpp:77
 
 #### Reimplements
 
-- [`write`](Device.md#write)
+- [`Device::write`](Device.md#write)
 

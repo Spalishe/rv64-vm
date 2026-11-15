@@ -69,7 +69,7 @@ Defined in include/devices/plic.hpp:34
 
 #### Reimplements
 
-- [`read`](Device.md#read)
+- [`Device::read`](Device.md#read)
 
 ---
 
@@ -89,7 +89,7 @@ Defined in include/devices/plic.hpp:35
 
 #### Reimplements
 
-- [`write`](Device.md#write)
+- [`Device::write`](Device.md#write)
 
 ---
 
@@ -111,5 +111,5 @@ This function would call almost(optimization) every tick
 
 #### Reimplements
 
-- [`tick`](Device.md#tick)
+- [`Device::tick`](Device.md#tick)
 

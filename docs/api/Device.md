@@ -141,14 +141,14 @@ Defined in include/device.hpp:65
 
 #### Reimplemented by
 
-- [`read`](CLINT.md#read-5)
-- [`read`](I2C.md#read-2)
-- [`read`](PCI_HEG.md#read-7)
-- [`read`](PLIC.md#read-3)
-- [`read`](SYSCON.md#read-6)
-- [`read`](UART.md#read-4)
-- [`read`](VirtIO_BLK.md#read-8)
-- [`read`](VirtIO_RNG.md#read-9)
+- [`CLINT::read`](CLINT.md#read-5)
+- [`I2C::read`](I2C.md#read-2)
+- [`PCI_HEG::read`](PCI_HEG.md#read-7)
+- [`PLIC::read`](PLIC.md#read-3)
+- [`SYSCON::read`](SYSCON.md#read-6)
+- [`UART::read`](UART.md#read-4)
+- [`VirtIO_BLK::read`](VirtIO_BLK.md#read-8)
+- [`VirtIO_RNG::read`](VirtIO_RNG.md#read-9)
 
 ---
 
@@ -168,14 +168,14 @@ Defined in include/device.hpp:69
 
 #### Reimplemented by
 
-- [`write`](CLINT.md#write-5)
-- [`write`](I2C.md#write-2)
-- [`write`](PCI_HEG.md#write-7)
-- [`write`](PLIC.md#write-3)
-- [`write`](SYSCON.md#write-6)
-- [`write`](VirtIO_BLK.md#write-8)
-- [`write`](VirtIO_RNG.md#write-9)
-- [`write`](UART.md#write-4)
+- [`CLINT::write`](CLINT.md#write-5)
+- [`I2C::write`](I2C.md#write-2)
+- [`PCI_HEG::write`](PCI_HEG.md#write-7)
+- [`PLIC::write`](PLIC.md#write-3)
+- [`SYSCON::write`](SYSCON.md#write-6)
+- [`UART::write`](UART.md#write-4)
+- [`VirtIO_BLK::write`](VirtIO_BLK.md#write-8)
+- [`VirtIO_RNG::write`](VirtIO_RNG.md#write-9)
 
 ---
 
@@ -197,10 +197,10 @@ This function would call almost(optimization) every tick
 
 #### Reimplemented by
 
-- [`tick`](CLINT.md#tick-3)
-- [`tick`](I2C.md#tick-1)
-- [`tick`](PLIC.md#tick-2)
-- [`tick`](PCI_HEG.md#tick-4)
+- [`CLINT::tick`](CLINT.md#tick-3)
+- [`I2C::tick`](I2C.md#tick-1)
+- [`PCI_HEG::tick`](PCI_HEG.md#tick-4)
+- [`PLIC::tick`](PLIC.md#tick-2)
 
 ---
 

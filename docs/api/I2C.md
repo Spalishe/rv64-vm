@@ -71,7 +71,7 @@ This function would call almost(optimization) every tick
 
 #### Reimplements
 
-- [`tick`](Device.md#tick)
+- [`Device::tick`](Device.md#tick)
 
 ---
 
@@ -91,7 +91,7 @@ Defined in include/devices/i2c/i2c-core.hpp:113
 
 #### Reimplements
 
-- [`read`](Device.md#read)
+- [`Device::read`](Device.md#read)
 
 ---
 
@@ -111,5 +111,5 @@ Defined in include/devices/i2c/i2c-core.hpp:114
 
 #### Reimplements
 
-- [`write`](Device.md#write)
+- [`Device::write`](Device.md#write)
 

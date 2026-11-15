@@ -48,7 +48,7 @@ VirtIO devices counter.
 | `void` | [`wait`](#wait)  | Joins machine work thread. |
 | [`MMIO`](MMIO.md#mmio) * | [`get_mmio`](#get_mmio) `inline` | Returns [MMIO](MMIO.md#mmio) pointer. |
 | `fdt_node *` | [`get_fdt`](#get_fdt) `inline` | Returns FDT pointer. |
-| `uint64_t` | [`get_timebase`](#get_timebase) `const` `inline` | Returns config specified timer timebase (Hz/S) |
+| `uint64_t` | [`get_timebase`](#get_timebase) `const` `inline` | Returns config specified timer timebase (Hz/S). |
 | [`MemoryMap`](MemoryMap.md#memorymap) * | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
 | [`MachineState`](#machinestate) | [`get_state`](#get_state) `const` `inline` | Returns [Machine](#machine) internal state. |
 | `uint64_t` | [`get_memory_size`](#get_memory_size) `const` `inline` | Returns config specified RAM size. |
@@ -262,7 +262,7 @@ inline uint64_t get_timebase() const
 
 Defined in include/machine.hpp:148
 
-Returns config specified timer timebase (Hz/S)
+Returns config specified timer timebase (Hz/S).
 
 #### Returns
 Timebase number

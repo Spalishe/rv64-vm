@@ -23,7 +23,7 @@ RISC-V CPU Core.
 | [`MemoryMap`](MemoryMap.md#memorymap) * | [`get_mmap`](#get_mmap) `inline` | Returns [MemoryMap](MemoryMap.md#memorymap) pointer. |
 | [`Reservation`](Reservation.md#reservation) & | [`get_reservation`](#get_reservation) `inline` | Returns CPU Atomic [Reservation](Reservation.md#reservation). |
 | [`MMU`](MMU.md#mmu) & | [`get_mmu`](#get_mmu) `inline` | Returns CPU Memory Management Unit. |
-| `void` | [`clear_decode_cache`](#clear_decode_cache) `inline` | Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache. |
+| `void` | [`clear_decode_cache`](#clear_decode_cache) `inline` | Clears Instruction Decoder Cache. |
 | `const uint64_t` | [`get_memsize`](#get_memsize) `const` `inline` | Returns RAM size. |
 | `void` | [`amo_check_reservation`](#amo_check_reservation) `inline` | Clears reservation if defined address is within CPU reservation address. |
 | `uint64_t` | [`csr_read`](#csr_read)  | Returns value stored in CSR. |
@@ -85,7 +85,7 @@ Destroys RISC-V core
 inline PrivilegeMode get_effective_mode(AccessType access_type) const
 ```
 
-Defined in include/hart.hpp:192
+Defined in include/hart.hpp:196
 
 Returns CPU Effective mode for a specific memory access.
 
@@ -107,7 +107,7 @@ Effective mode
 inline MMIO * get_mmio()
 ```
 
-Defined in include/hart.hpp:205
+Defined in include/hart.hpp:209
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -128,7 +128,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/hart.hpp:211
+Defined in include/hart.hpp:215
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -149,7 +149,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline Reservation & get_reservation()
 ```
 
-Defined in include/hart.hpp:217
+Defined in include/hart.hpp:221
 
 Returns CPU Atomic [Reservation](Reservation.md#reservation).
 
@@ -170,7 +170,7 @@ Returns CPU Atomic [Reservation](Reservation.md#reservation).
 inline MMU & get_mmu()
 ```
 
-Defined in include/hart.hpp:223
+Defined in include/hart.hpp:227
 
 Returns CPU Memory Management Unit.
 
@@ -191,9 +191,9 @@ Returns CPU Memory Management Unit.
 inline void clear_decode_cache()
 ```
 
-Defined in include/hart.hpp:227
+Defined in include/hart.hpp:231
 
-Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
+Clears Instruction Decoder Cache.
 
 ---
 
@@ -207,7 +207,7 @@ Clears [Instruction](#structrv64vm_1_1runner_1_1instruction) Decoder Cache.
 inline const uint64_t get_memsize() const
 ```
 
-Defined in include/hart.hpp:241
+Defined in include/hart.hpp:245
 
 Returns RAM size.
 
@@ -226,7 +226,7 @@ Memory size in bytes
 inline void amo_check_reservation(uint64_t pa)
 ```
 
-Defined in include/hart.hpp:246
+Defined in include/hart.hpp:250
 
 Clears reservation if defined address is within CPU reservation address.
 
@@ -240,7 +240,7 @@ Clears reservation if defined address is within CPU reservation address.
 uint64_t csr_read(uint16_t csr)
 ```
 
-Defined in include/hart.hpp:258
+Defined in include/hart.hpp:262
 
 Returns value stored in CSR.
 
@@ -263,7 +263,7 @@ CSR value
 void csr_write(uint16_t csr, uint64_t val)
 ```
 
-Defined in include/hart.hpp:264
+Defined in include/hart.hpp:268
 
 Stores value to CSR.
 
@@ -284,7 +284,7 @@ Stores value to CSR.
 void trap(uint64_t cause, uint64_t tval, bool interrupt)
 ```
 
-Defined in include/hart.hpp:273
+Defined in include/hart.hpp:277
 
 CPU Trap function.
 
@@ -302,7 +302,7 @@ Raises trap in CPU core.
 
 | Name | Description |
 |------|-------------|
-| [`PrivilegeMode`](#privilegemode)  | CPU PrivilegeMode. |
+| [`PrivilegeMode`](#privilegemode)  | CPU [PrivilegeMode](#privilegemode). |
 
 ---
 
@@ -316,7 +316,7 @@ enum PrivilegeMode
 
 Defined in include/hart.hpp:53
 
-CPU PrivilegeMode.
+CPU [PrivilegeMode](#privilegemode).
 
 Current CPU privilege mode.
 
@@ -342,7 +342,7 @@ Current CPU privilege mode.
 uint64_t run_blocks(BlockCache & bc, uint64_t max_insts)
 ```
 
-Defined in include/hart.hpp:301
+Defined in include/hart.hpp:305
 
 Block-chaining fast path (lightweight JIT).
 

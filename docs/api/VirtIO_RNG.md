@@ -67,7 +67,7 @@ Defined in include/devices/virtio/virtio_rng.hpp:40
 
 #### Reimplements
 
-- [`read`](Device.md#read)
+- [`Device::read`](Device.md#read)
 
 ---
 
@@ -87,5 +87,5 @@ Defined in include/devices/virtio/virtio_rng.hpp:41
 
 #### Reimplements
 
-- [`write`](Device.md#write)
+- [`Device::write`](Device.md#write)
 

@@ -19,7 +19,7 @@ RISC-V Memory Management Unit.
 |  | [`MMU`](#mmu) `inline` | [MMU](#mmu) Constructor. |
 |  | [`~MMU`](#~mmu) `inline` | [MMU](#mmu) Destructor. |
 | [`TLB`](TLB.md#tlb) & | [`get_tlb`](#get_tlb) `inline` | Returns [TLB](TLB.md#tlb) reference. |
-| [`MemoryReturn`](#structmemoryreturn) | [`translate`](#translate)  | Translates Virtual address to Physical address. |
+| `MemoryReturn` | [`translate`](#translate)  | Translates Virtual address to Physical address. |
 
 ---
 
@@ -99,7 +99,7 @@ Memory operation result
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `type` | [`AccessType`](#traps_8hpp_1a36b9a80a5a835ac5371a96e3eed57b9b) | Access type |
+| `type` | `AccessType` | Access type |
 | `va` | `uint64_t` | Virtual address |
 | `pa` | `uint64_t *` | Pointer to Physical address to set |
 
