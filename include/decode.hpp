@@ -25,7 +25,7 @@ Copyright 2026 Spalishe
 #include <cstdint>
 #include <string>
 #include <vector>
-#if defined(HOST_TARGET_X86_64)
+#if defined(HOST_TARGET_X86_64) and defined(__BMI2__)
 #include <immintrin.h>
 #endif
 
@@ -33,26 +33,22 @@ namespace rv64vm::runner
 {
 	inline uint32_t pext_u32(uint32_t val, const uint32_t mask)
 	{
-#if defined(HOST_TARGET_X86_64)
+#if defined(HOST_TARGET_X86_64) and defined(__BMI2__)
 		return _pext_u32(val, mask);
-#elif defined(HOST_TARGET_AARCH64)
-		uint32_t x	= val & mask;
-		uint32_t m	= mask;
-		uint32_t mk = ~m << 1;
-		for(int i = 0; i < 5; i++)
+#else
+		uint32_t result		= 0;
+		unsigned result_bit = 0;
+		uint32_t mask1		= mask;
+		while(mask1)
 		{
-			uint32_t mp = mk ^ (mk << 1);
-			mp ^= mp << 2;
-			mp ^= mp << 4;
-			mp ^= mp << 8;
-			mp ^= mp << 16;
-			uint32_t mv = mp & m;
-			m			= (m ^ mv) | (mv >> (1 << i));
-			uint32_t t	= x & mv;
-			x			= (x ^ t) | (t >> (1 << i));
-			mk &= ~mp;
+			const unsigned bit = std::countr_zero(mask1);
+
+			result |= ((val >> bit) & 1u) << result_bit;
+			mask1 &= mask1 - 1;
+			++result_bit;
 		}
-		return x;
+
+		return result;
 #endif
 	}
 
