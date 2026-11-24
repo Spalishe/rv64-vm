@@ -8,7 +8,7 @@
 class TLB
 ```
 
-Defined in include/tlb.hpp:35
+Defined in include/tlb.hpp:36
 
 RISC-V Translation Lookaside Buffer.
 
@@ -38,7 +38,7 @@ RISC-V Translation Lookaside Buffer.
 inline TLB()
 ```
 
-Defined in include/tlb.hpp:41
+Defined in include/tlb.hpp:42
 
 [TLB](#tlb) Constructor.
 
@@ -54,7 +54,7 @@ Defined in include/tlb.hpp:41
 inline ~TLB()
 ```
 
-Defined in include/tlb.hpp:45
+Defined in include/tlb.hpp:46
 
 [TLB](#tlb) Destructor.
 
@@ -68,7 +68,7 @@ Defined in include/tlb.hpp:45
 bool lookup(uint64_t va, AccessType type, uint16_t asid, int mode, bool mxr, bool sum, uint64_t * pa)
 ```
 
-Defined in include/tlb.hpp:92
+Defined in include/tlb.hpp:93
 
 Looks up in cache for [TLB](#tlb) entry.
 
@@ -101,7 +101,7 @@ Is success?
 void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void * host_page = nullptr)
 ```
 
-Defined in include/tlb.hpp:106
+Defined in include/tlb.hpp:107
 
 Inserts new [TLB](#tlb) entry in cache.
 
@@ -131,7 +131,7 @@ Inserts new [TLB](#tlb) entry in cache.
 inline void note_exec(uint64_t phys)
 ```
 
-Defined in include/tlb.hpp:132
+Defined in include/tlb.hpp:134
 
 Drops W|D from the [TLB](#tlb) entries that map `phys`.
 
@@ -139,7 +139,7 @@ W^X: once a page is executed, JITed stores must miss the [TLB](#tlb) so stores f
 
 `phys` is a PHYSICAL page address - the code page the JIT has just compiled into - not a virtual one. The [TLB](#tlb) is direct-mapped by VA and one physical page can be aliased by any number of VAs (identity vs. linear map, per-process mm), so the entries to fix are found by physical coverage, never by hashing `phys` as if it were a VA.
 
-w_writable answers in O(1) whether any resident entry still advertises W|D for this page. Kernel text is mapped read+execute, so that count is normally zero and this is a no-op; only a page that really was writable data before it started hosting code pays for an invalidation.
+w_writable/w_sources tell in O(1) which resident slots advertise W for this physical page. Only those slots are fixed in place; a full [TLB](#tlb) generation bump would drop every unrelated translation and break every JIT chain link, which is catastrophic for user code whose pages were written as data before they were ever executed.
 
 ---
 
@@ -153,7 +153,7 @@ w_writable answers in O(1) whether any resident entry still advertises W|D for t
 inline void flush_all()
 ```
 
-Defined in include/tlb.hpp:147
+Defined in include/tlb.hpp:177
 
 Flushes all [TLB](#tlb) entries.
 
@@ -169,7 +169,7 @@ Flushes all [TLB](#tlb) entries.
 inline void flush_addr(uint64_t va)
 ```
 
-Defined in include/tlb.hpp:166
+Defined in include/tlb.hpp:201
 
 Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1).
 
@@ -187,7 +187,7 @@ The [TLB](#tlb) is direct-mapped on (va >> 12); any resident entry that could se
 inline void flush_asid(uint16_t asid)
 ```
 
-Defined in include/tlb.hpp:178
+Defined in include/tlb.hpp:214
 
 Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2).
 
@@ -203,7 +203,7 @@ Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2).
 inline void flush_addr_asid(uint64_t va, uint16_t asid)
 ```
 
-Defined in include/tlb.hpp:190
+Defined in include/tlb.hpp:229
 
 Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2).
 
