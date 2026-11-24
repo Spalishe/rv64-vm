@@ -53,21 +53,27 @@ namespace rv64vm::runner
 			if(!can_read) return false;
 		}
 
-		bool is_u_page = p & (int)TLBPermissions::PERM_U;
-		if(mode == (int)Hart::PrivilegeMode::User)
+		// Bare identity mappings carry no page-level U bit: PMP, not the page
+		// table, decides privileges there.  Their U bit is only there to keep
+		// the R/W/X check uniform, so it must not be read as a U-page right.
+		if(!e.bare)
 		{
-			if(!is_u_page) return false;
-		}
-		else if(mode == (int)Hart::PrivilegeMode::Supervisor)
-		{
-			if(is_u_page && !sum) return false;
+			bool is_u_page = p & (int)TLBPermissions::PERM_U;
+			if(mode == (int)Hart::PrivilegeMode::User)
+			{
+				if(!is_u_page) return false;
+			}
+			else if(mode == (int)Hart::PrivilegeMode::Supervisor)
+			{
+				if(is_u_page && !sum) return false;
+			}
 		}
 
 		*pa = e.ppage_base | (va & page_mask);
 		return true;
 	}
 
-	void TLB::insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void* host_page)
+	void TLB::insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void* host_page, bool bare)
 	{
 		const uint32_t idx = (uint32_t)index(va);
 		TlbEntry& e		   = entries[idx];
@@ -85,6 +91,7 @@ namespace rv64vm::runner
 		e.page_bits		   = page_bits;
 		e.perm			   = perm;
 		e.global		   = global;
+		e.bare			   = bare;
 
 		// W^X invariant: once a page has ever been executed (see
 		// self_mod.hpp), no TLB entry covering it may advertise W|D. Fresh

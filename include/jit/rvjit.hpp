@@ -73,7 +73,7 @@ namespace rv64vm::jit
 		// execution; {nullptr,0} when the stream is not JIT-able.
 		JITExec compile(runner::Hart& h, uint64_t va_pc, uint64_t phys_pc);
 
-		// Cache lookup keyed by (start_phys, SMC-epoch, eff_mode, mxr, sum).
+		// Cache lookup keyed by (start_phys, SMC-epoch, eff_mode, mxr, sum, satp_mode).
 		//
 		// ASID is intentionally NOT part of the key: the inline TLB check in
 		// emit_tlb_checks validates the asid (or global bit) of every data
@@ -82,7 +82,7 @@ namespace rv64vm::jit
 		// every byte of the block to the same phys page.  AUIPC/branches read
 		// entry_pc at runtime, so no absolute VA is baked.  Without this, every
 		// guest process recompiled the same phys blocks once per asid.
-		JITExec lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum);
+		JITExec lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, uint8_t satp_mode);
 
 		// Hotness gate: triggers compilation after RVJIT_HOT_THRESHOLD dispatches.
 		bool hot_tick(uint64_t phys_pc);
@@ -92,7 +92,7 @@ namespace rv64vm::jit
 		// text hashes identically to the current physical text is reused and
 		// re-keyed to the current epoch instead of recompiled.  Returns false
 		// when nothing can be salvaged (caller must compile).
-		bool salvage(runner::Hart& h, uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, JITExec& out);
+		bool salvage(runner::Hart& h, uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, uint8_t satp_mode, JITExec& out);
 
 		// Permanent "not a JIT-able starter" decision (see compile()); lets the
 		// dispatch memo cache the interpreter fallback for this phys.
@@ -111,6 +111,7 @@ namespace rv64vm::jit
 			uint8_t eff_mode		 = 0; // baked privilege mode (0=U,1=S,3=M)
 			bool mxr				 = false;
 			bool sum				 = false;
+			uint8_t satp_mode		 = 0; // baked paging mode (0=Bare)
 			uint32_t hits			 = 0; // lookup hits (LFU eviction score)
 			uint32_t count			 = 0;
 			uint32_t guest_bytes	 = 0; // guest text bytes this block decoded
@@ -136,7 +137,7 @@ namespace rv64vm::jit
 
 		// JIT_CACHE_SIZE buckets x CACHE_WAYS ways; bucket b lives at
 		// cache[b * CACHE_WAYS + w].  Each way is keyed by
-		// (start_phys, smc_epoch, eff_mode, mxr, sum) - no asid, no VA.
+		// (start_phys, smc_epoch, eff_mode, mxr, sum, satp_mode) - no asid, no VA.
 		std::vector<CachedBlock> cache;
 		std::vector<GiveUpSlot> giveup;
 		std::vector<HotSlot> hotmap;

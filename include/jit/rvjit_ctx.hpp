@@ -126,5 +126,6 @@ namespace rv64vm::jit
 	static_assert(offsetof(runner::TLB::TlbEntry, page_bits) == 42);
 	static_assert(offsetof(runner::TLB::TlbEntry, perm) == 43);
 	static_assert(offsetof(runner::TLB::TlbEntry, global) == 44);
+	static_assert(offsetof(runner::TLB::TlbEntry, bare) == 45);
 	static_assert(sizeof(runner::TLB::TlbEntry) == 64);
 }

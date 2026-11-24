@@ -140,13 +140,18 @@ namespace rv64vm::jit
 			// A load with MXR accepts R *or* X, which cannot be expressed as
 			// the usual "all must-bits set, no forbid-bit set" compare: emit
 			// a short OR test first and only then validate U/SUM.
+			// Bare identity mappings have no page-level U bit, so a block
+			// compiled while satp.mode == 0 skips that part entirely.
 			uint32_t must	  = store ? (PERM_W | PERM_D) : (em.mxr ? 0 : PERM_R);
 			uint32_t forb	  = 0;
 			uint32_t any_mask = (!store && em.mxr) ? (PERM_R | PERM_X) : 0;
-			if(em.eff_mode == 0)
-				must |= PERM_U; // user mode: page must be user-owned
-			else if(em.eff_mode == 1 && !em.sum)
-				forb = PERM_U; // supervisor w/o SUM: no user pages
+			if(em.satp_mode != 0)
+			{
+				if(em.eff_mode == 0)
+					must |= PERM_U; // user mode: page must be user-owned
+				else if(em.eff_mode == 1 && !em.sum)
+					forb = PERM_U; // supervisor w/o SUM: no user pages
+			}
 			x86::movzx_r64_m8(cb, x86::REG_RAX, x86::REG_RCX, x86::TLB_OFF_PERM);
 			if(any_mask != 0)
 			{

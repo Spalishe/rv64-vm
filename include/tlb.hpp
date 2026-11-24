@@ -62,7 +62,8 @@ namespace rv64vm::runner
 			uint8_t page_bits		= 12; // 12 / 21 / 30 - log2(page size)
 			uint8_t perm			= 0;  // bits R W X U A D
 			bool global				= false;
-			uint8_t pad[19]			= {};
+			bool bare				= false; // identity mapping: no page-level U/SUM checks
+			uint8_t pad[18]			= {};
 		};
 		enum class TLBPermissions : uint8_t
 		{
@@ -104,7 +105,7 @@ namespace rv64vm::runner
 		 *                  when the page has no direct host mapping (MMIO/IO)
 		 * @see MMU
 		 */
-		void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void* host_page = nullptr);
+		void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void* host_page = nullptr, bool bare = false);
 
 		// Fast paths used by the JIT runner: the generated code addresses the
 		// entry array and the current generation through the hart context.

@@ -220,7 +220,8 @@ namespace rv64vm::runner
 			// Chain key: mirrors what compile() bakes into block TLB checks.
 			const uint64_t mode_key = (uint64_t)get_effective_mode(AccessType::STORE) |
 									  (status.fields.MXR ? 0x100ull : 0) |
-									  (status.fields.SUM ? 0x200ull : 0);
+									  (status.fields.SUM ? 0x200ull : 0) |
+									  ((uint64_t)satp.fields.mode << 10);
 
 			// Set-associative memo: scan the bucket's ways for a keyed hit, or
 			// install into a free way / the least-recent one.  A hit with a
@@ -308,18 +309,19 @@ namespace rv64vm::runner
 			if(jj.fn == nullptr && !interp_memo)
 			{
 				d->phys = phys;
-				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
-				const bool mxr		   = status.fields.MXR;
-				const bool sum		   = status.fields.SUM;
+				const uint8_t eff_mode	= (uint8_t)get_effective_mode(AccessType::STORE);
+				const bool mxr			= status.fields.MXR;
+				const bool sum			= status.fields.SUM;
+				const uint8_t satp_mode = (uint8_t)satp.fields.mode;
 				RVJIT_STAT(lookup);
-				jj = jctx->lookup(phys, eff_mode, mxr, sum);
+				jj = jctx->lookup(phys, eff_mode, mxr, sum, satp_mode);
 				if(jj.fn != nullptr)
 					RVJIT_STAT(lookup_hits);
 				if(jj.fn == nullptr && jctx->hot_tick(phys))
 				{
 					// An invalidation leaves mostly-intact text; reuse the
 					// compiled block when the guest bytes are unchanged.
-					if(!jctx->salvage(*this, phys, eff_mode, mxr, sum, jj))
+					if(!jctx->salvage(*this, phys, eff_mode, mxr, sum, satp_mode, jj))
 					{
 						RVJIT_STAT(compile);
 						jj = jctx->compile(*this, pc, phys);

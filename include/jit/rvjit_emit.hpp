@@ -119,9 +119,10 @@ namespace rv64vm::jit
 		// revalidated by dispatch, so the emitted permission masks stay valid.
 		// ASID is deliberately NOT baked: the inline TLB check validates it at
 		// runtime, and blocks never cross a page (see lookup()).
-		uint8_t eff_mode = 0; // Hart::PrivilegeMode as int (0=U,1=S,3=M)
-		bool mxr		 = false;
-		bool sum		 = false;
+		uint8_t eff_mode  = 0; // Hart::PrivilegeMode as int (0=U,1=S,3=M)
+		bool mxr		  = false;
+		bool sum		  = false;
+		uint8_t satp_mode = 8; // 0 = Bare identity map (no page-level U bit)
 
 		// TLB-miss / branch-misalign fixups: each [rel_pos] is a rel32 jcc into
 		// the stub of [instr], patched by emit_miss_stubs(). Dirty guest

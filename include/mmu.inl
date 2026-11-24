@@ -46,7 +46,7 @@ inline MemoryReturn MMU::translate(Hart* hart, AccessType type, uint64_t va, uin
 					   (uint8_t)TLB::TLBPermissions::PERM_A | (uint8_t)TLB::TLBPermissions::PERM_D;
 		if(was_page_executed(va))
 			perm &= ~((uint8_t)TLB::TLBPermissions::PERM_W | (uint8_t)TLB::TLBPermissions::PERM_D);
-		tlb.insert(va, base, 12, perm, asid, true, host);
+		tlb.insert(va, base, 12, perm, asid, true, host, true);
 		return { true, 0, 0 };
 	}
 	if(tlb.lookup(va, type, asid, (int)mode, mxr, sum, pa)) [[likely]]

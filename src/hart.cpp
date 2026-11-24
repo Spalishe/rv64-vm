@@ -276,9 +276,15 @@ namespace rv64vm::runner
 					satp.raw = old_val;
 					break;
 				}
-				if(satp.raw != val)
+				// Only a paging-mode change invalidates the identity-map
+				// entries: they are global and would otherwise survive the
+				// Bare -> Sv39 switch.  Root/ASID changes are already covered
+				// by the entry tags (and by the guest's SFENCE.VMA), and
+				// flushing there would drop every chain on each context switch.
+				satp_t prev{};
+				prev.raw = old_val;
+				if(satp.fields.mode != prev.fields.mode)
 				{
-					satp.raw = val;
 					mmu.tlb.flush_all();
 #ifdef USE_JIT
 					if(jctx)

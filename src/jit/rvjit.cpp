@@ -144,10 +144,10 @@ namespace rv64vm::jit
 		return dispatch;
 	}
 
-	// Key: (start_phys, epoch, eff_mode, mxr, sum) - deliberately asid/VA
-	// free; see the lookup() declaration for the invariants that make this
-	// sound.
-	JITExec JIT_Context::lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum)
+	// Key: (start_phys, epoch, eff_mode, mxr, sum, satp_mode) - deliberately
+	// asid/VA free; see the lookup() declaration for the invariants that make
+	// this sound.
+	JITExec JIT_Context::lookup(uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, uint8_t satp_mode)
 	{
 		const size_t base	 = index_of(phys_pc) * CACHE_WAYS;
 		const uint64_t epoch = g_smc_epoch.load(std::memory_order_relaxed);
@@ -158,7 +158,7 @@ namespace rv64vm::jit
 				continue;
 			if(e.smc_epoch != epoch)
 				continue;
-			if(e.eff_mode != eff_mode || e.mxr != mxr || e.sum != sum)
+			if(e.eff_mode != eff_mode || e.mxr != mxr || e.sum != sum || e.satp_mode != satp_mode)
 				continue;
 			e.hits++;
 			JITExec out;
@@ -208,7 +208,7 @@ namespace rv64vm::jit
 		return true;
 	}
 
-	bool JIT_Context::salvage(runner::Hart& h, uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, JITExec& out)
+	bool JIT_Context::salvage(runner::Hart& h, uint64_t phys_pc, uint8_t eff_mode, bool mxr, bool sum, uint8_t satp_mode, JITExec& out)
 	{
 		const size_t base	 = index_of(phys_pc) * CACHE_WAYS;
 		const uint64_t epoch = g_smc_epoch.load(std::memory_order_relaxed);
@@ -218,7 +218,7 @@ namespace rv64vm::jit
 			CachedBlock& e = cache[base + w];
 			if(!e.valid || e.start_phys != phys_pc)
 				continue;
-			if(e.eff_mode != eff_mode || e.mxr != mxr || e.sum != sum)
+			if(e.eff_mode != eff_mode || e.mxr != mxr || e.sum != sum || e.satp_mode != satp_mode)
 				continue; // baked permission policy differs; must re-emit
 			if(e.smc_epoch == epoch)
 				continue; // fresh; not what we're here for
@@ -290,12 +290,13 @@ namespace rv64vm::jit
 
 		// Effective access mode (MPRV honored) and the paging flags that the
 		// block policy is baked from; dispatch re-validates them.
-		const uint8_t eff_mode = (uint8_t)h.get_effective_mode(AccessType::STORE);
-		const bool mxr		   = h.status.fields.MXR;
-		const bool sum		   = h.status.fields.SUM;
+		const uint8_t eff_mode	 = (uint8_t)h.get_effective_mode(AccessType::STORE);
+		const bool mxr			 = h.status.fields.MXR;
+		const bool sum			 = h.status.fields.SUM;
+		const uint8_t satp_mode = (uint8_t)h.satp.fields.mode;
 
 		// Already compiled by a concurrent hart?
-		JITExec fast = lookup(phys_pc, eff_mode, mxr, sum);
+		JITExec fast = lookup(phys_pc, eff_mode, mxr, sum, satp_mode);
 		if(fast.fn != nullptr)
 			return fast;
 
@@ -303,9 +304,10 @@ namespace rv64vm::jit
 		JIT_Block blk;
 		blk.start_phys = phys_pc;
 		JIT_Emitter em(&blk);
-		em.eff_mode = eff_mode;
-		em.mxr		= mxr;
-		em.sum		= sum;
+		em.eff_mode	 = eff_mode;
+		em.mxr		 = mxr;
+		em.sum		 = sum;
+		em.satp_mode = satp_mode;
 		em.emit_prologue();
 
 		uint64_t pc_va = va_pc;
@@ -423,6 +425,7 @@ namespace rv64vm::jit
 		e.eff_mode	   = eff_mode;
 		e.mxr		   = mxr;
 		e.sum		   = sum;
+		e.satp_mode	   = satp_mode;
 		e.count		   = count;
 		e.guest_bytes  = size;
 		e.arena_gen	   = g_arena_gen.load(std::memory_order_relaxed);
