@@ -21,6 +21,7 @@ Copyright 2026 Spalishe
 #include "../include/defines/traps.hpp"
 #ifdef USE_JIT
 #include "../include/jit/rvjit.hpp"
+#include "../include/jit/rvjit_stats.hpp"
 #endif
 #include <assert.h>
 #include <cstdio>
@@ -281,7 +282,10 @@ namespace rv64vm::runner
 					mmu.tlb.flush_all();
 #ifdef USE_JIT
 					if(jctx)
+					{
+						RVJIT_STAT(satp_inval);
 						jctx->invalidate_all();
+					}
 #endif
 				}
 				break;

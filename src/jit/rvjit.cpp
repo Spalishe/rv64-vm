@@ -16,6 +16,7 @@ Copyright 2026 Spalishe
 */
 
 #include "../../include/jit/rvjit.hpp"
+#include "../../include/jit/rvjit_stats.hpp"
 #include "../../include/hart.hpp"
 #include "../../include/self_mod.hpp"
 

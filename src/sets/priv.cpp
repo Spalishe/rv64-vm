@@ -19,6 +19,7 @@ Copyright 2026 Spalishe
 #include "../../include/hart.hpp"
 #ifdef USE_JIT
 #include "../../include/jit/rvjit.hpp"
+#include "../../include/jit/rvjit_stats.hpp"
 #endif
 
 using namespace rv64vm::runner;
@@ -107,7 +108,10 @@ ExecReturn exec_SFENCE_VMA(Hart& hart, InstructionData& inst)
 	// to the C++ page walk that refills it, so unrelated chains survive fast
 	// mmap/munmap/mprotect churn instead of recompiling on every sfence.
 	if(inst.rs1 == 0 && inst.rs2 == 0 && hart.jctx)
+	{
+		RVJIT_STAT(sfence_inval);
 		hart.jctx->invalidate_all();
+	}
 #endif
 	return { true, false, 4, 0, 0 };
 }

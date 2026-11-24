@@ -20,6 +20,7 @@ Copyright 2026 Spalishe
 #include "rvjit_ctx.hpp"
 #include "rvjit_emit.hpp"
 #include "rvjit_fwd.hpp"
+#include "rvjit_stats.hpp"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -59,7 +60,11 @@ namespace rv64vm::jit
 			: cache(JIT_CACHE_SIZE * CACHE_WAYS), giveup(JIT_CACHE_SIZE), hotmap(JIT_CACHE_SIZE)
 		{
 		}
-		~JIT_Context() { release_arenas(); }
+		~JIT_Context()
+		{
+			release_arenas();
+			stats::dump();
+		}
 
 		JIT_Context(const JIT_Context&)			   = delete;
 		JIT_Context& operator=(const JIT_Context&) = delete;

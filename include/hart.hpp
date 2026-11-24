@@ -152,6 +152,10 @@ namespace rv64vm::runner
 		struct DispatchHot {
 			uint64_t va = 0, gen = 0, smc = 0, phys = 0;
 			uint32_t asid = 0;
+			// Effective store mode + MXR + SUM, i.e. the permission policy
+			// baked into every compiled load/store check.  EXEC mode alone is
+			// not enough: MPRV/MXR/SUM can change while it stays the same.
+			uint32_t mode_key = 0;
 			uint8_t mode = 0;
 			uint8_t seen = 0;
 			uint8_t interp = 0; // memoized permanent interpreter fallback decision

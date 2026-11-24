@@ -20,6 +20,8 @@ Copyright 2026 Spalishe
 #include <cstdint>
 #include <vector>
 
+#include "jit/rvjit_stats.hpp"
+
 // Self-modifying-code tracking: the guest may rewrite its text without
 // FENCE.I (kernel decompression / runtime patching). A store to a page that
 // was ever compiled bumps a global epoch; caches validate entries against it.
@@ -63,7 +65,10 @@ namespace rv64vm
 		{
 			const uint64_t cur = g_smc_epoch.load(std::memory_order_relaxed);
 			if(page < g_code_page_gen.size() && g_code_page_gen[page] == cur)
+			{
+				RVJIT_STAT(smc_bump);
 				g_smc_epoch.fetch_add(1, std::memory_order_release);
+			}
 			else
 				g_executed_pages[page] = 0; // stale/reused page: no live block
 		}

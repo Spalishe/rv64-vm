@@ -137,16 +137,30 @@ namespace rv64vm::jit
 			x86::patch_rel8(cb, ok_b, cb.pos);
 
 			// perm, with the mode/sum/mxr policy baked at compile time.
-			uint32_t must = store ? (PERM_W | PERM_D) : (em.mxr ? (PERM_R | PERM_X) : PERM_R);
-			uint32_t forb = 0;
+			// A load with MXR accepts R *or* X, which cannot be expressed as
+			// the usual "all must-bits set, no forbid-bit set" compare: emit
+			// a short OR test first and only then validate U/SUM.
+			uint32_t must	  = store ? (PERM_W | PERM_D) : (em.mxr ? 0 : PERM_R);
+			uint32_t forb	  = 0;
+			uint32_t any_mask = (!store && em.mxr) ? (PERM_R | PERM_X) : 0;
 			if(em.eff_mode == 0)
 				must |= PERM_U; // user mode: page must be user-owned
 			else if(em.eff_mode == 1 && !em.sum)
 				forb = PERM_U; // supervisor w/o SUM: no user pages
 			x86::movzx_r64_m8(cb, x86::REG_RAX, x86::REG_RCX, x86::TLB_OFF_PERM);
-			x86::and_imm32(cb, x86::REG_RAX, (int32_t)(must | forb));
-			x86::cmp_imm32(cb, x86::REG_RAX, (int32_t)must);
-			miss_jump(CC_JNE);
+			if(any_mask != 0)
+			{
+				x86::test_imm(cb, x86::REG_RAX, (int32_t)any_mask);
+				const uint32_t ok_any = x86::jcc8(cb, 0x75); // jne: R or X present
+				miss_jump(CC_JE);						   // neither present
+				x86::patch_rel8(cb, ok_any, cb.pos);
+			}
+			if(must | forb)
+			{
+				x86::and_imm32(cb, x86::REG_RAX, (int32_t)(must | forb));
+				x86::cmp_imm32(cb, x86::REG_RAX, (int32_t)must);
+				miss_jump(CC_JNE);
+			}
 
 			// alignment: the fast path only handles in-page, aligned access.
 			if(width > 1)

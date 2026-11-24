@@ -69,10 +69,11 @@ namespace rv64vm::runner
 
 	void TLB::insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void* host_page)
 	{
-		TlbEntry& e		   = entries[index(va)];
+		const uint32_t idx = (uint32_t)index(va);
+		TlbEntry& e		   = entries[idx];
 		// This slot is about to stop being whatever it used to be, so drop its
 		// contribution to the writable-page census before it is overwritten.
-		drop_writable(e);
+		drop_writable(e, idx);
 		uint64_t page_mask = (1ULL << page_bits) - 1;
 		uint64_t vpage	   = va & ~page_mask;
 		e.vpage_mask_inv   = ~page_mask;
@@ -106,7 +107,7 @@ namespace rv64vm::runner
 		if((e.perm & (int)TLBPermissions::PERM_W) && was_page_executed(leaf_pa))
 			e.perm &= ~((int)TLBPermissions::PERM_W | (int)TLBPermissions::PERM_D);
 
-		add_writable(e);
+		add_writable(e, idx);
 	}
 
 	__attribute__((always_inline)) inline bool TLB::check_perm(uint8_t perm, AccessType type, int mode, bool mxr, bool sum)

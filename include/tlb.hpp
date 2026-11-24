@@ -17,6 +17,7 @@ Copyright 2026 Spalishe
 
 #pragma once
 #include "defines/traps.hpp"
+#include "jit/rvjit_stats.hpp"
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -123,21 +124,50 @@ namespace rv64vm::runner
 		 *          mm), so the entries to fix are found by physical coverage,
 		 *          never by hashing \p phys as if it were a VA.
 		 *
-		 *          w_writable answers in O(1) whether any resident entry still
-		 *          advertises W|D for this page.  Kernel text is mapped
-		 *          read+execute, so that count is normally zero and this is a
-		 *          no-op; only a page that really was writable data before it
-		 *          started hosting code pays for an invalidation.
+		 *          w_writable/w_sources tell in O(1) which resident slots
+		 *          advertise W for this physical page.  Only those slots are
+		 *          fixed in place; a full TLB generation bump would drop every
+		 *          unrelated translation and break every JIT chain link, which
+		 *          is catastrophic for user code whose pages were written as
+		 *          data before they were ever executed.
 		 */
 		inline void note_exec(uint64_t phys)
 		{
-			const uint64_t page = phys >> 12;
-			if(!w_writable_oversized && page < w_writable.size() && w_writable[page] != 0)
+			if(w_writable_oversized)
 			{
-				// The resident entries were filled while the page was still data.
-				// Drop them; every refill then goes through insert()'s physical
-				// was_page_executed() rule and comes back without W|D.
-				flush_all();
+				// A mapping wider than the credit cap cannot be attributed per
+				// page.  Scan, but still only strip the entries that really
+				// cover this physical page instead of flushing everything.
+				for(size_t i = 0; i < entries.size(); i++)
+				{
+					TlbEntry& e = entries[i];
+					if(e.generation != generation || !(e.perm & (int)TLBPermissions::PERM_W))
+						continue;
+					if(!covers_phys(e, phys))
+						continue;
+					drop_writable(e, (uint32_t)i);
+					e.perm &= ~((int)TLBPermissions::PERM_W | (int)TLBPermissions::PERM_D);
+					RVJIT_STAT(note_exec_strip);
+				}
+				return;
+			}
+
+			const uint64_t page = phys >> 12;
+			if(page >= w_writable.size() || w_writable[page] == 0)
+				return;
+			// drop_writable() edits the per-page source lists, so iterate a copy.
+			const std::vector<uint32_t>& src = w_sources[page];
+			std::vector<uint32_t> slots(src.begin(), src.end());
+			for(uint32_t idx : slots)
+			{
+				TlbEntry& e = entries[idx];
+				if(e.generation != generation || !(e.perm & (int)TLBPermissions::PERM_W))
+					continue;
+				if(!covers_phys(e, phys))
+					continue;
+				drop_writable(e, idx);
+				e.perm &= ~((int)TLBPermissions::PERM_W | (int)TLBPermissions::PERM_D);
+				RVJIT_STAT(note_exec_strip);
 			}
 		}
 
@@ -147,9 +177,14 @@ namespace rv64vm::runner
 		void flush_all()
 		{
 			++generation;
-			std::fill(w_writable.begin(), w_writable.end(), 0);
+			for(size_t i = 0; i < w_writable.size(); i++)
+			{
+				w_writable[i] = 0;
+				w_sources[i].clear();
+			}
 			w_writable_oversized = false;
 			g_flush_count.fetch_add(1, std::memory_order_relaxed);
+			RVJIT_STAT(tlb_flush);
 		}
 
 		/**
@@ -165,10 +200,11 @@ namespace rv64vm::runner
 		 */
 		void flush_addr(uint64_t va)
 		{
-			TlbEntry& e = entries[index(va)];
+			const uint32_t idx = (uint32_t)index(va);
+			TlbEntry& e = entries[idx];
 			if(e.generation == generation)
 			{
-				drop_writable(e);
+				drop_writable(e, idx);
 				e.generation = 0;
 			}
 		}
@@ -177,22 +213,26 @@ namespace rv64vm::runner
 		 */
 		void flush_asid(uint16_t asid)
 		{
-			for(TlbEntry& e : entries)
+			for(size_t i = 0; i < entries.size(); i++)
+			{
+				TlbEntry& e = entries[i];
 				if(e.generation == generation && !e.global && e.asid == asid)
 				{
-					drop_writable(e);
+					drop_writable(e, (uint32_t)i);
 					e.generation = 0;
 				}
+			}
 		}
 		/**
 		 * @brief Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2)
 		 */
 		void flush_addr_asid(uint64_t va, uint16_t asid)
 		{
-			TlbEntry& e = entries[index(va)];
+			const uint32_t idx = (uint32_t)index(va);
+			TlbEntry& e = entries[idx];
 			if(e.generation == generation && !e.global && e.asid == asid)
 			{
-				drop_writable(e);
+				drop_writable(e, idx);
 				e.generation = 0;
 			}
 		}
@@ -217,9 +257,21 @@ namespace rv64vm::runner
 		// fallback is off in the common case.
 		static constexpr uint64_t W_CREDIT_CAP_PAGES = 512; // 2 MiB, i.e. one THP
 		std::vector<uint8_t> w_writable;
+		// Parallel to w_writable: which resident TLB slots advertise W for that
+		// physical page.  Lets note_exec() strip only the aliases of the page
+		// that just started executing, without bumping the global TLB
+		// generation (which would invalidate every unrelated mapping and every
+		// compiled block chain).
+		std::vector<std::vector<uint32_t>> w_sources;
 		bool w_writable_oversized = false;
 
-		inline void add_writable(const TlbEntry& e)
+		static inline bool covers_phys(const TlbEntry& e, uint64_t phys)
+		{
+			const uint64_t size = 1ULL << e.page_bits;
+			return phys >= e.ppage_base && phys - e.ppage_base < size;
+		}
+
+		inline void add_writable(const TlbEntry& e, uint32_t idx)
 		{
 			if(!(e.perm & (int)TLBPermissions::PERM_W))
 				return;
@@ -231,15 +283,21 @@ namespace rv64vm::runner
 				return;
 			}
 			if(first + pages > w_writable.size())
+			{
 				w_writable.resize(first + pages + 8192, 0);
+				w_sources.resize(w_writable.size());
+			}
 			for(uint64_t i = 0; i < pages; i++)
+			{
 				if(w_writable[first + i] != 0xFF)
 					w_writable[first + i]++;
+				w_sources[first + i].push_back(idx);
+			}
 		}
 
 		// Account for an entry that is about to stop being a resident W|D
 		// mapping (overwritten by insert(), or invalidated by a flush).
-		inline void drop_writable(const TlbEntry& e)
+		inline void drop_writable(const TlbEntry& e, uint32_t idx)
 		{
 			if(e.generation != generation || !(e.perm & (int)TLBPermissions::PERM_W))
 				return;
@@ -250,12 +308,20 @@ namespace rv64vm::runner
 				w_writable_oversized = true;
 				return;
 			}
-			for(uint64_t i = 0; first + i < w_writable.size(); i++)
+			for(uint64_t i = 0; first + i < w_writable.size() && i < pages; i++)
 			{
-				if(i >= pages)
-					break;
 				if(w_writable[first + i] != 0)
 					w_writable[first + i]--;
+				std::vector<uint32_t>& v = w_sources[first + i];
+				for(size_t k = 0; k < v.size(); k++)
+				{
+					if(v[k] == idx)
+					{
+						v[k]		  = v.back();
+						v.pop_back();
+						break;
+					}
+				}
 			}
 		}
 	};

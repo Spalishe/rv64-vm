@@ -19,6 +19,7 @@ Copyright 2026 Spalishe
 #include "../include/hart.hpp"
 #ifdef USE_JIT
 #include "../include/jit/rvjit.hpp"
+#include "../include/jit/rvjit_stats.hpp"
 #include "../include/self_mod.hpp"
 #endif
 
@@ -230,7 +231,8 @@ namespace rv64vm::runner
 			for(int widx = 0; widx < MEMO_WAYS; widx++)
 			{
 				DispatchHot& s = dhotw[widx];
-				if(s.seen && s.va == pc && s.gen == gen && s.mode == mode && s.smc == smc && s.asid == asid)
+				if(s.seen && s.va == pc && s.gen == gen && s.mode == mode && s.smc == smc
+				   && s.asid == asid && s.mode_key == mode_key)
 				{
 					d = &s;
 					s.lru = (uint8_t)g_dhot_tick.fetch_add(1, std::memory_order_relaxed);
@@ -261,6 +263,7 @@ namespace rv64vm::runner
 				d->mode		= mode;
 				d->smc		= smc;
 				d->asid		= asid;
+				d->mode_key = mode_key;
 				d->seen		= true;
 				d->fn		= nullptr;
 				d->chain_fn = nullptr;
@@ -272,6 +275,7 @@ namespace rv64vm::runner
 			bool interp_memo	  = false;
 			if(memo_hit && d->fn != nullptr)
 			{
+				RVJIT_STAT(memo_hits);
 				cached.fn		= d->fn;
 				cached.chain_fn = d->chain_fn;
 				phys			= d->phys;
@@ -307,30 +311,46 @@ namespace rv64vm::runner
 				const uint8_t eff_mode = (uint8_t)get_effective_mode(AccessType::STORE);
 				const bool mxr		   = status.fields.MXR;
 				const bool sum		   = status.fields.SUM;
+				RVJIT_STAT(lookup);
 				jj = jctx->lookup(phys, eff_mode, mxr, sum);
+				if(jj.fn != nullptr)
+					RVJIT_STAT(lookup_hits);
 				if(jj.fn == nullptr && jctx->hot_tick(phys))
 				{
 					// An invalidation leaves mostly-intact text; reuse the
 					// compiled block when the guest bytes are unchanged.
 					if(!jctx->salvage(*this, phys, eff_mode, mxr, sum, jj))
+					{
+						RVJIT_STAT(compile);
 						jj = jctx->compile(*this, pc, phys);
+					}
+					else
+						RVJIT_STAT(salvage);
 				}
 				// Re-read smc and tlb generation after compile(): it may have
 				// flushed the TLB (W^X transition) and/or bumped the SMC epoch.
 				gen = mmu.get_tlb().current_generation();
 				smc = rv64vm::g_smc_epoch.load(std::memory_order_acquire);
+				// Keep the way's key in sync: compilation may have flipped the
+				// generation (W^X note_exec) or the SMC epoch itself.
+				d->gen		= gen;
+				d->smc		= smc;
 				d->fn		= jj.fn;
 				d->chain_fn = jj.chain_fn;
 				// Remember a permanent interpreter decision so repeat
 				// dispatches skip the JIT machinery above.
 				if(jj.fn == nullptr && jctx->is_giveup(phys))
+				{
+					RVJIT_STAT(giveup);
 					d->interp = 1;
+				}
 			}
 
 			memo_way = d;
 
 			if(jj.fn != nullptr)
 			{
+				RVJIT_STAT(jit_calls);
 				// Fold the *global* chain keys into one stamp.  Bumping on any
 				// change is what makes a single compare in the generated exit
 				// tail exactly as strong as re-checking (gen, smc, asid)
@@ -375,6 +395,8 @@ namespace rv64vm::runner
 			instret += executed;
 			cycle += executed;
 			total += executed;
+				if(executed == 0)
+					RVJIT_STAT(jit_zero);
 
 				if(executed != 0)
 				{
@@ -403,31 +425,35 @@ namespace rv64vm::runner
 			}
 		}
 
+			RVJIT_STAT(interp);
 			Block* b = nullptr;
+			// The dispatch memo is keyed by (VA, translation, mode, asid), so it
+			// remains valid even for a sequential pc that happens to be near the
+			// previous one.  Consult it first: the sequential heuristic only
+			// exists to avoid polluting the direct-mapped BlockCache with code
+			// that will never be re-executed, not to discard a block we already
+			// know is correct.
+			if(memo_way != nullptr && memo_way->block != nullptr && memo_way->block_gen == bc.generation
+			   && memo_way->block->start_phys == phys && memo_way->block->smc == rv64vm::g_smc_epoch.load())
+			{
+				b = memo_way->block;
+			}
 			// Skip block cache for sequential accesses (freerange-style memory ops)
 			// that won't be re-executed, preventing cache thrashing.
 			bool is_sequential = has_last_phys && phys >= last_phys_for_block && phys <= last_phys_for_block + 1024;
+			if(is_sequential && b == nullptr)
+				RVJIT_STAT(seq_skip);
 			has_last_phys = true;
 			last_phys_for_block = phys;
-			if(!is_sequential)
+			if(!is_sequential && b == nullptr)
 			{
-				if(memo_way != nullptr && memo_way->block != nullptr && memo_way->block_gen == bc.generation
-				   && memo_way->block->start_phys == phys && memo_way->block->smc == rv64vm::g_smc_epoch.load())
+				b = bc.lookup(phys);
+				if(b == nullptr)
+					b = compile_block(bc, phys);
+				if(b != nullptr && memo_way != nullptr)
 				{
-					// Same answer BlockCache::lookup() would give, without the
-					// direct-mapped 64 KiB collision that makes it miss here.
-					b = memo_way->block;
-				}
-				else
-				{
-					b = bc.lookup(phys);
-					if(b == nullptr)
-						b = compile_block(bc, phys);
-					if(b != nullptr && memo_way != nullptr)
-					{
-						memo_way->block		= b;
-						memo_way->block_gen	= bc.generation;
-					}
+					memo_way->block		= b;
+					memo_way->block_gen	= bc.generation;
 				}
 			}
 			if(b == nullptr) // can't form a block: single interpreter step
