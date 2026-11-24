@@ -68,7 +68,7 @@ Defined in include/tlb.hpp:46
 bool lookup(uint64_t va, AccessType type, uint16_t asid, int mode, bool mxr, bool sum, uint64_t * pa)
 ```
 
-Defined in include/tlb.hpp:93
+Defined in include/tlb.hpp:94
 
 Looks up in cache for [TLB](#tlb) entry.
 
@@ -98,10 +98,10 @@ Is success?
 ### insert
 
 ```cpp
-void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void * host_page = nullptr)
+void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void * host_page = nullptr, bool bare = false)
 ```
 
-Defined in include/tlb.hpp:107
+Defined in include/tlb.hpp:109
 
 Inserts new [TLB](#tlb) entry in cache.
 
@@ -131,7 +131,7 @@ Inserts new [TLB](#tlb) entry in cache.
 inline void note_exec(uint64_t phys)
 ```
 
-Defined in include/tlb.hpp:134
+Defined in include/tlb.hpp:136
 
 Drops W|D from the [TLB](#tlb) entries that map `phys`.
 
@@ -153,7 +153,7 @@ w_writable/w_sources tell in O(1) which resident slots advertise W for this phys
 inline void flush_all()
 ```
 
-Defined in include/tlb.hpp:177
+Defined in include/tlb.hpp:179
 
 Flushes all [TLB](#tlb) entries.
 
@@ -169,7 +169,7 @@ Flushes all [TLB](#tlb) entries.
 inline void flush_addr(uint64_t va)
 ```
 
-Defined in include/tlb.hpp:201
+Defined in include/tlb.hpp:203
 
 Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1).
 
@@ -187,7 +187,7 @@ The [TLB](#tlb) is direct-mapped on (va >> 12); any resident entry that could se
 inline void flush_asid(uint16_t asid)
 ```
 
-Defined in include/tlb.hpp:214
+Defined in include/tlb.hpp:216
 
 Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2).
 
@@ -203,7 +203,7 @@ Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2).
 inline void flush_addr_asid(uint64_t va, uint16_t asid)
 ```
 
-Defined in include/tlb.hpp:229
+Defined in include/tlb.hpp:231
 
 Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2).
 
