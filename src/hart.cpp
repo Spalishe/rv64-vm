@@ -59,9 +59,34 @@ namespace rv64vm::runner
 
 	MemoryReturn Hart::fetchInstruction(uint64_t va, uint64_t& phys_pc, InstructionCache*& out_cache)
 	{
-		MemoryReturn ret = mmu.translate(this, AccessType::EXEC, va, &phys_pc);
-		if(!ret.is_success)
-			return ret; // caller decides whether this is a trap or just "stop lookahead"
+		const uint64_t va_page = va & ~0xFFFULL;
+		const uint64_t gen = mmu.get_tlb().current_generation();
+		const uint8_t mode_eff = (uint8_t)get_effective_mode(AccessType::EXEC);
+		const uint32_t asid = satp.fields.asid;
+		const bool mxr = status.fields.MXR;
+		const bool sum = status.fields.SUM;
+		if(exec_tlb_gen == gen && exec_va_page == va_page && exec_mode == mode_eff && exec_asid == asid && exec_mxr == mxr && exec_sum == sum) [[likely]]
+		{
+			phys_pc = exec_pa_page | (va & 0xFFFULL);
+		}
+		else
+		{
+			MemoryReturn ret = mmu.translate(this, AccessType::EXEC, va, &phys_pc);
+			if(!ret.is_success)
+				return ret;
+			exec_tlb_gen = gen;
+			exec_va_page = va_page;
+			exec_pa_page = phys_pc & ~0xFFFULL;
+			exec_mode = mode_eff;
+			exec_asid = asid;
+			exec_mxr = mxr;
+			exec_sum = sum;
+			exec_host_page = nullptr;
+			if(direct_ram == nullptr)
+				direct_ram = mmap->get_ram_direct()->get_data();
+			if(exec_pa_page >= 0x80000000ULL && exec_pa_page - 0x80000000ULL + 0x1000 <= memsize)
+				exec_host_page = direct_ram + (exec_pa_page - 0x80000000ULL);
+		}
 
 		if(direct_ram == nullptr)
 			direct_ram = mmap->get_ram_direct()->get_data();
@@ -71,7 +96,6 @@ namespace rv64vm::runner
 
 		uint16_t lo = *(uint16_t*)(direct_ram + (phys_pc - 0x80000000ULL));
 		uint32_t inst;
-
 		if((lo & 0x3) != 0x3)
 		{
 			inst = lo;
@@ -83,19 +107,24 @@ namespace rv64vm::runner
 		else
 		{
 			uint64_t phys_pc2 = 0;
-			MemoryReturn ret2 = mmu.translate(this, AccessType::EXEC, va + 2, &phys_pc2);
-			if(!ret2.is_success)
-				return ret2;
+			const uint64_t va2_page = (va + 2) & ~0xFFFULL;
+			if(exec_tlb_gen == mmu.get_tlb().current_generation() && exec_va_page == va2_page && exec_mode == mode_eff && exec_asid == asid && exec_mxr == mxr && exec_sum == sum)
+				phys_pc2 = exec_pa_page | ((va + 2) & 0xFFFULL);
+			else
+			{
+				MemoryReturn ret2 = mmu.translate(this, AccessType::EXEC, va + 2, &phys_pc2);
+				if(!ret2.is_success)
+					return ret2;
+			}
 			if(phys_pc2 < 0x80000000ULL || phys_pc2 > 0x80000000ULL + memsize - 2)
 				return { false, EXC_INST_ACCESS_FAULT, va + 2 };
-
 			uint16_t hi = *(uint16_t*)(direct_ram + (phys_pc2 - 0x80000000ULL));
 			inst		= (uint32_t)lo | ((uint32_t)hi << 16);
 		}
 
 		InstructionCache& cache = idec->decode_inst(phys_pc, inst);
 		if(cache.pc == 0)
-			return { false, EXC_ILLEGAL_INSTRUCTION, inst }; // illegal instruction
+			return { false, EXC_ILLEGAL_INSTRUCTION, inst };
 
 		out_cache = &cache;
 		return { true, 0, 0 };
@@ -276,14 +305,9 @@ namespace rv64vm::runner
 					satp.raw = old_val;
 					break;
 				}
-				// Only a paging-mode change invalidates the identity-map
-				// entries: they are global and would otherwise survive the
-				// Bare -> Sv39 switch.  Root/ASID changes are already covered
-				// by the entry tags (and by the guest's SFENCE.VMA), and
-				// flushing there would drop every chain on each context switch.
 				satp_t prev{};
 				prev.raw = old_val;
-				if(satp.fields.mode != prev.fields.mode)
+				if(satp.fields.mode != prev.fields.mode || satp.fields.ppn != prev.fields.ppn)
 				{
 					mmu.tlb.flush_all();
 #ifdef USE_JIT

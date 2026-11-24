@@ -31,11 +31,10 @@ inline MemoryReturn MMU::translate(Hart* hart, AccessType type, uint64_t va, uin
 	bool mxr	  = hart->status.fields.MXR;
 	bool sum	  = hart->status.fields.SUM;
 
-	// Bare/Machine map identity. Skip the TLB lookup (stale entries set
-	// VA != PA) but seed the cache so JITed loads/stores can hit inline.
 	if(mode == Hart::PrivilegeMode::Machine || (SatpMode)satp.fields.mode == SatpMode::Bare)
 	{
 		*pa = va;
+#ifdef USE_JIT
 		uint64_t base = va & ~0xFFFULL;
 		uint8_t* host = nullptr;
 		auto*	 ram  = mmap->get_ram_direct();
@@ -47,6 +46,7 @@ inline MemoryReturn MMU::translate(Hart* hart, AccessType type, uint64_t va, uin
 		if(was_page_executed(va))
 			perm &= ~((uint8_t)TLB::TLBPermissions::PERM_W | (uint8_t)TLB::TLBPermissions::PERM_D);
 		tlb.insert(va, base, 12, perm, asid, true, host, true);
+#endif
 		return { true, 0, 0 };
 	}
 	if(tlb.lookup(va, type, asid, (int)mode, mxr, sum, pa)) [[likely]]

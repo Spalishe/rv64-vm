@@ -92,6 +92,7 @@ namespace rv64vm::runner
 		 * @return Is success?
 		 */
 		bool lookup(uint64_t va, AccessType type, uint16_t asid, int mode, bool mxr, bool sum, uint64_t* pa);
+		inline const TlbEntry* probe(uint64_t va) const { return &entries[index(va)]; }
 
 		/**
 		 * @brief Inserts new TLB entry in cache

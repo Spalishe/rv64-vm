@@ -205,9 +205,9 @@ namespace rv64vm::runner
 
 		uint64_t phys	= 0;
 		bool phys_done = false;
-		// Carried out of the JIT dispatch section so a re-dispatched pc can
-		// reuse its interpreter block without going through the BlockCache.
+#ifdef USE_JIT
 		DispatchHot* memo_way = nullptr;
+#endif
 #ifdef USE_JIT
 		if(jctx != nullptr && (pc & 0x1) == 0) [[likely]]
 		{
@@ -429,19 +429,12 @@ namespace rv64vm::runner
 
 			RVJIT_STAT(interp);
 			Block* b = nullptr;
-			// The dispatch memo is keyed by (VA, translation, mode, asid), so it
-			// remains valid even for a sequential pc that happens to be near the
-			// previous one.  Consult it first: the sequential heuristic only
-			// exists to avoid polluting the direct-mapped BlockCache with code
-			// that will never be re-executed, not to discard a block we already
-			// know is correct.
+#ifdef USE_JIT
 			if(memo_way != nullptr && memo_way->block != nullptr && memo_way->block_gen == bc.generation
 			   && memo_way->block->start_phys == phys && memo_way->block->smc == rv64vm::g_smc_epoch.load())
 			{
 				b = memo_way->block;
 			}
-			// Skip block cache for sequential accesses (freerange-style memory ops)
-			// that won't be re-executed, preventing cache thrashing.
 			bool is_sequential = has_last_phys && phys >= last_phys_for_block && phys <= last_phys_for_block + 1024;
 			if(is_sequential && b == nullptr)
 				RVJIT_STAT(seq_skip);
@@ -458,6 +451,11 @@ namespace rv64vm::runner
 					memo_way->block_gen	= bc.generation;
 				}
 			}
+#else
+			b = bc.lookup(phys);
+			if(b == nullptr)
+				b = compile_block(bc, phys);
+#endif
 			if(b == nullptr) // can't form a block: single interpreter step
 			{
 				tick();

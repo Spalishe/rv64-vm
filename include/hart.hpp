@@ -179,6 +179,16 @@ namespace rv64vm::runner
 		// accesses (freerange-style) that won't be re-executed.
 		uint64_t last_phys_for_block = 0;
 		bool has_last_phys = false;
+#endif
+		uint64_t exec_tlb_gen = ~0ULL;
+		uint64_t exec_va_page = ~0ULL;
+		uint64_t exec_pa_page = 0;
+		uint8_t* exec_host_page = nullptr;
+		uint32_t exec_asid = ~0u;
+		uint8_t exec_mode = 0xFF;
+		bool exec_mxr = false;
+		bool exec_sum = false;
+#ifdef USE_JIT
 		// Chain-key snapshot backing hctx.chain_epoch: the runner bumps the
 		// epoch whenever any of (tlb gen, smc, store-mode|MXR|SUM, asid) differs
 		// from the last dispatch, which is what lets the generated block exits

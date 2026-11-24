@@ -54,7 +54,7 @@ namespace rv64vm::dev
 
 	std::shared_ptr<SYSCON> SYSCON::init_auto(runner::Machine& cpu)
 	{
-		return std::make_shared<SYSCON>(0x1000000, 0x1000, cpu, cpu.get_fdt());
+		return std::make_shared<SYSCON>(0x100000, 0x1000, cpu, cpu.get_fdt());
 	}
 
 	uint64_t SYSCON::read(uint64_t addr, MemorySize size)
@@ -64,7 +64,7 @@ namespace rv64vm::dev
 
 	void SYSCON::write(uint64_t addr, MemorySize size, uint64_t val)
 	{
-		uint64_t offset = start - addr;
+		uint64_t offset = addr - start;
 		switch(offset)
 		{
 			case 0:
