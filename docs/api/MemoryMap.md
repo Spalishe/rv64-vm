@@ -8,7 +8,7 @@
 class MemoryMap
 ```
 
-Defined in include/memory_map.hpp:36
+Defined in include/memory_map.hpp:38
 
 RV64-VM Memory map class.
 
@@ -41,7 +41,7 @@ This class implements Main memory storage.
 inline MemoryMap()
 ```
 
-Defined in include/memory_map.hpp:42
+Defined in include/memory_map.hpp:44
 
 [MemoryMap](#memorymap) constructor.
 
@@ -57,7 +57,7 @@ Defined in include/memory_map.hpp:42
 inline ~MemoryMap()
 ```
 
-Defined in include/memory_map.hpp:47
+Defined in include/memory_map.hpp:49
 
 [MemoryMap](#memorymap) destructor.
 
@@ -75,7 +75,7 @@ Safely removes all regions
 inline std::vector< MemoryRegion * > & get_regions()
 ```
 
-Defined in include/memory_map.hpp:118
+Defined in include/memory_map.hpp:124
 
 Returns all created regions.
 
@@ -96,7 +96,7 @@ Memory regions
 inline MemoryRegion * get_ram_direct() const
 ```
 
-Defined in include/memory_map.hpp:124
+Defined in include/memory_map.hpp:130
 
 Returns pointer to 0x80000000 guest ram region.
 
@@ -117,7 +117,7 @@ Direct pointer to region
 inline void add_region(uint64_t base, size_t size)
 ```
 
-Defined in include/memory_map.hpp:130
+Defined in include/memory_map.hpp:136
 
 Creates new guest region in memory.
 
@@ -140,7 +140,7 @@ Creates new guest region in memory.
 inline bool load_file(uint64_t memory_path, std::string path = "", uint64_t * entry_pc = NULL)
 ```
 
-Defined in include/memory_map.hpp:145
+Defined in include/memory_map.hpp:151
 
 Loads binary or ELF file to guest memory.
 
@@ -167,7 +167,7 @@ Success boolean
 inline bool load_buffer(uint64_t memory_path, char * buffer, uint64_t size, uint64_t * entry_pc = NULL)
 ```
 
-Defined in include/memory_map.hpp:183
+Defined in include/memory_map.hpp:189
 
 Loads buffer to guest memory.
 
@@ -195,7 +195,7 @@ Success boolean
 inline uint64_t load(uint64_t addr, uint64_t size)
 ```
 
-Defined in include/memory_map.hpp:204
+Defined in include/memory_map.hpp:210
 
 Loads value from guest memory.
 
@@ -221,7 +221,7 @@ Value stored in memory
 inline void store(uint64_t addr, uint64_t size, uint64_t value)
 ```
 
-Defined in include/memory_map.hpp:246
+Defined in include/memory_map.hpp:252
 
 Stores value to guest memory.
 
@@ -245,7 +245,7 @@ Stores value to guest memory.
 inline MemoryRegion * find_region(uint64_t addr)
 ```
 
-Defined in include/memory_map.hpp:289
+Defined in include/memory_map.hpp:295
 
 Finds region by specidied guest address.
 

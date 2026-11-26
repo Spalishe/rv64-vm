@@ -8,7 +8,7 @@
 class MemoryRegion
 ```
 
-Defined in include/memory_map.hpp:57
+Defined in include/memory_map.hpp:59
 
 Memory Region object.
 
@@ -37,7 +37,7 @@ A pie in a total cake. Contains raw data to memory.
 inline uint64_t get_base_addr() const
 ```
 
-Defined in include/memory_map.hpp:64
+Defined in include/memory_map.hpp:66
 
 Returns Memory region base address in GUEST ram.
 
@@ -56,7 +56,7 @@ Guest base address
 inline size_t get_size() const
 ```
 
-Defined in include/memory_map.hpp:69
+Defined in include/memory_map.hpp:71
 
 Returns Memory region size.
 
@@ -75,7 +75,7 @@ Size (bytes)
 inline uint8_t * get_data() const
 ```
 
-Defined in include/memory_map.hpp:74
+Defined in include/memory_map.hpp:76
 
 Returns Memory region data host pointer.
 
@@ -94,7 +94,7 @@ Data host pointer
 inline uint8_t * ptr(uint64_t addr)
 ```
 
-Defined in include/memory_map.hpp:82
+Defined in include/memory_map.hpp:84
 
 Returns Host pointer to Guest address.
 
@@ -122,7 +122,7 @@ Host address
 inline MemoryRegion(uint64_t base, size_t sz)
 ```
 
-Defined in include/memory_map.hpp:94
+Defined in include/memory_map.hpp:96
 
 Memory region constructor.
 
@@ -145,7 +145,7 @@ Memory region constructor.
 inline ~MemoryRegion()
 ```
 
-Defined in include/memory_map.hpp:102
+Defined in include/memory_map.hpp:108
 
 Memory region destructor.
 

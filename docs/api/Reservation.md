@@ -8,7 +8,7 @@
 struct Reservation
 ```
 
-Defined in include/hart.hpp:64
+Defined in include/hart.hpp:65
 
 CPU Atomic [Reservation](#reservation).
 

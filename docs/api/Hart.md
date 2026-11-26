@@ -8,7 +8,7 @@
 class Hart
 ```
 
-Defined in include/hart.hpp:46
+Defined in include/hart.hpp:47
 
 RISC-V CPU Core.
 
@@ -40,7 +40,7 @@ RISC-V CPU Core.
 Hart(uint8_t id, uint64_t memsize)
 ```
 
-Defined in include/hart.hpp:78
+Defined in include/hart.hpp:79
 
 [Hart](#hart) constructor.
 
@@ -67,7 +67,7 @@ Creates RISC-V core
 inline ~Hart()
 ```
 
-Defined in include/hart.hpp:85
+Defined in include/hart.hpp:86
 
 [Hart](#hart) destructor.
 
@@ -85,7 +85,7 @@ Destroys RISC-V core
 inline PrivilegeMode get_effective_mode(AccessType access_type) const
 ```
 
-Defined in include/hart.hpp:210
+Defined in include/hart.hpp:212
 
 Returns CPU Effective mode for a specific memory access.
 
@@ -107,7 +107,7 @@ Effective mode
 inline MMIO * get_mmio()
 ```
 
-Defined in include/hart.hpp:223
+Defined in include/hart.hpp:225
 
 Returns [MMIO](MMIO.md#mmio) pointer.
 
@@ -128,7 +128,7 @@ Returns [MMIO](MMIO.md#mmio) pointer.
 inline MemoryMap * get_mmap()
 ```
 
-Defined in include/hart.hpp:229
+Defined in include/hart.hpp:231
 
 Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 
@@ -149,7 +149,7 @@ Returns [MemoryMap](MemoryMap.md#memorymap) pointer.
 inline Reservation & get_reservation()
 ```
 
-Defined in include/hart.hpp:235
+Defined in include/hart.hpp:237
 
 Returns CPU Atomic [Reservation](Reservation.md#reservation).
 
@@ -170,7 +170,7 @@ Returns CPU Atomic [Reservation](Reservation.md#reservation).
 inline MMU & get_mmu()
 ```
 
-Defined in include/hart.hpp:241
+Defined in include/hart.hpp:243
 
 Returns CPU Memory Management Unit.
 
@@ -191,7 +191,7 @@ Returns CPU Memory Management Unit.
 inline void clear_decode_cache()
 ```
 
-Defined in include/hart.hpp:245
+Defined in include/hart.hpp:247
 
 Clears Instruction Decoder Cache.
 
@@ -207,7 +207,7 @@ Clears Instruction Decoder Cache.
 inline const uint64_t get_memsize() const
 ```
 
-Defined in include/hart.hpp:259
+Defined in include/hart.hpp:261
 
 Returns RAM size.
 
@@ -226,7 +226,7 @@ Memory size in bytes
 inline void amo_check_reservation(uint64_t pa)
 ```
 
-Defined in include/hart.hpp:264
+Defined in include/hart.hpp:266
 
 Clears reservation if defined address is within CPU reservation address.
 
@@ -240,7 +240,7 @@ Clears reservation if defined address is within CPU reservation address.
 uint64_t csr_read(uint16_t csr)
 ```
 
-Defined in include/hart.hpp:276
+Defined in include/hart.hpp:278
 
 Returns value stored in CSR.
 
@@ -263,7 +263,7 @@ CSR value
 void csr_write(uint16_t csr, uint64_t val)
 ```
 
-Defined in include/hart.hpp:282
+Defined in include/hart.hpp:284
 
 Stores value to CSR.
 
@@ -284,7 +284,7 @@ Stores value to CSR.
 void trap(uint64_t cause, uint64_t tval, bool interrupt)
 ```
 
-Defined in include/hart.hpp:291
+Defined in include/hart.hpp:293
 
 CPU Trap function.
 
@@ -314,7 +314,7 @@ Raises trap in CPU core.
 enum PrivilegeMode
 ```
 
-Defined in include/hart.hpp:53
+Defined in include/hart.hpp:54
 
 CPU [PrivilegeMode](#privilegemode).
 
@@ -342,7 +342,7 @@ Current CPU privilege mode.
 uint64_t run_blocks(BlockCache & bc, uint64_t max_insts)
 ```
 
-Defined in include/hart.hpp:319
+Defined in include/hart.hpp:321
 
 Block-chaining fast path (lightweight JIT).
 

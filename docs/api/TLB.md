@@ -8,7 +8,7 @@
 class TLB
 ```
 
-Defined in include/tlb.hpp:36
+Defined in include/tlb.hpp:37
 
 RISC-V Translation Lookaside Buffer.
 
@@ -38,7 +38,7 @@ RISC-V Translation Lookaside Buffer.
 inline TLB()
 ```
 
-Defined in include/tlb.hpp:42
+Defined in include/tlb.hpp:43
 
 [TLB](#tlb) Constructor.
 
@@ -54,7 +54,7 @@ Defined in include/tlb.hpp:42
 inline ~TLB()
 ```
 
-Defined in include/tlb.hpp:46
+Defined in include/tlb.hpp:47
 
 [TLB](#tlb) Destructor.
 
@@ -68,7 +68,7 @@ Defined in include/tlb.hpp:46
 bool lookup(uint64_t va, AccessType type, uint16_t asid, int mode, bool mxr, bool sum, uint64_t * pa)
 ```
 
-Defined in include/tlb.hpp:94
+Defined in include/tlb.hpp:95
 
 Looks up in cache for [TLB](#tlb) entry.
 
@@ -101,7 +101,7 @@ Is success?
 void insert(uint64_t va, uint64_t pa, uint8_t page_bits, uint8_t perm, uint16_t asid, bool global, const void * host_page = nullptr, bool bare = false)
 ```
 
-Defined in include/tlb.hpp:109
+Defined in include/tlb.hpp:110
 
 Inserts new [TLB](#tlb) entry in cache.
 
@@ -131,7 +131,7 @@ Inserts new [TLB](#tlb) entry in cache.
 inline void note_exec(uint64_t phys)
 ```
 
-Defined in include/tlb.hpp:136
+Defined in include/tlb.hpp:137
 
 Drops W|D from the [TLB](#tlb) entries that map `phys`.
 
@@ -153,7 +153,7 @@ w_writable/w_sources tell in O(1) which resident slots advertise W for this phys
 inline void flush_all()
 ```
 
-Defined in include/tlb.hpp:179
+Defined in include/tlb.hpp:180
 
 Flushes all [TLB](#tlb) entries.
 
@@ -169,7 +169,7 @@ Flushes all [TLB](#tlb) entries.
 inline void flush_addr(uint64_t va)
 ```
 
-Defined in include/tlb.hpp:203
+Defined in include/tlb.hpp:204
 
 Flushes [TLB](#tlb) entries by address (SFENCE.VMA rs1).
 
@@ -187,7 +187,7 @@ The [TLB](#tlb) is direct-mapped on (va >> 12); any resident entry that could se
 inline void flush_asid(uint16_t asid)
 ```
 
-Defined in include/tlb.hpp:216
+Defined in include/tlb.hpp:217
 
 Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2).
 
@@ -203,7 +203,7 @@ Flushes all [TLB](#tlb) entries of an ASID (SFENCE.VMA x0, rs2).
 inline void flush_addr_asid(uint64_t va, uint16_t asid)
 ```
 
-Defined in include/tlb.hpp:231
+Defined in include/tlb.hpp:232
 
 Flushes a single address mapping of an ASID (SFENCE.VMA rs1, rs2).
 
