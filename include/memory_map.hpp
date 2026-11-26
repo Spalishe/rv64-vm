@@ -20,11 +20,13 @@ Copyright 2026 Spalishe
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <new>
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <vector>
+#include <sys/mman.h>
 
 namespace rv64vm::runner
 {
@@ -94,14 +96,18 @@ namespace rv64vm::runner
 			MemoryRegion(uint64_t base, size_t sz)
 				: base_addr(base), size(sz)
 			{
-				data = new uint8_t[size]{ 0 };
+				// Demand-zero pages avoid zeroing guest RAM at startup.
+				data = static_cast<uint8_t*>(mmap(nullptr, size, PROT_READ | PROT_WRITE,
+												  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+				if(data == MAP_FAILED)
+					throw std::bad_alloc();
 			}
 			/**
 			 * @brief Memory region destructor
 			 */
 			~MemoryRegion()
 			{
-				delete[] data;
+				munmap(data, size);
 			}
 
 		  private:

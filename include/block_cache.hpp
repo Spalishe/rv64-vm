@@ -17,6 +17,7 @@ Copyright 2026 Spalishe
 
 #pragma once
 #include "decode.hpp"
+#include "lazy_array.hpp"
 #include "self_mod.hpp"
 #include <cstdint>
 
@@ -47,7 +48,18 @@ namespace rv64vm::runner
 		static constexpr uint32_t CACHE_SIZE = 1u << CACHE_BITS;
 
 		uint64_t generation = 1;
-		Block slots[CACHE_SIZE];
+		Block* slots;
+
+		BlockCache()
+			: slots(map_zero_array<Block>(CACHE_SIZE))
+		{
+		}
+		~BlockCache()
+		{
+			unmap_array(slots, CACHE_SIZE);
+		}
+		BlockCache(const BlockCache&)			 = delete;
+		BlockCache& operator=(const BlockCache&) = delete;
 
 		void clear() { generation++; }
 

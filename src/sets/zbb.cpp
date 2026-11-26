@@ -17,6 +17,9 @@ Copyright 2026 Spalishe
 
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
+#ifdef USE_JIT
+#include "../../include/jit/rvjit.hpp"
+#endif
 
 using namespace rv64vm::runner;
 ExecReturn exec_ANDN(Hart& hart, InstructionData& inst)
@@ -228,9 +231,14 @@ ExecReturn exec_REV8(Hart& hart, InstructionData& inst)
 
 void InstructionDecoder::init_zbb()
 {
-	register_instr("0100000**********111*****0110011", exec_ANDN);
-	register_instr("0100000**********110*****0110011", exec_ORN);
-	register_instr("0100000**********100*****0110011", exec_XNOR);
+	auto inst_andn = register_instr("0100000**********111*****0110011", exec_ANDN);
+	auto inst_orn  = register_instr("0100000**********110*****0110011", exec_ORN);
+	auto inst_xnor = register_instr("0100000**********100*****0110011", exec_XNOR);
+#ifdef USE_JIT
+	inst_andn->jit_func = &jit::jit_ANDN;
+	inst_orn->jit_func  = &jit::jit_ORN;
+	inst_xnor->jit_func = &jit::jit_XNOR;
+#endif
 	register_instr("011000000000*****001*****0010011", exec_CLZ);
 	register_instr("011000000000*****001*****0011011", exec_CLZW);
 	register_instr("011000000001*****001*****0010011", exec_CTZ);

@@ -307,7 +307,9 @@ namespace rv64vm::runner
 				}
 				satp_t prev{};
 				prev.raw = old_val;
-				if(satp.fields.mode != prev.fields.mode || satp.fields.ppn != prev.fields.ppn)
+				// ASID-tagged entries survive a PPN-only switch; Linux flushes
+				// on ASID recycle via SFENCE.VMA.
+				if(satp.fields.mode != prev.fields.mode)
 				{
 					mmu.tlb.flush_all();
 #ifdef USE_JIT

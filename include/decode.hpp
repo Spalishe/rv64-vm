@@ -17,6 +17,7 @@ Copyright 2026 Spalishe
 
 #pragma once
 #include "defines/traps.hpp"
+#include "lazy_array.hpp"
 #include "self_mod.hpp"
 #ifdef USE_JIT
 #include "jit/rvjit_fwd.hpp"
@@ -244,17 +245,32 @@ namespace rv64vm::runner
 	{
 		std::vector<Instruction> instructions;
 
-		static constexpr size_t LUT_SIZE	= 1 << 23;
-		const Instruction* lut[LUT_SIZE]	= { nullptr };
+		// Masks still distinguish ECALL/EBREAK; sizes match the pext range.
+		static constexpr size_t LUT_SIZE	= 1 << 22;
+		const Instruction** lut;
 		static constexpr uint32_t HASH_MASK = 0xFFF0707F;
 
-		static constexpr size_t LUT_SIZE_16	   = 1 << 18;
-		const Instruction* lut16[LUT_SIZE_16]  = { nullptr };
+		static constexpr size_t LUT_SIZE_16	  = 1 << 16;
+		const Instruction** lut16;
 		static constexpr uint32_t HASH_MASK_16 = 0x0000FFFF;
 
-		CacheSet cache[CACHE_SIZE];
+		CacheSet* cache;
 		uint64_t cache_generation = 0;
-		// InstructionCache cache[CACHE_SIZE];
+
+		InstructionDecoder()
+			: lut(map_zero_array<const Instruction*>(LUT_SIZE))
+			, lut16(map_zero_array<const Instruction*>(LUT_SIZE_16))
+			, cache(map_zero_array<CacheSet>(CACHE_SIZE))
+		{
+		}
+		~InstructionDecoder()
+		{
+			unmap_array(lut, LUT_SIZE);
+			unmap_array(lut16, LUT_SIZE_16);
+			unmap_array(cache, CACHE_SIZE);
+		}
+		InstructionDecoder(const InstructionDecoder&)			  = delete;
+		InstructionDecoder& operator=(const InstructionDecoder&) = delete;
 
 		InstructionCache& decode_inst_slow(uint64_t pc, uint32_t inst);
 		__attribute__((always_inline)) inline InstructionCache& decode_inst(uint64_t pc, uint32_t inst)

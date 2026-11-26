@@ -16,6 +16,7 @@ Copyright 2026 Spalishe
 */
 
 #pragma once
+#include "../lazy_array.hpp"
 
 #include "rvjit_ctx.hpp"
 #include "rvjit_emit.hpp"
@@ -56,10 +57,7 @@ namespace rv64vm::jit
 		// Associativity of the block cache.  Eviction is LFU by hit count.
 		static constexpr size_t CACHE_WAYS = 8;
 
-		JIT_Context()
-			: cache(JIT_CACHE_SIZE * CACHE_WAYS), giveup(JIT_CACHE_SIZE), hotmap(JIT_CACHE_SIZE)
-		{
-		}
+		JIT_Context() = default;
 		~JIT_Context()
 		{
 			release_arenas();
@@ -138,9 +136,9 @@ namespace rv64vm::jit
 		// JIT_CACHE_SIZE buckets x CACHE_WAYS ways; bucket b lives at
 		// cache[b * CACHE_WAYS + w].  Each way is keyed by
 		// (start_phys, smc_epoch, eff_mode, mxr, sum, satp_mode) - no asid, no VA.
-		std::vector<CachedBlock> cache;
-		std::vector<GiveUpSlot> giveup;
-		std::vector<HotSlot> hotmap;
+		runner::LazyArray<CachedBlock, JIT_CACHE_SIZE * CACHE_WAYS> cache;
+		runner::LazyArray<GiveUpSlot, JIT_CACHE_SIZE> giveup;
+		runner::LazyArray<HotSlot, JIT_CACHE_SIZE> hotmap;
 		std::vector<uint8_t*> arenas;
 		uint8_t* cur		 = nullptr;
 		size_t cur_used		 = 0;
@@ -173,6 +171,9 @@ namespace rv64vm::jit
 	RVJIT_ISA_DECL(jit_XOR);
 	RVJIT_ISA_DECL(jit_OR);
 	RVJIT_ISA_DECL(jit_AND);
+	RVJIT_ISA_DECL(jit_ANDN);
+	RVJIT_ISA_DECL(jit_ORN);
+	RVJIT_ISA_DECL(jit_XNOR);
 	RVJIT_ISA_DECL(jit_SLL);
 	RVJIT_ISA_DECL(jit_SLLW);
 	RVJIT_ISA_DECL(jit_SRL);
@@ -222,6 +223,9 @@ namespace rv64vm::jit
 
 	RVJIT_ISA_DECL(jit_LUI);
 	RVJIT_ISA_DECL(jit_AUIPC);
+
+	// FENCE.I still needs interpreter invalidation.
+	RVJIT_ISA_DECL(jit_FENCE);
 
 	// B-Type / jumps (end the block with a native exit).
 	RVJIT_ISA_DECL(jit_BEQ);

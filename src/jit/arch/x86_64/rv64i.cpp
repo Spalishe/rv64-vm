@@ -87,6 +87,18 @@ namespace rv64vm::jit
 	{
 		return alu_r(h, d, b, e, ALUOp::AND, false);
 	}
+	bool jit_ANDN(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return alu_r(h, d, b, e, ALUOp::ANDN, false);
+	}
+	bool jit_ORN(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return alu_r(h, d, b, e, ALUOp::ORN, false);
+	}
+	bool jit_XNOR(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
+	{
+		return alu_r(h, d, b, e, ALUOp::XNOR, false);
+	}
 	bool jit_SLL(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
 		return alu_r(h, d, b, e, ALUOp::SLL, false);
@@ -179,6 +191,12 @@ namespace rv64vm::jit
 	bool jit_AUIPC(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)
 	{
 		return alu_u(h, d, b, e, ALUOp::AUIPC);
+	}
+
+	// Plain FENCE is a no-op; FENCE.I stays interpreter-only.
+	bool jit_FENCE(Hart&, InstructionData&, JIT_Block&, JIT_Emitter&)
+	{
+		return true;
 	}
 
 	bool jit_LB(Hart& h, InstructionData& d, JIT_Block& b, JIT_Emitter& e)

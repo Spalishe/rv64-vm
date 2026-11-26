@@ -20,6 +20,7 @@ Copyright 2026 Spalishe
 #include "decode.hpp"
 #include "defines/csr.hpp"
 #include "defines/traps.hpp"
+#include "lazy_array.hpp"
 #include "memory_map.hpp"
 #include "mmio.hpp"
 #include "mmu.hpp"
@@ -148,7 +149,8 @@ namespace rv64vm::runner
 		// space - even though the block cache behind it is asid-free: several
 		// ways keep the recent resolutions resident so the same block under a
 		// rotated asid re-dispatches without re-querying the MMU.
-		static constexpr int MEMO_WAYS = 8;
+		static constexpr int MEMO_WAYS = 4;
+		static constexpr int DHOT_BITS = 15; // 32768 buckets (4 ways = 128K slots)
 		struct DispatchHot {
 			uint64_t va = 0, gen = 0, smc = 0, phys = 0;
 			uint32_t asid = 0;
@@ -174,7 +176,7 @@ namespace rv64vm::runner
 			Block* block = nullptr;
 			uint64_t block_gen = 0;
 		};
-		DispatchHot dhot[4096 * MEMO_WAYS]{};
+		LazyArray<DispatchHot, (1 << DHOT_BITS) * MEMO_WAYS> dhot;
 		// Track last physical address for block cache: skip caching sequential
 		// accesses (freerange-style) that won't be re-executed.
 		uint64_t last_phys_for_block = 0;

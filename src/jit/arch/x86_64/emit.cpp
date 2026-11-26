@@ -775,6 +775,65 @@ namespace rv64vm::jit
 				}
 				break;
 			}
+			case ALUOp::ANDN:
+			case ALUOp::ORN:
+			case ALUOp::XNOR:
+			{
+				// Scratch regs avoid aliasing hazards when rd overlaps a source.
+				const uint8_t T = x86::REG_TMP;
+				const uint8_t C = x86::REG_ACC1;
+				if(op == ALUOp::ANDN)
+				{
+					if(!r1) x86::xor_rr(code(), T, T);
+					else x86::mov_rr(code(), T, S1);
+					if(r2)
+					{
+						x86::mov_rr(code(), C, S2);
+						x86::not64(code(), C);
+						x86::and_rr(code(), T, C);
+					}
+				}
+				else if(op == ALUOp::ORN)
+				{
+					if(!r2)
+					{
+						x86::mov_imm64(code(), T, UINT64_MAX);
+					}
+					else
+					{
+						if(!r1) x86::xor_rr(code(), T, T);
+						else x86::mov_rr(code(), T, S1);
+						x86::mov_rr(code(), C, S2);
+						x86::not64(code(), C);
+						x86::or_rr(code(), T, C);
+					}
+				}
+				else // XNOR
+				{
+					if(!r1 && !r2)
+					{
+						x86::mov_imm64(code(), T, UINT64_MAX);
+					}
+					else if(!r1)
+					{
+						x86::mov_rr(code(), T, S2);
+						x86::not64(code(), T);
+					}
+					else if(!r2)
+					{
+						x86::mov_rr(code(), T, S1);
+						x86::not64(code(), T);
+					}
+					else
+					{
+						x86::mov_rr(code(), T, S1);
+						x86::xor_rr(code(), T, S2);
+						x86::not64(code(), T);
+					}
+				}
+				if(D != T) x86::mov_rr(code(), D, T);
+				break;
+			}
 			case ALUOp::SLL:
 			case ALUOp::SRL:
 			case ALUOp::SRA:

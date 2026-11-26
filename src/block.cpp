@@ -27,7 +27,8 @@ namespace rv64vm::runner
 {
 	namespace
 	{
-		std::atomic<uint64_t> g_dhot_tick{ 0 }; // global pseudo-LRU generation for memo ways
+		// Harts run serially; no atomic needed.
+		uint64_t g_dhot_tick = 0; // pseudo-LRU generation for memo ways
 
 		// Ops that unconditionally write GPR[rd]; a rd==0 one ends the block so
 		// x0 is never corrupted mid-block.
@@ -215,7 +216,8 @@ namespace rv64vm::runner
 			const uint8_t  mode = (uint8_t)get_effective_mode(AccessType::EXEC);
 			uint64_t smc  = rv64vm::g_smc_epoch.load(std::memory_order_relaxed);
 			const uint32_t asid = satp.fields.asid;
-			const size_t di = ((pc >> 1) * 2654435761u + (uint32_t)gen + (uint32_t)smc) & 4095;
+			const size_t di = ((pc >> 1) * 2654435761u + (uint32_t)gen + (uint32_t)smc)
+							& ((1u << Hart::DHOT_BITS) - 1);
 			jit::JITExec jj{};
 			// Chain key: mirrors what compile() bakes into block TLB checks.
 			const uint64_t mode_key = (uint64_t)get_effective_mode(AccessType::STORE) |
@@ -236,7 +238,7 @@ namespace rv64vm::runner
 				   && s.asid == asid && s.mode_key == mode_key)
 				{
 					d = &s;
-					s.lru = (uint8_t)g_dhot_tick.fetch_add(1, std::memory_order_relaxed);
+					s.lru = (uint8_t)g_dhot_tick++;
 					break;
 				}
 			}
@@ -270,7 +272,7 @@ namespace rv64vm::runner
 				d->chain_fn = nullptr;
 				d->interp	= 0;
 				d->block	= nullptr;
-				d->lru		= (uint8_t)g_dhot_tick.fetch_add(1, std::memory_order_relaxed);
+				d->lru		= (uint8_t)g_dhot_tick++;
 			}
 			const bool memo_hit = true; // `d` always the exact key now
 			bool interp_memo	  = false;
@@ -309,10 +311,11 @@ namespace rv64vm::runner
 			if(jj.fn == nullptr && !interp_memo)
 			{
 				d->phys = phys;
-				const uint8_t eff_mode	= (uint8_t)get_effective_mode(AccessType::STORE);
-				const bool mxr			= status.fields.MXR;
-				const bool sum			= status.fields.SUM;
-				const uint8_t satp_mode = (uint8_t)satp.fields.mode;
+				// Reuse the mode key computed above.
+				const uint8_t eff_mode	= (uint8_t)(mode_key & 0xFF);
+				const bool mxr			= (mode_key & 0x100) != 0;
+				const bool sum			= (mode_key & 0x200) != 0;
+				const uint8_t satp_mode = (uint8_t)((mode_key >> 10) & 0xF);
 				RVJIT_STAT(lookup);
 				jj = jctx->lookup(phys, eff_mode, mxr, sum, satp_mode);
 				if(jj.fn != nullptr)

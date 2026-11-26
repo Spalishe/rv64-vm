@@ -18,6 +18,7 @@ Copyright 2026 Spalishe
 #pragma once
 #include "defines/traps.hpp"
 #include "jit/rvjit_stats.hpp"
+#include "lazy_array.hpp"
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -243,7 +244,7 @@ namespace rv64vm::runner
 		static inline const size_t index(uint64_t va) { return (va >> 12) & (SIZE - 1); }
 		__attribute__((always_inline)) inline bool check_perm(uint8_t perm, AccessType type, int mode, bool mxr, bool sum);
 
-		std::array<TlbEntry, SIZE> entries{};
+		LazyArray<TlbEntry, SIZE> entries;
 		uint64_t generation = 1;
 		// Physical page -> how many resident entries still advertise W|D for it
 		// (saturating; a page needs only a truthy count).  Lets note_exec()

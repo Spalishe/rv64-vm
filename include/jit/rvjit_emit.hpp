@@ -80,6 +80,9 @@ namespace rv64vm::jit
 		SRA,
 		SLT,
 		SLTU,
+		ANDN,
+		ORN,
+		XNOR,
 		LUI,
 		AUIPC
 	};

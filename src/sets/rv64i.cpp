@@ -580,7 +580,7 @@ void InstructionDecoder::init_rv64i()
 	register_instr("00000000000000000000000001110011", exec_ECALL);
 	register_instr("00000000000100000000000001110011", exec_EBREAK);
 
-	register_instr("0000********00000000000000001111", exec_FENCE, imm_I);
+	auto inst_fence = register_instr("0000********00000000000000001111", exec_FENCE, imm_I);
 
 #ifdef USE_JIT
 	// Native JIT translators for every ALU register/immediate op above.
@@ -625,6 +625,7 @@ void InstructionDecoder::init_rv64i()
 	inst_sd->jit_func	 = &jit::jit_SD;
 	inst_lui->jit_func	 = &jit::jit_LUI;
 	inst_auipc->jit_func = &jit::jit_AUIPC;
+	inst_fence->jit_func = &jit::jit_FENCE;
 	inst_beq->jit_func	 = &jit::jit_BEQ;
 	inst_bne->jit_func	 = &jit::jit_BNE;
 	inst_blt->jit_func	 = &jit::jit_BLT;

@@ -451,6 +451,12 @@ namespace rv64vm::jit::x86
 		cb.b(0xF7);
 		modrm_reg(cb, 3, dst);
 	}
+	inline void not64(CodeBuf& cb, uint8_t dst)
+	{
+		rex(cb, true, false, false, dst >= 8);
+		cb.b(0xF7);
+		modrm_reg(cb, 2, dst);
+	}
 	inline void neg32(CodeBuf& cb, uint8_t dst)
 	{
 		rex(cb, false, false, false, dst >= 8);
