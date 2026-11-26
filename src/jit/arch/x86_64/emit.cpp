@@ -19,6 +19,10 @@ Copyright 2026 Spalishe
 
 namespace rv64vm::jit
 {
+	// Defined in src/jit/mem_helper.cpp. Keeps MMIO::read/write as the single
+	// source of truth for device side effects and fault semantics.
+	extern "C" uint64_t rvjit_mem_exec(JIT_HartContext* ctx, uint64_t packed);
+
 	namespace
 	{
 		// TLB::TLBPermissions bits (see tlb.hpp).
@@ -29,10 +33,10 @@ namespace rv64vm::jit
 		constexpr uint8_t PERM_A = 1u << 4;
 		constexpr uint8_t PERM_D = 1u << 5;
 
-		// Upper bound for a single miss-stub (dirty-register flush stores +
-		// mov/add/mov/mov64imm/pop/pop/pop/ret), reserved conservatively so
-		// eof() can stop the block before the stubs overflow the buffer.
-		constexpr uint32_t STUB_BYTES = 104;
+		// Upper bound for one miss stub. The MMIO-helper form also reloads the
+		// allocator's cached guest registers and jumps back into the block, so
+		// reserve for that worst case (6 flush + 6 reload + call sequence).
+		constexpr uint32_t STUB_BYTES = 176;
 
 		// Upper bound for emit_epilogue(), which is appended after the decode
 		// loop and is not covered by the per-instruction reserve.
@@ -40,6 +44,31 @@ namespace rv64vm::jit
 
 		constexpr uint8_t CC_JE	 = 0x4;
 		constexpr uint8_t CC_JNE = 0x5;
+
+		// Layout shared with rvjit_mem_exec():
+		//   [3:0]   access size in bytes (1/2/4/8)
+		//   [4]     store (1) vs load (0)
+		//   [5]     sign-extend the loaded value
+		//   [10:6]  rd
+		//   [15:11] rs1
+		//   [20:16] rs2
+		//   [32:21] imm12 (two's complement)
+		//   [44:33] instruction index in this block
+		//   [60:45] guest bytes before this instruction
+		uint64_t pack_mem(uint8_t width, bool store, bool sign, uint32_t rd,
+						  uint32_t rs1, uint32_t rs2, int64_t imm,
+						  uint32_t instr, uint32_t bytes)
+		{
+			return (uint64_t)(width & 0xF)
+				 | ((uint64_t)(store ? 1u : 0u) << 4)
+				 | ((uint64_t)(sign ? 1u : 0u) << 5)
+				 | ((uint64_t)(rd & 0x1F) << 6)
+				 | ((uint64_t)(rs1 & 0x1F) << 11)
+				 | ((uint64_t)(rs2 & 0x1F) << 16)
+				 | ((uint64_t)((uint16_t)imm & 0xFFF) << 21)
+				 | ((uint64_t)(instr & 0xFFF) << 33)
+				 | ((uint64_t)(bytes & 0xFFFF) << 45);
+		}
 
 		void emit_chain_tail(JIT_Emitter& em, uint32_t count)
 		{
@@ -98,12 +127,13 @@ namespace rv64vm::jit
 		 * Temp usage: RCX = TLB entry base, RAX/RDX scratch. H must be an
 		 * allocator-pool register (never RAX/RDX/RCX).
 		 */
-		void emit_tlb_checks(JIT_Emitter& em, uint8_t H, uint8_t width, bool store, uint32_t instr)
+		void emit_tlb_checks(JIT_Emitter& em, uint8_t H, uint8_t width, bool store,
+							 uint32_t instr, uint32_t helper_idx)
 		{
 			x86::CodeBuf& cb	= em.code();
 			auto miss_jump = [&](uint8_t cc)
 			{
-				em.push_miss(x86::jcc32(cb, cc), instr);
+				em.push_miss(x86::jcc32(cb, cc), instr, helper_idx);
 			};
 
 			// E = [CTX + TLB_ENTRIES] + (((H >> 12) & TLB_SIZE_MASK) << 6)
@@ -132,7 +162,7 @@ namespace rv64vm::jit
 			x86::test_m8_imm(cb, x86::REG_RCX, x86::TLB_OFF_GLOBAL, 0xFF);
 			const uint32_t ok_b		 = x86::jcc8(cb, 0x75); // jne
 			const uint32_t asid_miss = x86::jmp32(cb);
-			em.push_miss(asid_miss, instr);
+			em.push_miss(asid_miss, instr, helper_idx);
 			x86::patch_rel8(cb, ok_a, cb.pos);
 			x86::patch_rel8(cb, ok_b, cb.pos);
 
@@ -323,9 +353,11 @@ namespace rv64vm::jit
 	void JIT_Emitter::emit_load(uint32_t rd, uint32_t rs1, int64_t imm, uint8_t width, bool sign_extend)
 	{
 		x86::CodeBuf& cb = code();
-		// No flush here: the miss stub for this instruction commits the dirty
-		// registers before the interpreter resumes.
+		// A TLB miss no longer leaves the block: the helper performs the exact
+		// MMIO::read() semantics, then we resume just past this instruction.
 		const uint32_t instr = blk->instr_index;
+		const uint32_t hidx	 = begin_mem_helper(
+			pack_mem(width, false, sign_extend, rd, rs1, 0, imm, instr, blk->instr_bytes));
 
 		uint8_t H = 0xFF;
 		if(rd == 0)
@@ -335,8 +367,9 @@ namespace rv64vm::jit
 			uint8_t s  = free_slot(rs1);
 			H		   = phys(s);
 			x86::lea_r64_mem(cb, H, S1, (int32_t)imm);
-			emit_tlb_checks(*this, H, width, false, instr);
+			emit_tlb_checks(*this, H, width, false, instr, hidx);
 			release_slot(s);
+			finish_mem_helper(hidx, cb.pos);
 			return;
 		}
 
@@ -345,7 +378,7 @@ namespace rv64vm::jit
 		uint8_t D  = hreg_for_write(rd, rs1);
 		x86::lea_r64_mem(cb, D, S1, (int32_t)imm);
 		H = D;
-		emit_tlb_checks(*this, H, width, false, instr);
+		emit_tlb_checks(*this, H, width, false, instr, hidx);
 
 		switch(width)
 		{
@@ -372,12 +405,15 @@ namespace rv64vm::jit
 				break;
 		}
 		vr[rd].dirty = true;
+		finish_mem_helper(hidx, cb.pos);
 	}
 
 	void JIT_Emitter::emit_store(uint32_t rs1, int64_t imm, uint32_t rs2, uint8_t width)
 	{
 		x86::CodeBuf& cb = code();
 		const uint32_t instr = blk->instr_index;
+		const uint32_t hidx	 = begin_mem_helper(
+			pack_mem(width, true, false, 0, rs1, rs2, imm, instr, blk->instr_bytes));
 
 		// Load the value first, then protect both operands while the address
 		// scratch is allocated.
@@ -386,7 +422,7 @@ namespace rv64vm::jit
 		uint8_t s  = free_slot(rs1, rs2);
 		uint8_t H  = phys(s);
 		x86::lea_r64_mem(cb, H, S1, (int32_t)imm);
-		emit_tlb_checks(*this, H, width, true, instr);
+		emit_tlb_checks(*this, H, width, true, instr, hidx);
 
 		// MMIO::write() invalidates an overlapping LR reservation; plain JIT
 		// stores bypass it, so mirror Hart::amo_check_reservation() inline.
@@ -426,6 +462,7 @@ namespace rv64vm::jit
 				break;
 		}
 		release_slot(s);
+		finish_mem_helper(hidx, cb.pos);
 	}
 
 	void JIT_Emitter::emit_atomic(uint32_t rd, uint32_t rs1, uint32_t rs2, AMOOp op, uint8_t width)
@@ -446,7 +483,7 @@ namespace rv64vm::jit
 		uint8_t s = free_slot(rs1, rd);
 		uint8_t H = phys(s);
 		x86::lea_r64_mem(cb, H, S1, 0);
-		emit_tlb_checks(*this, H, width, !is_lr, instr);
+		emit_tlb_checks(*this, H, width, !is_lr, instr, NO_HELPER);
 
 		// Keep H as the host address and fold the TLB translation into a
 		// separate pool slot: paddr = (H - host_ptr - vpage_base) + ppage_base.
@@ -690,9 +727,10 @@ namespace rv64vm::jit
 		size_t i		 = 0;
 		while(i < misses.size())
 		{
-			const uint32_t instr  = misses[i].instr;
-			const uint32_t bytes  = misses[i].bytes;
-			const uint8_t  dcnt   = misses[i].dcnt;
+			const uint32_t instr	  = misses[i].instr;
+			const uint32_t bytes	  = misses[i].bytes;
+			const uint32_t helper_idx = misses[i].helper_idx;
+			const uint8_t  dcnt	  = misses[i].dcnt;
 			uint8_t dv[6], ds[6];
 			for(uint8_t k = 0; k < dcnt; k++)
 			{
@@ -700,18 +738,52 @@ namespace rv64vm::jit
 				ds[k] = misses[i].ds[k];
 			}
 			const uint32_t target = cb.pos;
-			while(i < misses.size() && misses[i].instr == instr)
+			while(i < misses.size() && misses[i].instr == instr && misses[i].helper_idx == helper_idx)
 			{
 				x86::patch_rel32(cb, misses[i].rel_pos, target);
 				i++;
 			}
-			// Commit the dirty cached registers, then exit with the pc/count
-			// captured before the faulting instruction. A TLB miss is a yield
-			// to C++ (softmmu refill), not a chainable handoff, so it accounts
-			// its instructions into the chain budget and returns via the single
-			// C++ frame, which the chain tail must not bypass.
+
+			// Commit the dirty cached registers before either slow path: the
+			// helper reads operands from GPR, and the interpreter needs them
+			// there too if we end up leaving the block.
 			for(uint8_t k = 0; k < dcnt; k++)
 				x86::mov_rm(cb, x86::REG_REGS, (int32_t)(dv[k] * 8), phys(ds[k]));
+
+			if(helper_idx != NO_HELPER)
+			{
+				const MemHelperSite& hs = mem_helpers[helper_idx];
+				x86::mov_rr(cb, x86::REG_RDI, x86::REG_CTX);
+				x86::mov_imm64(cb, x86::REG_RSI, hs.packed);
+				// Prologue pushed four registers, so RSP % 16 == 8 here.
+				x86::add_imm(cb, x86::REG_RSP, -8);
+				x86::mov_imm64(cb, x86::REG_R11, (uint64_t)&rvjit_mem_exec);
+				x86::call_r(cb, x86::REG_R11);
+				x86::add_imm(cb, x86::REG_RSP, 8);
+
+				x86::test_rr(cb, x86::REG_RAX, x86::REG_RAX);
+				const uint32_t cont = x86::jcc32(cb, 0x4); // je: helper retired it
+				x86::pop_r(cb, x86::REG_R12);
+				x86::pop_r(cb, x86::REG_R13);
+				x86::pop_r(cb, x86::REG_R15);
+				x86::pop_r(cb, x86::REG_RBP);
+				x86::ret(cb);
+				x86::patch_rel32(cb, cont, cb.pos);
+
+				// The helper may have written rd (and x0). Restore every guest
+				// register the allocator expects to be cached after this
+				// instruction, then rejoin the fast path after the load/store.
+				for(uint8_t k = 0; k < hs.n_post; k++)
+					x86::mov_mr(cb, phys(hs.ps[k]), x86::REG_REGS, (int32_t)(hs.pv[k] * 8));
+				const uint32_t back = x86::jmp32(cb);
+				x86::patch_rel32(cb, back, hs.cont_pos);
+				continue;
+			}
+
+			// Plain miss: exit with the pc/count captured before the faulting
+			// instruction. This is a yield to C++ (softmmu refill / trap),
+			// not a chainable handoff, so it accounts its instructions into the
+			// chain budget and returns through the single C++ frame.
 			x86::mov_mr(cb, x86::REG_RAX, x86::REG_CTX, x86::CTX_OFF_ENTRY);
 			x86::add_imm(cb, x86::REG_RAX, (int32_t)bytes);
 			x86::mov_rm(cb, x86::REG_CTX, x86::CTX_OFF_EXIT, x86::REG_RAX);
@@ -724,16 +796,42 @@ namespace rv64vm::jit
 		}
 	}
 
-	void JIT_Emitter::push_miss(uint32_t rel_pos, uint32_t instr)
+	void JIT_Emitter::push_miss(uint32_t rel_pos, uint32_t instr, uint32_t helper_idx)
 	{
-		if(misses.empty() || misses.back().instr != instr)
+		if(misses.empty() || misses.back().instr != instr || misses.back().helper_idx != helper_idx)
 			stub_reserve += STUB_BYTES;
 		MissSite s;
 		s.rel_pos = rel_pos;
 		s.instr	  = instr;
 		s.bytes	  = blk->instr_bytes;
 		s.dcnt	  = snapshot_dirty(s.dv, s.ds);
+		s.helper_idx = helper_idx;
 		misses.push_back(s);
+	}
+
+	uint32_t JIT_Emitter::begin_mem_helper(uint64_t packed)
+	{
+		const uint32_t idx = (uint32_t)mem_helpers.size();
+		mem_helpers.push_back({ packed, 0, 0, {}, {} });
+		return idx;
+	}
+
+	void JIT_Emitter::finish_mem_helper(uint32_t idx, uint32_t cont_pos)
+	{
+		MemHelperSite& hs = mem_helpers[idx];
+		hs.cont_pos = cont_pos;
+		hs.n_post   = 0;
+		// Include x0: hreg_for_read(0) caches a zero in a host register, and
+		// the helper call clobbers those registers.
+		for(uint8_t v = 0; v < 32 && hs.n_post < 6; v++)
+		{
+			if(vr[v].slot >= 0)
+			{
+				hs.pv[hs.n_post] = v;
+				hs.ps[hs.n_post] = (uint8_t)vr[v].slot;
+				hs.n_post++;
+			}
+		}
 	}
 
 	uint8_t JIT_Emitter::snapshot_dirty(uint8_t* dv, uint8_t* ds)

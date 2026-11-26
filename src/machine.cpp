@@ -134,6 +134,12 @@ namespace rv64vm::runner
 		fdt_node_add_prop_str(fdt, "model", RVEM_VERSION);
 		fdt_node_add_prop(fdt, "compatible", "riscv-virtio\0simple-bus\0", 24);
 
+		// Match QEMU's virt machine: console consumers (systemd's getty
+		// generator in particular) resolve the serial alias from the FDT.
+		fdt_node* aliases = fdt_node_create("aliases");
+		fdt_node_add_prop_str(aliases, "serial0", "/soc/serial@10000000");
+		fdt_node_add_child(fdt, aliases);
+
 		fdt_node* chosen = fdt_node_create("chosen");
 		std::stringstream rng_seed;
 
@@ -257,7 +263,7 @@ namespace rv64vm::runner
 	void Machine::init_mmap()
 	{
 		mmap = new MemoryMap();
-		mmap->add_region(0x80000000, config.memory_size);
+		mmap->add_region(0x80000000, config.memory_size, true);
 		mmio = new MMIO(mmap, config.memory_size);
 		idec = new InstructionDecoder();
 		idec->init_all_instrs();

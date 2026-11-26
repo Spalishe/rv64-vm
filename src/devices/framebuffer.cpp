@@ -26,11 +26,14 @@ namespace rv64vm::dev
 		  window(window),
 		  cpu(cpu)
 	{
-		size_t arr_size = width * height * 4;
-		buffer			= (uint8_t*)malloc(arr_size);
+		last_frame_time = std::chrono::steady_clock::now();
+		// Use the registered memory region as the backing store. JIT stores to
+		// the framebuffer can then use its host pointer directly instead of
+		// exiting to MMIO::write() on every pixel.
+		const size_t arr_size = size;
+		cpu.get_mmap()->add_region(start, arr_size, true);
+		buffer = cpu.get_mmap()->get_regions().back()->get_data();
 		memset(buffer, 0, arr_size);
-
-		cpu.get_mmap()->add_region(start, size);
 		if(fdt != NULL)
 		{
 			struct fdt_node* fb_fdt = fdt_node_create_reg("framebuffer", start);
@@ -94,13 +97,17 @@ namespace rv64vm::dev
 
 	void Framebuffer::tick()
 	{
-		auto now	 = std::chrono::high_resolution_clock::now();
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_frame_time).count();
-
-		if(elapsed >= 16)
-		{ // ~60 fps
+		static constexpr auto FRAME_INTERVAL = std::chrono::microseconds(16667); // ~60 fps
+		const auto now						 = std::chrono::steady_clock::now();
+		if(now - last_frame_time >= FRAME_INTERVAL)
+		{
 			UpdateFrame(window, buffer);
-			last_frame_time = now;
+			// Advance the deadline instead of resetting it to `now`, so a slow
+			// tick does not accumulate jitter. Skip missed frames after a long
+			// stall rather than firing a burst on the next tick.
+			last_frame_time += FRAME_INTERVAL;
+			if(now - last_frame_time >= FRAME_INTERVAL)
+				last_frame_time = now;
 		}
 	}
 }

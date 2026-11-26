@@ -35,11 +35,11 @@ inline MemoryReturn MMU::translate(Hart* hart, AccessType type, uint64_t va, uin
 	{
 		*pa = va;
 #ifdef USE_JIT
-		uint64_t base = va & ~0xFFFULL;
-		uint8_t* host = nullptr;
-		auto*	 ram  = mmap->get_ram_direct();
-		if(ram != nullptr && base >= ram->get_base_addr() && base - ram->get_base_addr() + 0x1000 <= ram->get_size())
-			host = ram->get_data() + (base - ram->get_base_addr());
+		const uint64_t base = va & ~0xFFFULL;
+		auto* region		= mmap->find_jit_direct(base, 0x1000);
+		uint8_t* host		= region != nullptr
+							  ? region->get_data() + (base - region->get_base_addr())
+							  : nullptr;
 		uint8_t perm = (uint8_t)TLB::TLBPermissions::PERM_R | (uint8_t)TLB::TLBPermissions::PERM_W |
 					   (uint8_t)TLB::TLBPermissions::PERM_X | (uint8_t)TLB::TLBPermissions::PERM_U |
 					   (uint8_t)TLB::TLBPermissions::PERM_A | (uint8_t)TLB::TLBPermissions::PERM_D;
@@ -248,13 +248,13 @@ MemoryReturn MMU::translate_impl(Hart* hart, AccessType type, uint64_t raw_va, u
 	if(was_page_executed(*pa) || type == AccessType::EXEC)
 		perm &= ~((uint8_t)TLB::TLBPermissions::PERM_W | (uint8_t)TLB::TLBPermissions::PERM_D);
 
-	// Direct host mapping for fast-path RAM pages only (whole page inside RAM).
+	// Direct host mapping for whole pages inside JIT-direct regions: main RAM
+	// plus side-effect-free flat buffers such as the framebuffer.
 	const void* host_page = nullptr;
 	uint64_t	pa_aligned = *pa & ~((1ULL << page_bits) - 1);
-	auto*		ram		   = mmap->get_ram_direct();
-	if(ram != nullptr && pa_aligned >= ram->get_base_addr() &&
-	   pa_aligned - ram->get_base_addr() + (1ULL << page_bits) <= ram->get_size())
-		host_page = ram->get_data() + (pa_aligned - ram->get_base_addr());
+	auto*		region	   = mmap->find_jit_direct(pa_aligned, 1ULL << page_bits);
+	if(region != nullptr)
+		host_page = region->get_data() + (pa_aligned - region->get_base_addr());
 
 	tlb.insert(raw_va, pa_aligned, page_bits, perm, asid, pte.fields.G, host_page);
 	return { true, 0, 0 };

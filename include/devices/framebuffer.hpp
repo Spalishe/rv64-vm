@@ -41,7 +41,7 @@ namespace rv64vm::dev
 		void write(uint64_t addr, MemorySize size, uint64_t val);
 		void tick();
 
-		std::chrono::high_resolution_clock::time_point last_frame_time;
+		std::chrono::steady_clock::time_point last_frame_time;
 	};
 }
 #endif

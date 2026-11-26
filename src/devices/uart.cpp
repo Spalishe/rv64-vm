@@ -117,6 +117,7 @@ namespace rv64vm::dev
 
 	uint64_t UART::read(uint64_t addr, MemorySize size)
 	{
+		std::lock_guard<std::mutex> lock(state_mutex);
 		uint64_t offset = addr - start;
 		uint8_t reg		= offset;
 		uint64_t value	= 0;
@@ -199,6 +200,7 @@ namespace rv64vm::dev
 
 	void UART::write(uint64_t addr, MemorySize size, uint64_t value)
 	{
+		std::lock_guard<std::mutex> lock(state_mutex);
 		uint64_t offset	   = addr - start;
 		uint8_t reg		   = offset;
 		uint8_t byte_value = value & 0xFF;
@@ -299,6 +301,7 @@ namespace rv64vm::dev
 
 	void UART::receive_byte(uint8_t byte)
 	{
+		std::lock_guard<std::mutex> lock(state_mutex);
 		// FIFO overflow
 		if(fifo_enabled && fifo_buffer.size() >= 512)
 		{

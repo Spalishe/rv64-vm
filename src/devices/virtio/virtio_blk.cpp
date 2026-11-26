@@ -17,9 +17,11 @@ Copyright 2026 Spalishe
 
 #include "../../../include/devices/virtio/virtio_blk.hpp"
 #include "../../../include/machine.hpp"
+#include "../../../include/self_mod.hpp"
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 #include <sys/stat.h>
 
 namespace rv64vm::dev
@@ -92,6 +94,11 @@ namespace rv64vm::dev
 	void VirtIO_BLK::copy_from_dram(uint64_t gpa, void* dst, uint64_t len)
 	{
 		uint8_t* out = reinterpret_cast<uint8_t*>(dst);
+		if(auto* region = mmap->find_jit_direct(gpa, (size_t)len))
+		{
+			std::memcpy(out, region->ptr(gpa), (size_t)len);
+			return;
+		}
 		for(uint64_t i = 0; i < len; ++i)
 		{
 			out[i] = mmap->load(gpa + i, 8);
@@ -100,6 +107,15 @@ namespace rv64vm::dev
 	void VirtIO_BLK::copy_to_dram(uint64_t gpa, const void* src, uint64_t len)
 	{
 		const uint8_t* in = reinterpret_cast<const uint8_t*>(src);
+		if(auto* region = mmap->find_jit_direct(gpa, (size_t)len))
+		{
+			std::memcpy(region->ptr(gpa), in, (size_t)len);
+			// DMA writes bypass the MMU store path, so keep the JIT's
+			// self-modifying-code detector in the loop for the touched pages.
+			for(uint64_t p = gpa & ~0xFFFull; p < gpa + len; p += 0x1000)
+				smc_store_hit(p);
+			return;
+		}
 		for(uint64_t i = 0; i < len; ++i)
 		{
 			mmap->store(gpa + i, 8, in[i]);

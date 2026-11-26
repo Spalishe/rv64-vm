@@ -93,8 +93,8 @@ namespace rv64vm::runner
 			 * @param base Guest address
 			 * @param sz Memory size
 			 */
-			MemoryRegion(uint64_t base, size_t sz)
-				: base_addr(base), size(sz)
+			MemoryRegion(uint64_t base, size_t sz, bool direct = false)
+				: base_addr(base), size(sz), jit_direct(direct)
 			{
 				// Demand-zero pages avoid zeroing guest RAM at startup.
 				data = static_cast<uint8_t*>(mmap(nullptr, size, PROT_READ | PROT_WRITE,
@@ -110,10 +110,16 @@ namespace rv64vm::runner
 				munmap(data, size);
 			}
 
+			/**
+			 * @brief Whether generated code may address this region directly.
+			 */
+			inline bool allows_jit_direct() const { return jit_direct; }
+
 		  private:
 			uint64_t base_addr;
 			size_t size;
 			uint8_t* data;
+			bool jit_direct;
 		};
 
 		/**
@@ -133,9 +139,9 @@ namespace rv64vm::runner
 		 * @param base Guest base
 		 * @param size Region size
 		 */
-		void add_region(uint64_t base, size_t size)
+		void add_region(uint64_t base, size_t size, bool jit_direct = false)
 		{
-			regions.push_back(new MemoryRegion(base, size));
+			regions.push_back(new MemoryRegion(base, size, jit_direct));
 			if(base >= 0x80000000)
 			{
 				ram_direct = regions.back();
@@ -284,6 +290,32 @@ namespace rv64vm::runner
 
 			for(uint64_t i = 0; i < bytes; ++i)
 				p[i] = (uint8_t)(value >> (i * 8));
+		}
+
+		/**
+		 * @brief Finds a whole range inside a JIT-direct region
+		 * @details Only RAM and explicitly marked flat buffers (framebuffer)
+		 * qualify. Side-effectful MMIO devices are excluded so JIT stores
+		 * cannot bypass their write handlers.
+		 */
+		MemoryRegion* find_jit_direct(uint64_t addr, size_t len)
+		{
+			if(ram_direct != nullptr)
+			{
+				const uint64_t base = ram_direct->get_base_addr();
+				if(addr >= base && addr - base <= ram_direct->get_size() &&
+				   len <= ram_direct->get_size() - (addr - base))
+					return ram_direct;
+			}
+			for(auto* r : regions)
+			{
+				if(!r->allows_jit_direct()) continue;
+				const uint64_t base = r->get_base_addr();
+				if(addr >= base && addr - base <= r->get_size() &&
+				   len <= r->get_size() - (addr - base))
+					return r;
+			}
+			return nullptr;
 		}
 
 		/**

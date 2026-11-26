@@ -146,13 +146,18 @@ struct WaylandWindow
 	struct wl_keyboard* wl_keyboard = nullptr;
 
 	std::unique_ptr<std::mutex> window_mutex = std::make_unique<std::mutex>();
-	struct wl_buffer* wl_buffer				 = nullptr;
-	struct wl_shm_pool* wl_shm_pool			 = nullptr;
-	uint32_t* pixel_shared_memory			 = nullptr;
-	size_t shm_size							 = 0;
-	int shm_fd								 = -1;
-	int width								 = 0;
-	int height								 = 0;
+
+	// Double-buffered SHM: the compositor owns a buffer from attach until it
+	// sends wl_buffer.release. Writing into a busy buffer tears the frame.
+	static constexpr size_t BUFFER_COUNT = 2;
+	std::array<struct wl_buffer*, BUFFER_COUNT> buffers{};
+	std::array<uint32_t*, BUFFER_COUNT> pixel_shared_memory{};
+	std::array<bool, BUFFER_COUNT> buffer_busy{};
+	struct wl_shm_pool* wl_shm_pool = nullptr;
+	size_t shm_size				 = 0; // per-buffer size
+	int shm_fd					 = -1;
+	int width					 = 0;
+	int height					 = 0;
 
 	InputState* input;
 	std::shared_ptr<rv64vm::dev::HID_USB_Keyboard> kb;
@@ -315,6 +320,23 @@ namespace
 		.global_remove = registry_global_remove
 	};
 
+	static void buffer_release(void* data, struct wl_buffer* buffer)
+	{
+		auto* window = static_cast<WaylandWindow*>(data);
+		for(size_t i = 0; i < WaylandWindow::BUFFER_COUNT; i++)
+		{
+			if(window->buffers[i] == buffer)
+			{
+				window->buffer_busy[i] = false;
+				return;
+			}
+		}
+	}
+
+	static const struct wl_buffer_listener buffer_listener = {
+		.release = buffer_release
+	};
+
 	static bool InitializeWaylandScreen(WaylandWindow& window, int width, int height)
 	{
 		window.display = wl_display_connect(nullptr);
@@ -323,6 +345,11 @@ namespace
 			std::cerr << "Failed to connect to a Wayland display socket.\n";
 			return false;
 		}
+		// Created before the SHM buffers so their release events land on the
+		// event thread's queue rather than the default one, which nobody
+		// dispatches. Proxies bound during the roundtrips below stay on the
+		// default queue; StartWaylandEventThread() moves those later.
+		window.event_queue = wl_display_create_queue(window.display);
 		window.registry = wl_display_get_registry(window.display);
 		wl_registry_add_listener(window.registry, &registry_listener, &window);
 
@@ -361,23 +388,37 @@ namespace
 		window.shm_size = stride * height;
 
 		window.shm_fd = memfd_create("wayland-shm-pool", MFD_CLOEXEC);
+		const size_t total_size = window.shm_size * WaylandWindow::BUFFER_COUNT;
 		if(window.shm_fd >= 0)
 		{
-			if(ftruncate(window.shm_fd, window.shm_size) >= 0)
+			if(ftruncate(window.shm_fd, total_size) >= 0)
 			{
-				window.pixel_shared_memory = (uint32_t*)mmap(nullptr, window.shm_size,
-															 PROT_READ | PROT_WRITE, MAP_SHARED, window.shm_fd, 0);
+				void* mem = mmap(nullptr, total_size, PROT_READ | PROT_WRITE, MAP_SHARED, window.shm_fd, 0);
 
-				if(window.pixel_shared_memory != MAP_FAILED)
+				if(mem != MAP_FAILED)
 				{
-					std::fill_n(window.pixel_shared_memory, width * height, 0xFF000000);
+					window.wl_shm_pool = wl_shm_create_pool(window.shm, window.shm_fd, total_size);
+					for(size_t i = 0; i < WaylandWindow::BUFFER_COUNT; i++)
+					{
+						window.pixel_shared_memory[i] = (uint32_t*)mem + i * width * height;
+						std::fill_n(window.pixel_shared_memory[i], width * height, 0xFF000000u);
 
-					window.wl_shm_pool = wl_shm_create_pool(window.shm, window.shm_fd, window.shm_size);
-					window.wl_buffer   = wl_shm_pool_create_buffer(window.wl_shm_pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
+						window.buffers[i] = wl_shm_pool_create_buffer(window.wl_shm_pool,
+							i * window.shm_size, width, height, stride, WL_SHM_FORMAT_XRGB8888);
+						if(window.buffers[i])
+						{
+							wl_proxy_set_queue((struct wl_proxy*)window.buffers[i], window.event_queue);
+							wl_buffer_add_listener(window.buffers[i], &buffer_listener, &window);
+						}
+					}
 
-					wl_surface_attach(window.wl_surface, window.wl_buffer, 0, 0);
-					wl_surface_damage(window.wl_surface, 0, 0, width, height);
-					wl_surface_commit(window.wl_surface);
+					if(window.buffers[0])
+					{
+						wl_surface_attach(window.wl_surface, window.buffers[0], 0, 0);
+						window.buffer_busy[0] = true;
+						wl_surface_damage(window.wl_surface, 0, 0, width, height);
+						wl_surface_commit(window.wl_surface);
+					}
 
 					wl_display_flush(window.display);
 					wl_display_dispatch_pending(window.display);
@@ -390,7 +431,9 @@ namespace
 
 	inline void StartWaylandEventThread(WaylandWindow& window)
 	{
-		window.event_queue = wl_display_create_queue(window.display);
+		// The queue is created in InitializeWaylandScreen() so SHM buffer
+		// release events cannot be stranded on the default queue.
+		if(!window.event_queue) window.event_queue = wl_display_create_queue(window.display);
 
 		if(window.registry) wl_proxy_set_queue((struct wl_proxy*)window.registry, window.event_queue);
 		if(window.xdg_wm_base) wl_proxy_set_queue((struct wl_proxy*)window.xdg_wm_base, window.event_queue);
@@ -398,6 +441,8 @@ namespace
 		if(window.xdg_toplevel) wl_proxy_set_queue((struct wl_proxy*)window.xdg_toplevel, window.event_queue);
 		if(window.seat) wl_proxy_set_queue((struct wl_proxy*)window.seat, window.event_queue);
 		if(window.wl_keyboard) wl_proxy_set_queue((struct wl_proxy*)window.wl_keyboard, window.event_queue);
+		for(auto* buffer : window.buffers)
+			if(buffer) wl_proxy_set_queue((struct wl_proxy*)buffer, window.event_queue);
 
 		std::thread([&window]()
 		{
@@ -439,9 +484,11 @@ namespace
 		if(window.xdg_surface) xdg_surface_destroy(window.xdg_surface);
 		if(window.wl_surface) wl_surface_destroy(window.wl_surface);
 
-		if(window.wl_buffer) wl_buffer_destroy(window.wl_buffer);
+		for(auto* buffer : window.buffers)
+			if(buffer) wl_buffer_destroy(buffer);
 		if(window.wl_shm_pool) wl_shm_pool_destroy(window.wl_shm_pool);
-		if(window.pixel_shared_memory && window.pixel_shared_memory != MAP_FAILED) munmap(window.pixel_shared_memory, window.shm_size);
+		if(window.pixel_shared_memory[0] && window.pixel_shared_memory[0] != MAP_FAILED)
+			munmap(window.pixel_shared_memory[0], window.shm_size * WaylandWindow::BUFFER_COUNT);
 		if(window.shm_fd >= 0) close(window.shm_fd);
 
 		if(window.xdg_wm_base) xdg_wm_base_destroy(window.xdg_wm_base);
@@ -456,23 +503,25 @@ namespace
 
 	inline void UpdateWaylandFrame(WaylandWindow& window, const uint8_t* raw_pixels)
 	{
-		if(!window.running || !window.wl_surface) return;
-		if(!window.pixel_shared_memory || window.pixel_shared_memory == MAP_FAILED)
-		{
-			std::cerr << "[Wayland] Error: Shared memory is not mapped.\n";
+		if(!window.running || !window.wl_surface || !raw_pixels) return;
+
+		// The event thread touches the same wl_display under this mutex; the
+		// old code raced with it (no lock here), which showed up as dropped and
+		// torn frames.
+		std::lock_guard<std::mutex> lock(*window.window_mutex);
+
+		size_t idx = 0;
+		while(idx < WaylandWindow::BUFFER_COUNT && window.buffer_busy[idx]) idx++;
+		if(idx == WaylandWindow::BUFFER_COUNT)
+			return; // compositor still owns both buffers: drop this frame
+		if(!window.buffers[idx] || !window.pixel_shared_memory[idx])
 			return;
-		}
 
-		if(!raw_pixels)
-		{
-			std::cerr << "[Wayland] Error: Source raw_pixels pointer is null.\n";
-			return;
-		}
+		std::memcpy(window.pixel_shared_memory[idx], raw_pixels, window.shm_size);
+		window.buffer_busy[idx] = true;
 
-		std::memcpy(window.pixel_shared_memory, raw_pixels, window.shm_size);
-
+		wl_surface_attach(window.wl_surface, window.buffers[idx], 0, 0);
 		wl_surface_damage(window.wl_surface, 0, 0, window.width, window.height);
-		wl_surface_attach(window.wl_surface, window.wl_buffer, 0, 0);
 		wl_surface_commit(window.wl_surface);
 
 		wl_display_flush(window.display);

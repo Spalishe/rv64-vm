@@ -145,7 +145,8 @@ namespace rv64vm::jit
 		// TLB-miss / branch-misalign fixups: each [rel_pos] is a rel32 jcc into
 		// the stub of [instr], patched by emit_miss_stubs(). Dirty guest
 		// registers are snapshotted here so the stub can commit them before
-		// exiting to the interpreter.
+		// the slow path runs.
+		static constexpr uint32_t NO_HELPER = 0xFFFFFFFFu;
 		struct MissSite
 		{
 			uint32_t rel_pos;
@@ -154,8 +155,23 @@ namespace rv64vm::jit
 			uint8_t dcnt;	// number of dirty registers at this point (<= 6)
 			uint8_t dv[6];	// them: guest register numbers
 			uint8_t ds[6];	// them: host pool slots holding the values
+			uint32_t helper_idx = NO_HELPER; // MMIO helper descriptor, or exit
 		};
 		std::vector<MissSite> misses;
+
+		// A load/store slow path calls C++ instead of leaving the JIT block.
+		// The helper performs the exact MMIO::read/write semantics; on success
+		// generated code reloads the allocator's cached guest registers and
+		// resumes at cont_pos, just past the fast-path memory instruction.
+		struct MemHelperSite
+		{
+			uint64_t packed;   // opcode/width/regs/imm/instr index/bytes
+			uint32_t cont_pos; // patched once the instruction is emitted
+			uint8_t n_post;	// cached guest registers at cont_pos
+			uint8_t pv[6];	 // guest register numbers
+			uint8_t ps[6];	 // host pool slots holding their values
+		};
+		std::vector<MemHelperSite> mem_helpers;
 		uint32_t stub_reserve = 0; // bytes reserved for the future miss stubs
 
 		// A control-transfer translator already emitted its own exit, so the
@@ -202,10 +218,17 @@ namespace rv64vm::jit
 		void emit_miss_stubs();
 
 		// Records a stub site for `instr`, reserving its share of stub space
-		// and capturing the dirty-register snapshot at this point.
-		void push_miss(uint32_t rel_pos, uint32_t instr);
+		// and capturing the dirty-register snapshot at this point. helper_idx
+		// selects an MMIO helper stub; NO_HELPER keeps the old runner exit.
+		void push_miss(uint32_t rel_pos, uint32_t instr, uint32_t helper_idx = NO_HELPER);
 		// Count of currently dirty guest registers (and their host slots).
 		uint8_t snapshot_dirty(uint8_t* dv, uint8_t* ds);
+
+		// Load/store slow-path descriptor: created before the TLB checks,
+		// completed after the instruction so the helper stub knows where to
+		// resume and which cached registers to restore.
+		uint32_t begin_mem_helper(uint64_t packed);
+		void finish_mem_helper(uint32_t idx, uint32_t cont_pos);
 
 		// Flush dirty regs and exit to the runner: exit_pc = entry_pc +
 		// delta_va (or RAX), exit_count = count. Used by the control-transfer

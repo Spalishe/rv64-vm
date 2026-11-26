@@ -306,6 +306,10 @@ int main(int argc, char* argv[])
 
 	mach = &machine;
 
+	// Publish the UART before the terminal thread starts: it forwards every
+	// received byte to the device as soon as the terminal is reconfigured.
+	uart = machine.get_mmio()->get<rv64vm::dev::UART>();
+
 	termios_running = true;
 	std::thread term(&termios_loop);
 
@@ -316,8 +320,6 @@ int main(int argc, char* argv[])
 		machine.enable_gdb(true, get_random_port());
 	}
 #endif
-
-	uart = machine.get_mmio()->get<rv64vm::dev::UART>();
 
 	// PCI (tbe pci-host-ecam-generic)
 	auto pci = machine.get_mmio()->create_device_auto<rv64vm::dev::PCI_HEG>(machine);

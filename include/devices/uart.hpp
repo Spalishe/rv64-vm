@@ -19,6 +19,7 @@ Copyright 2026 Spalishe
 
 #include "../fwd.hpp"
 #include "../mmio.hpp"
+#include <mutex>
 #include <queue>
 #define IIR_NO_INT		 0x01
 #define IIR_THR_EMPTY	 0x02
@@ -68,6 +69,10 @@ namespace rv64vm::dev
 
 		bool fifo_enabled;
 		std::queue<uint8_t> fifo_buffer;
+
+		// receive_byte() is called from the host terminal thread while the
+		// emulator thread reads/writes the same registers through MMIO.
+		std::mutex state_mutex;
 
 		void trigger_irq();
 		void clear_irq();
