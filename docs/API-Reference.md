@@ -117,6 +117,7 @@ This document contains all Exported API objects.
   * [load_buffer](api/MemoryMap.md#load_buffer)
   * [load](api/MemoryMap.md#load)
   * [store](api/MemoryMap.md#store)
+  * [find_jit_direct](api/MemoryMap.md#find_jit_direct)
   * [find_region](api/MemoryMap.md#find_region)
   * **[MemoryRegion](api/MemoryRegion.md)**
     * [get_base_addr](api/MemoryRegion.md#get_base_addr)
@@ -125,6 +126,7 @@ This document contains all Exported API objects.
     * [ptr](api/MemoryRegion.md#ptr)
     * [MemoryRegion](api/MemoryRegion.md#memoryregion)
     * [~MemoryRegion](api/MemoryRegion.md#~memoryregion)
+    * [allows_jit_direct](api/MemoryRegion.md#allows_jit_direct)
 * **[TLB](api/TLB.md)**
   * [TLB](api/TLB.md#tlb)
   * [~TLB](api/TLB.md#~tlb)

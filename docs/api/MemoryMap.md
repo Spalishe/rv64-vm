@@ -27,6 +27,7 @@ This class implements Main memory storage.
 | `bool` | [`load_buffer`](#load_buffer) `inline` | Loads buffer to guest memory. |
 | `uint64_t` | [`load`](#load) `inline` | Loads value from guest memory. |
 | `void` | [`store`](#store) `inline` | Stores value to guest memory. |
+| [`MemoryRegion`](MemoryRegion.md#memoryregion) * | [`find_jit_direct`](#find_jit_direct) `inline` | Finds a whole range inside a JIT-direct region. |
 | [`MemoryRegion`](MemoryRegion.md#memoryregion) * | [`find_region`](#find_region) `inline` | Finds region by specidied guest address. |
 
 ---
@@ -75,7 +76,7 @@ Safely removes all regions
 inline std::vector< MemoryRegion * > & get_regions()
 ```
 
-Defined in include/memory_map.hpp:124
+Defined in include/memory_map.hpp:130
 
 Returns all created regions.
 
@@ -96,7 +97,7 @@ Memory regions
 inline MemoryRegion * get_ram_direct() const
 ```
 
-Defined in include/memory_map.hpp:130
+Defined in include/memory_map.hpp:136
 
 Returns pointer to 0x80000000 guest ram region.
 
@@ -114,10 +115,10 @@ Direct pointer to region
 `inline`
 
 ```cpp
-inline void add_region(uint64_t base, size_t size)
+inline void add_region(uint64_t base, size_t size, bool jit_direct = false)
 ```
 
-Defined in include/memory_map.hpp:136
+Defined in include/memory_map.hpp:142
 
 Creates new guest region in memory.
 
@@ -140,7 +141,7 @@ Creates new guest region in memory.
 inline bool load_file(uint64_t memory_path, std::string path = "", uint64_t * entry_pc = NULL)
 ```
 
-Defined in include/memory_map.hpp:151
+Defined in include/memory_map.hpp:157
 
 Loads binary or ELF file to guest memory.
 
@@ -167,7 +168,7 @@ Success boolean
 inline bool load_buffer(uint64_t memory_path, char * buffer, uint64_t size, uint64_t * entry_pc = NULL)
 ```
 
-Defined in include/memory_map.hpp:189
+Defined in include/memory_map.hpp:195
 
 Loads buffer to guest memory.
 
@@ -195,7 +196,7 @@ Success boolean
 inline uint64_t load(uint64_t addr, uint64_t size)
 ```
 
-Defined in include/memory_map.hpp:210
+Defined in include/memory_map.hpp:216
 
 Loads value from guest memory.
 
@@ -221,7 +222,7 @@ Value stored in memory
 inline void store(uint64_t addr, uint64_t size, uint64_t value)
 ```
 
-Defined in include/memory_map.hpp:252
+Defined in include/memory_map.hpp:258
 
 Stores value to guest memory.
 
@@ -237,6 +238,24 @@ Stores value to guest memory.
 
 
 
+### find_jit_direct
+
+`inline`
+
+```cpp
+inline MemoryRegion * find_jit_direct(uint64_t addr, size_t len)
+```
+
+Defined in include/memory_map.hpp:301
+
+Finds a whole range inside a JIT-direct region.
+
+Only RAM and explicitly marked flat buffers (framebuffer) qualify. Side-effectful [MMIO](MMIO.md#mmio) devices are excluded so JIT stores cannot bypass their write handlers.
+
+---
+
+
+
 ### find_region
 
 `inline`
@@ -245,7 +264,7 @@ Stores value to guest memory.
 inline MemoryRegion * find_region(uint64_t addr)
 ```
 
-Defined in include/memory_map.hpp:295
+Defined in include/memory_map.hpp:327
 
 Finds region by specidied guest address.
 

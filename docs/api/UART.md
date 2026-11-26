@@ -8,7 +8,7 @@
 class UART
 ```
 
-Defined in include/devices/uart.hpp:36
+Defined in include/devices/uart.hpp:37
 
 > **Inherits:** [`Device`](Device.md#device)
 
@@ -61,7 +61,7 @@ Defined in include/devices/uart.hpp:36
 virtual uint64_t read(uint64_t addr, MemorySize size)
 ```
 
-Defined in include/devices/uart.hpp:76
+Defined in include/devices/uart.hpp:81
 
 [Device](Device.md#device) read function.
 
@@ -81,7 +81,7 @@ Defined in include/devices/uart.hpp:76
 virtual void write(uint64_t addr, MemorySize size, uint64_t val)
 ```
 
-Defined in include/devices/uart.hpp:77
+Defined in include/devices/uart.hpp:82
 
 [Device](Device.md#device) write function.
 

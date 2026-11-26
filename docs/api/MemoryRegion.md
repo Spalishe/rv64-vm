@@ -24,6 +24,7 @@ A pie in a total cake. Contains raw data to memory.
 | `uint8_t *` | [`ptr`](#ptr) `inline` | Returns Host pointer to Guest address. |
 |  | [`MemoryRegion`](#memoryregion) `inline` | Memory region constructor. |
 |  | [`~MemoryRegion`](#~memoryregion) `inline` | Memory region destructor. |
+| `bool` | [`allows_jit_direct`](#allows_jit_direct) `const` `inline` | Whether generated code may address this region directly. |
 
 ---
 
@@ -119,7 +120,7 @@ Host address
 `inline`
 
 ```cpp
-inline MemoryRegion(uint64_t base, size_t sz)
+inline MemoryRegion(uint64_t base, size_t sz, bool direct = false)
 ```
 
 Defined in include/memory_map.hpp:96
@@ -148,4 +149,20 @@ inline ~MemoryRegion()
 Defined in include/memory_map.hpp:108
 
 Memory region destructor.
+
+---
+
+
+
+### allows_jit_direct
+
+`const` `inline`
+
+```cpp
+inline bool allows_jit_direct() const
+```
+
+Defined in include/memory_map.hpp:116
+
+Whether generated code may address this region directly.
 
