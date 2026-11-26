@@ -18,6 +18,11 @@ Copyright 2026 Spalishe
 #include "../../include/decode.hpp"
 #include "../../include/defines/csr.hpp"
 #include "../../include/hart.hpp"
+#ifdef USE_JIT
+#include "../../include/jit/rvjit.hpp"
+#include "../../include/jit/rvjit_ctx.hpp"
+#include "../../include/jit/rvjit_x86_64.hpp"
+#endif
 
 using namespace rv64vm::runner;
 // ZiCSR
@@ -261,12 +266,100 @@ ExecReturn exec_CSRRCI(Hart& hart, InstructionData& inst)
 	return { true, false, 4, 0, 0 };
 }
 
+#ifdef USE_JIT
+// Called from generated code. The exec functions above remain the single
+// source of truth for access checks, masks, aliases and CSR side effects.
+extern "C" uint64_t rvjit_zicsr_exec(rv64vm::jit::JIT_HartContext* ctx, uint64_t packed, uint32_t inst)
+{
+	using namespace rv64vm;
+	const uint32_t op			  = (uint32_t)(packed & 7);
+	const uint16_t csr			  = (uint16_t)((packed >> 3) & 0xFFF);
+	const uint8_t rs1			  = (uint8_t)((packed >> 15) & 0x1F);
+	const uint8_t rd			  = (uint8_t)((packed >> 20) & 0x1F);
+	const uint32_t instr_index	  = (uint32_t)((packed >> 25) & 0xFFFF);
+	const uint32_t instr_bytes	  = (uint32_t)((packed >> 41) & 0xFFFF);
+
+	Hart& hart = *ctx->hart;
+	InstructionData d;
+	d.inst = inst;
+	d.imm  = csr;
+	d.rs1  = rs1;
+	d.rs2  = 0;
+	d.rd   = rd;
+	d.size = 4;
+
+	// The JIT runner credits cycle/instret only when a chain returns to C++.
+	// Compensate while exec reads them, then undo: this block's instructions
+	// are still credited by the runner on return.
+	const uint64_t done = (uint64_t)jit::x86::CHAIN_CADENCE - (uint64_t)ctx->chain_budget;
+	hart.cycle += done;
+	hart.instret += done;
+
+	// Generated code does not keep Hart::pc in sync per instruction; trap()
+	// needs the precise faulting pc (and writes mepc from it).
+	hart.pc = ctx->entry_pc + instr_bytes;
+	const uint64_t pc_before = hart.pc;
+	ExecReturn r;
+	switch(op)
+	{
+		case 0: r = exec_CSRRW(hart, d); break;
+		case 1: r = exec_CSRRS(hart, d); break;
+		case 2: r = exec_CSRRC(hart, d); break;
+		case 3: r = exec_CSRRWI(hart, d); break;
+		case 4: r = exec_CSRRSI(hart, d); break;
+		case 5: r = exec_CSRRCI(hart, d); break;
+		default: r = exec_CSRRW(hart, d); break;
+	}
+
+	hart.cycle -= done;
+	hart.instret -= done;
+	hart.GPR[0] = 0; // CSRRS/CSRRC write rd unconditionally, including x0
+
+	if(!r.is_success)
+	{
+		hart.trap(r.cause, r.tval, false);
+		ctx->exit_pc	   = hart.pc;
+		ctx->chain_budget -= (int64_t)instr_index;
+		return 1;
+	}
+
+	// csr_read/csr_write can trap internally (FP CSRs with FS == 0). The
+	// interpreter still retires the instruction and adds 4 to pc afterwards.
+	if(hart.pc != pc_before)
+	{
+		ctx->exit_pc	   = hart.pc + 4;
+		ctx->chain_budget -= (int64_t)instr_index + 1;
+		return 1;
+	}
+
+	// A write to these CSRs changes state baked into compiled blocks (effective
+	// mode / permission masks / TLB generation), so the chain must stop.
+	const bool writes = (op == 0 || op == 3 || rs1 != 0);
+	if(writes && (csr == CSR_SSTATUS || csr == CSR_MSTATUS || csr == CSR_SATP))
+	{
+		ctx->exit_pc	   = ctx->entry_pc + instr_bytes + 4;
+		ctx->chain_budget -= (int64_t)instr_index + 1;
+		return 1;
+	}
+
+	return 0;
+}
+#endif
+
 void InstructionDecoder::init_zicsr()
 {
-	register_instr("*****************001*****1110011", exec_CSRRW, imm_Zicsr);
-	register_instr("*****************010*****1110011", exec_CSRRS, imm_Zicsr);
-	register_instr("*****************011*****1110011", exec_CSRRC, imm_Zicsr);
-	register_instr("*****************101*****1110011", exec_CSRRWI, imm_Zicsr);
-	register_instr("*****************110*****1110011", exec_CSRRSI, imm_Zicsr);
-	register_instr("*****************111*****1110011", exec_CSRRCI, imm_Zicsr);
+	auto inst_CSRRW = register_instr("*****************001*****1110011", exec_CSRRW, imm_Zicsr);
+	auto inst_CSRRS = register_instr("*****************010*****1110011", exec_CSRRS, imm_Zicsr);
+	auto inst_CSRRC = register_instr("*****************011*****1110011", exec_CSRRC, imm_Zicsr);
+	auto inst_CSRRWI = register_instr("*****************101*****1110011", exec_CSRRWI, imm_Zicsr);
+	auto inst_CSRRSI = register_instr("*****************110*****1110011", exec_CSRRSI, imm_Zicsr);
+	auto inst_CSRRCI = register_instr("*****************111*****1110011", exec_CSRRCI, imm_Zicsr);
+#ifdef USE_JIT
+	inst_CSRRW->jit_func  = &jit::jit_CSRRW;
+	inst_CSRRS->jit_func  = &jit::jit_CSRRS;
+	inst_CSRRC->jit_func  = &jit::jit_CSRRC;
+	inst_CSRRWI->jit_func = &jit::jit_CSRRWI;
+	inst_CSRRSI->jit_func = &jit::jit_CSRRSI;
+	inst_CSRRCI->jit_func = &jit::jit_CSRRCI;
+#endif
 }

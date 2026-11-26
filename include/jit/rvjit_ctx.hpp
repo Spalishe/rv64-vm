@@ -46,6 +46,8 @@ namespace rv64vm::jit
 #endif
 	constexpr uint32_t CHAIN_CACHE_SLOTS = 1u << USE_JCHAIN;
 	constexpr uint32_t CHAIN_CACHE_MASK  = CHAIN_CACHE_SLOTS - 1;
+	// Appended after the chain table so existing offsets stay stable.
+	constexpr uint32_t CTX_OFF_RESERVATION = 128 + CHAIN_CACHE_SLOTS * 4 * sizeof(uint64_t);
 
 	// Index of `pc` in the chain cache: top CHAIN_SLOTS_LOG2 bits of the 64-bit
 	// golden-ratio product of (pc>>1), which mixes the low address bits up.
@@ -95,6 +97,7 @@ namespace rv64vm::jit
 		// Keeps the table at a stable, probed-on-every-hop offset.
 		uint64_t chain_cache_pad;
 		uint64_t chain_cache[CHAIN_CACHE_SLOTS * 4]; // CHAIN_CACHE_STRIDE-sized slots
+		void* reservation; // &hart.reservation, set by Hart::init()
 	};
 
 	static_assert(offsetof(JIT_HartContext, regs) == 0);
@@ -114,6 +117,7 @@ namespace rv64vm::jit
 	static_assert(offsetof(JIT_HartContext, chain_mode) == 112);
 	static_assert(offsetof(JIT_HartContext, chain_cache) == 128);
 	static_assert(offsetof(JIT_HartContext, chain_cache) % 64 == 0);
+	static_assert(offsetof(JIT_HartContext, reservation) == CTX_OFF_RESERVATION);
 
 	// Layout mirrors of TLB::TlbEntry, sanity-checked against offsetof above.
 	// Do not change the TlbEntry field order without updating these.

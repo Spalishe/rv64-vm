@@ -24,8 +24,13 @@ Copyright 2026 Spalishe
 #include "../include/jit/rvjit_stats.hpp"
 #endif
 #include <assert.h>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+
+static_assert(offsetof(rv64vm::runner::Hart::Reservation, paddr) == 0);
+static_assert(offsetof(rv64vm::runner::Hart::Reservation, size) == 8);
+static_assert(offsetof(rv64vm::runner::Hart::Reservation, valid) == 12);
 
 namespace rv64vm::runner
 {
@@ -39,6 +44,7 @@ namespace rv64vm::runner
 		GPR[11]			  = dtb_pos_at_memory;
 		csrs[CSR_MISA]	  = (1ULL << 63) | (1ULL << 8) | (1ULL << 12) | (1ULL << 0) | (1ULL << 5) | (1ULL << 3) | (1ULL << 2) | (1ULL << 1) | (1ULL << 18) | (1ULL << 20); // RV64IMAFDCBSU
 		csrs[CSR_MHARTID] = id;
+		reservation	  = {};
 		status.fields.SXL = 2;
 		status.fields.UXL = 2;
 		mmu.mmap		  = mmap;
@@ -47,6 +53,7 @@ namespace rv64vm::runner
 		hctx.hart	 = this;
 		hctx.mmio	 = mmio;
 		hctx.memsize = memsize;
+		hctx.reservation = &reservation;
 		hctx.ram	 = (mmap && mmap->get_ram_direct()) ? mmap->get_ram_direct()->get_data() : nullptr;
 #endif
 	}

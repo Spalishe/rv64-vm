@@ -89,6 +89,11 @@ namespace rv64vm::jit::x86
 	constexpr uint16_t CTX_OFF_CHAIN_MODE	= 112;	// mode_key of the blocks valid in this chain
 	constexpr uint16_t CTX_OFF_CHAIN_CACHE	= 128;
 
+	// Hart::Reservation field offsets (mirrors of its C++ layout).
+	constexpr uint16_t RES_OFF_PADDR = 0;
+	constexpr uint16_t RES_OFF_SIZE	 = 8;
+	constexpr uint16_t RES_OFF_VALID = 12;
+
 	// Direct-mapped jump cache inside hctx, indexed by chain_cache_index()
 	// (see rvjit_ctx.hpp); entry stride CHAIN_CACHE_STRIDE bytes:
 	// {chain_fn, pc, chain_epoch, mode_key}.
@@ -350,6 +355,63 @@ namespace rv64vm::jit::x86
 	inline void cmp_rr(CodeBuf& cb, uint8_t a, uint8_t b)
 	{
 		arith_rr64(cb, 7, a, b);
+	}
+
+	// Locked read-modify-write helpers for RV64A. The accumulator register
+	// (RAX) is implicit for CMPXCHG and holds the old value for XADD/XCHG.
+	inline void lock_xadd_m32(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t reg)
+	{
+		cb.b(0xF0);
+		rex(cb, false, reg >= 8, false, base >= 8);
+		cb.b(0x0F);
+		cb.b(0xC1);
+		modrm_mem(cb, reg, base, disp);
+	}
+	inline void lock_xadd_m64(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t reg)
+	{
+		cb.b(0xF0);
+		rex(cb, true, reg >= 8, false, base >= 8);
+		cb.b(0x0F);
+		cb.b(0xC1);
+		modrm_mem(cb, reg, base, disp);
+	}
+	inline void lock_xchg_m32(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t reg)
+	{
+		cb.b(0xF0);
+		rex(cb, false, reg >= 8, false, base >= 8);
+		cb.b(0x87);
+		modrm_mem(cb, reg, base, disp);
+	}
+	inline void lock_xchg_m64(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t reg)
+	{
+		cb.b(0xF0);
+		rex(cb, true, reg >= 8, false, base >= 8);
+		cb.b(0x87);
+		modrm_mem(cb, reg, base, disp);
+	}
+	inline void lock_cmpxchg_m32(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t reg)
+	{
+		cb.b(0xF0);
+		rex(cb, false, reg >= 8, false, base >= 8);
+		cb.b(0x0F);
+		cb.b(0xB1);
+		modrm_mem(cb, reg, base, disp);
+	}
+	inline void lock_cmpxchg_m64(CodeBuf& cb, uint8_t base, int32_t disp, uint8_t reg)
+	{
+		cb.b(0xF0);
+		rex(cb, true, reg >= 8, false, base >= 8);
+		cb.b(0x0F);
+		cb.b(0xB1);
+		modrm_mem(cb, reg, base, disp);
+	}
+	inline void cmovcc_rr64(CodeBuf& cb, uint8_t cc, uint8_t dst, uint8_t src)
+	{
+		// CMOVcc r64, r/m64: ModRM.reg is the destination, ModRM.rm the source.
+		rex(cb, true, dst >= 8, false, src >= 8);
+		cb.b(0x0F);
+		cb.b(0x40 | (cc & 0xF));
+		modrm_reg(cb, dst, src);
 	}
 	inline void arith_rm64(CodeBuf& cb, uint8_t regfield, uint8_t dst, uint8_t base, int32_t disp)
 	{
@@ -672,6 +734,16 @@ namespace rv64vm::jit::x86
 			cb.b(0x41); // REX.B
 		cb.b(0xFF);
 		cb.b(0xC0 | (0x4 << 3) | (r & 7));
+	}
+
+	// call r64 (indirect call, FF /2). Used by the Zicsr translator to reach
+	// the C++ helper that owns the CSR side effects.
+	inline void call_r(CodeBuf& cb, uint8_t r)
+	{
+		if(r >= 8)
+			cb.b(0x41); // REX.B
+		cb.b(0xFF);
+		cb.b(0xC0 | (0x2 << 3) | (r & 7));
 	}
 
 	// Address of the block-chaining dispatcher, generated once into an

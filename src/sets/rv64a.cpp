@@ -17,6 +17,9 @@ Copyright 2026 Spalishe
 
 #include "../../include/decode.hpp"
 #include "../../include/hart.hpp"
+#ifdef USE_JIT
+#include "../../include/jit/rvjit.hpp"
+#endif
 
 using namespace rv64vm::runner;
 MemoryReturn AMO_SC(Hart& hart, uint64_t va, MemorySize size, uint64_t val, void* out_val)
@@ -294,27 +297,53 @@ ExecReturn exec_AMOMAXU_W(Hart& hart, InstructionData& inst)
 
 void InstructionDecoder::init_rv64a()
 {
-	register_instr("00001************010*****0101111", exec_AMOSWAP_W);
-	register_instr("00000************010*****0101111", exec_AMOADD_W);
-	register_instr("01100************010*****0101111", exec_AMOAND_W);
-	register_instr("00100************010*****0101111", exec_AMOXOR_W);
-	register_instr("01000************010*****0101111", exec_AMOOR_W);
-	register_instr("10000************010*****0101111", exec_AMOMIN_W);
-	register_instr("11000************010*****0101111", exec_AMOMINU_W);
-	register_instr("10100************010*****0101111", exec_AMOMAX_W);
-	register_instr("11100************010*****0101111", exec_AMOMAXU_W);
-	register_instr("00010************010*****0101111", exec_LR_W);
-	register_instr("00011************010*****0101111", exec_SC_W);
+	auto inst_amoswap_w = register_instr("00001************010*****0101111", exec_AMOSWAP_W);
+	auto inst_amoadd_w	= register_instr("00000************010*****0101111", exec_AMOADD_W);
+	auto inst_amoand_w	= register_instr("01100************010*****0101111", exec_AMOAND_W);
+	auto inst_amoxor_w	= register_instr("00100************010*****0101111", exec_AMOXOR_W);
+	auto inst_amoor_w	= register_instr("01000************010*****0101111", exec_AMOOR_W);
+	auto inst_amomin_w	= register_instr("10000************010*****0101111", exec_AMOMIN_W);
+	auto inst_amominu_w = register_instr("11000************010*****0101111", exec_AMOMINU_W);
+	auto inst_amomax_w	= register_instr("10100************010*****0101111", exec_AMOMAX_W);
+	auto inst_amomaxu_w = register_instr("11100************010*****0101111", exec_AMOMAXU_W);
+	auto inst_lr_w		= register_instr("00010************010*****0101111", exec_LR_W);
+	auto inst_sc_w		= register_instr("00011************010*****0101111", exec_SC_W);
 
-	register_instr("00001************011*****0101111", exec_AMOSWAP_D);
-	register_instr("00000************011*****0101111", exec_AMOADD_D);
-	register_instr("01100************011*****0101111", exec_AMOAND_D);
-	register_instr("00100************011*****0101111", exec_AMOXOR_D);
-	register_instr("01000************011*****0101111", exec_AMOOR_D);
-	register_instr("10000************011*****0101111", exec_AMOMIN_D);
-	register_instr("11000************011*****0101111", exec_AMOMINU_D);
-	register_instr("10100************011*****0101111", exec_AMOMAX_D);
-	register_instr("11100************011*****0101111", exec_AMOMAXU_D);
-	register_instr("00010************011*****0101111", exec_LR_D);
-	register_instr("00011************011*****0101111", exec_SC_D);
+	auto inst_amoswap_d = register_instr("00001************011*****0101111", exec_AMOSWAP_D);
+	auto inst_amoadd_d	= register_instr("00000************011*****0101111", exec_AMOADD_D);
+	auto inst_amoand_d	= register_instr("01100************011*****0101111", exec_AMOAND_D);
+	auto inst_amoxor_d	= register_instr("00100************011*****0101111", exec_AMOXOR_D);
+	auto inst_amoor_d	= register_instr("01000************011*****0101111", exec_AMOOR_D);
+	auto inst_amomin_d	= register_instr("10000************011*****0101111", exec_AMOMIN_D);
+	auto inst_amominu_d = register_instr("11000************011*****0101111", exec_AMOMINU_D);
+	auto inst_amomax_d	= register_instr("10100************011*****0101111", exec_AMOMAX_D);
+	auto inst_amomaxu_d = register_instr("11100************011*****0101111", exec_AMOMAXU_D);
+	auto inst_lr_d		= register_instr("00010************011*****0101111", exec_LR_D);
+	auto inst_sc_d		= register_instr("00011************011*****0101111", exec_SC_D);
+
+#ifdef USE_JIT
+	inst_lr_w->jit_func		 = &jit::jit_LR_W;
+	inst_sc_w->jit_func		 = &jit::jit_SC_W;
+	inst_amoswap_w->jit_func = &jit::jit_AMOSWAP_W;
+	inst_amoadd_w->jit_func	 = &jit::jit_AMOADD_W;
+	inst_amoxor_w->jit_func	 = &jit::jit_AMOXOR_W;
+	inst_amoand_w->jit_func	 = &jit::jit_AMOAND_W;
+	inst_amoor_w->jit_func	 = &jit::jit_AMOOR_W;
+	inst_amomin_w->jit_func	 = &jit::jit_AMOMIN_W;
+	inst_amomax_w->jit_func	 = &jit::jit_AMOMAX_W;
+	inst_amominu_w->jit_func = &jit::jit_AMOMINU_W;
+	inst_amomaxu_w->jit_func = &jit::jit_AMOMAXU_W;
+
+	inst_lr_d->jit_func		 = &jit::jit_LR_D;
+	inst_sc_d->jit_func		 = &jit::jit_SC_D;
+	inst_amoswap_d->jit_func = &jit::jit_AMOSWAP_D;
+	inst_amoadd_d->jit_func	 = &jit::jit_AMOADD_D;
+	inst_amoxor_d->jit_func	 = &jit::jit_AMOXOR_D;
+	inst_amoand_d->jit_func	 = &jit::jit_AMOAND_D;
+	inst_amoor_d->jit_func	 = &jit::jit_AMOOR_D;
+	inst_amomin_d->jit_func	 = &jit::jit_AMOMIN_D;
+	inst_amomax_d->jit_func	 = &jit::jit_AMOMAX_D;
+	inst_amominu_d->jit_func = &jit::jit_AMOMINU_D;
+	inst_amomaxu_d->jit_func = &jit::jit_AMOMAXU_D;
+#endif
 }

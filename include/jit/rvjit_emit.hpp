@@ -100,6 +100,21 @@ namespace rv64vm::jit
 		REMU
 	};
 
+	enum class AMOOp
+	{
+		LR,
+		SC,
+		ADD,
+		SWAP,
+		XOR,
+		AND,
+		OR,
+		MIN,
+		MAX,
+		MINU,
+		MAXU
+	};
+
 	/*
 	 * Block emitter / register allocator.
 	 *
@@ -226,6 +241,13 @@ namespace rv64vm::jit
 		// faulting instruction is reported through blk->instr_index.
 		void emit_load(uint32_t rd, uint32_t rs1, int64_t imm, uint8_t width, bool sign_extend);
 		void emit_store(uint32_t rs1, int64_t imm, uint32_t rs2, uint8_t width);
+		void emit_atomic(uint32_t rd, uint32_t rs1, uint32_t rs2, AMOOp op, uint8_t width);
+
+		// Zicsr: call a C++ helper with (ctx, packed, inst). The helper owns the
+		// access checks and all CSR side effects. If it returns non-zero in RAX
+		// the generated code returns directly to the runner (the helper already
+		// wrote exit_pc / chain_budget); otherwise the block continues.
+		void emit_csr(uint64_t helper, uint64_t packed, uint32_t inst);
 
 		bool eof() const;
 

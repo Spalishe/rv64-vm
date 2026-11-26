@@ -388,6 +388,28 @@ namespace rv64vm::jit
 		x86::lea_r64_mem(cb, H, S1, (int32_t)imm);
 		emit_tlb_checks(*this, H, width, true, instr);
 
+		// MMIO::write() invalidates an overlapping LR reservation; plain JIT
+		// stores bypass it, so mirror Hart::amo_check_reservation() inline.
+		const uint8_t sP = free_slot(rs1, rs2);
+		const uint8_t P  = phys(sP);
+		x86::mov_rr(cb, P, H);
+		x86::mov_mr(cb, x86::REG_ACC0, x86::REG_RCX, x86::TLB_OFF_HOST_PTR);
+		x86::sub_rr(cb, P, x86::REG_ACC0);
+		x86::mov_mr(cb, x86::REG_ACC0, x86::REG_RCX, x86::TLB_OFF_VPAGE_BASE);
+		x86::sub_rr(cb, P, x86::REG_ACC0);
+		x86::mov_mr(cb, x86::REG_ACC0, x86::REG_RCX, x86::TLB_OFF_PPAGE_BASE);
+		x86::add_rr(cb, P, x86::REG_ACC0); // P = guest physical address
+		x86::mov_mr(cb, x86::REG_ACC0, x86::REG_CTX, CTX_OFF_RESERVATION);
+		x86::test_m8_imm(cb, x86::REG_ACC0, x86::RES_OFF_VALID, 1);
+		const uint32_t no_res = x86::jcc8(cb, 0x74); // je
+		x86::mov_mr(cb, x86::REG_ACC1, x86::REG_ACC0, x86::RES_OFF_PADDR);
+		x86::cmp_rr(cb, x86::REG_ACC1, P);
+		const uint32_t outside = x86::jcc8(cb, 0x72); // jb: res.paddr < paddr
+		x86::mov_m64_imm(cb, x86::REG_ACC0, x86::RES_OFF_VALID, 0);
+		x86::patch_rel8(cb, no_res, cb.pos);
+		x86::patch_rel8(cb, outside, cb.pos);
+		release_slot(sP);
+
 		switch(width)
 		{
 			case 1:
@@ -404,6 +426,262 @@ namespace rv64vm::jit
 				break;
 		}
 		release_slot(s);
+	}
+
+	void JIT_Emitter::emit_atomic(uint32_t rd, uint32_t rs1, uint32_t rs2, AMOOp op, uint8_t width)
+	{
+		x86::CodeBuf& cb = code();
+		const uint32_t instr = blk->instr_index;
+		const bool is_lr = (op == AMOOp::LR);
+		const bool is_sc = (op == AMOOp::SC);
+
+		uint8_t S1 = hreg_for_read(rs1);
+		flush_guest(rs2);
+		uint8_t D = 0xFF;
+		if(rd != 0)
+		{
+			flush_guest(rd);
+			D = hreg_for_write(rd, rs1);
+		}
+		uint8_t s = free_slot(rs1, rd);
+		uint8_t H = phys(s);
+		x86::lea_r64_mem(cb, H, S1, 0);
+		emit_tlb_checks(*this, H, width, !is_lr, instr);
+
+		// Keep H as the host address and fold the TLB translation into a
+		// separate pool slot: paddr = (H - host_ptr - vpage_base) + ppage_base.
+		// Only emit this when a reservation actually needs to be matched.
+		const uint8_t sP = free_slot(rs1, rd);
+		const uint8_t P	 = phys(sP);
+		auto compute_paddr = [&]()
+		{
+			// S1 still holds the guest virtual address; RCX points at the
+			// validated TLB entry. paddr = va - vpage_base + ppage_base.
+			x86::mov_rr(cb, P, S1);
+			x86::mov_mr(cb, x86::REG_ACC0, x86::REG_RCX, x86::TLB_OFF_VPAGE_BASE);
+			x86::sub_rr(cb, P, x86::REG_ACC0);
+			x86::mov_mr(cb, x86::REG_ACC0, x86::REG_RCX, x86::TLB_OFF_PPAGE_BASE);
+			x86::add_rr(cb, P, x86::REG_ACC0); // P = paddr
+		};
+
+		auto load_rs2 = [&](uint8_t reg)
+		{
+			flush_guest(rs2);
+			if(rs2 == 0)
+				x86::xor_rr(cb, reg, reg);
+			else if(width == 4)
+				x86::mov_r32_m32(cb, reg, x86::REG_REGS, (int32_t)(rs2 * 8));
+			else
+				x86::mov_mr(cb, reg, x86::REG_REGS, (int32_t)(rs2 * 8));
+		};
+		auto set_result = [&](uint8_t value_reg)
+		{
+			if(D == 0xFF)
+				return;
+			if(width == 4)
+				x86::movsxd(cb, D, value_reg);
+			else
+				x86::mov_rr(cb, D, value_reg);
+			vr[rd].dirty = true;
+		};
+
+		if(is_lr)
+		{
+			compute_paddr();
+			x86::mov_mr(cb, x86::REG_ACC0, x86::REG_CTX, CTX_OFF_RESERVATION);
+			x86::mov_rm(cb, x86::REG_ACC0, x86::RES_OFF_PADDR, P);
+			x86::mov_m64_imm(cb, x86::REG_ACC0, x86::RES_OFF_SIZE, width);
+			x86::mov_m64_imm(cb, x86::REG_ACC0, x86::RES_OFF_VALID, 1);
+
+			uint8_t dst = (D == 0xFF) ? H : D;
+			if(width == 4)
+			{
+				x86::mov_r32_m32(cb, dst, H, 0);
+				if(D != 0xFF)
+					x86::movsxd(cb, D, D);
+			}
+			else
+				x86::mov_mr(cb, dst, H, 0);
+			if(D != 0xFF)
+				vr[rd].dirty = true;
+			release_slot(sP);
+			release_slot(s);
+			return;
+		}
+
+		if(is_sc)
+		{
+			// SC must test the reservation before clearing it. Both the success
+			// and failure paths below clear valid, matching AMO_SC().
+			// SC translates with store permissions, then matches paddr/size.
+			x86::mov_mr(cb, x86::REG_ACC0, x86::REG_CTX, CTX_OFF_RESERVATION);
+			x86::test_m8_imm(cb, x86::REG_ACC0, x86::RES_OFF_VALID, 1);
+			const uint32_t fail1 = x86::jcc8(cb, 0x74); // je
+			compute_paddr();
+			x86::mov_mr(cb, x86::REG_ACC0, x86::REG_CTX, CTX_OFF_RESERVATION);
+			x86::mov_mr(cb, x86::REG_ACC1, x86::REG_ACC0, x86::RES_OFF_PADDR);
+			x86::cmp_rr(cb, x86::REG_ACC1, P);
+			const uint32_t fail2 = x86::jcc8(cb, 0x75); // jne
+			x86::mov_r32_m32(cb, x86::REG_ACC1, x86::REG_ACC0, x86::RES_OFF_SIZE);
+			x86::cmp_imm32(cb, x86::REG_ACC1, (int32_t)width);
+			const uint32_t fail3 = x86::jcc8(cb, 0x75); // jne
+
+			x86::mov_m64_imm(cb, x86::REG_ACC0, x86::RES_OFF_VALID, 0);
+			load_rs2(x86::REG_ACC0);
+			if(width == 4)
+				x86::lock_xchg_m32(cb, H, 0, x86::REG_ACC0);
+			else
+				x86::lock_xchg_m64(cb, H, 0, x86::REG_ACC0);
+			if(D != 0xFF)
+			{
+				x86::mov_imm32(cb, D, 0);
+				vr[rd].dirty = true;
+			}
+			const uint32_t done = x86::jmp32(cb);
+			x86::patch_rel8(cb, fail1, cb.pos);
+			x86::patch_rel8(cb, fail2, cb.pos);
+			x86::patch_rel8(cb, fail3, cb.pos);
+			x86::mov_m64_imm(cb, x86::REG_ACC0, x86::RES_OFF_VALID, 0);
+			if(D != 0xFF)
+			{
+				x86::mov_imm32(cb, D, 1);
+				vr[rd].dirty = true;
+			}
+			x86::patch_rel32(cb, done, cb.pos);
+			release_slot(sP);
+			release_slot(s);
+			return;
+		}
+
+		// A successful AMO store drops any overlapping reservation, as in
+		// Hart::amo_check_reservation(). SC above already does this itself.
+		x86::mov_mr(cb, x86::REG_ACC0, x86::REG_CTX, CTX_OFF_RESERVATION);
+		x86::test_m8_imm(cb, x86::REG_ACC0, x86::RES_OFF_VALID, 1);
+		const uint32_t no_res = x86::jcc8(cb, 0x74); // je
+		compute_paddr();
+		x86::mov_mr(cb, x86::REG_ACC0, x86::REG_CTX, CTX_OFF_RESERVATION);
+		x86::mov_mr(cb, x86::REG_ACC1, x86::REG_ACC0, x86::RES_OFF_PADDR);
+		x86::cmp_rr(cb, x86::REG_ACC1, P);
+		const uint32_t outside = x86::jcc8(cb, 0x72); // jb: res.paddr < paddr
+		x86::mov_m64_imm(cb, x86::REG_ACC0, x86::RES_OFF_VALID, 0);
+		x86::patch_rel8(cb, no_res, cb.pos);
+		x86::patch_rel8(cb, outside, cb.pos);
+
+		// AMOADD/SWAP use XADD/XCHG; the other ops need a CAS loop because
+		// they must also return the old memory value.
+		if(op == AMOOp::ADD || op == AMOOp::SWAP)
+		{
+			load_rs2(x86::REG_ACC0);
+			if(width == 4)
+			{
+				if(op == AMOOp::ADD)
+					x86::lock_xadd_m32(cb, H, 0, x86::REG_ACC0);
+				else
+					x86::lock_xchg_m32(cb, H, 0, x86::REG_ACC0);
+			}
+			else
+			{
+				if(op == AMOOp::ADD)
+					x86::lock_xadd_m64(cb, H, 0, x86::REG_ACC0);
+				else
+					x86::lock_xchg_m64(cb, H, 0, x86::REG_ACC0);
+			}
+			set_result(x86::REG_ACC0);
+			release_slot(sP);
+			release_slot(s);
+			return;
+		}
+
+		if(width == 4)
+			x86::mov_r32_m32(cb, x86::REG_ACC0, H, 0);
+		else
+			x86::mov_mr(cb, x86::REG_ACC0, H, 0);
+		load_rs2(x86::REG_TMP);
+		const bool signed_w = (width == 4 && (op == AMOOp::MIN || op == AMOOp::MAX));
+		if(signed_w)
+		{
+			x86::movsxd(cb, x86::REG_ACC0, x86::REG_ACC0);
+			x86::movsxd(cb, x86::REG_TMP, x86::REG_TMP);
+		}
+
+		const uint32_t retry = cb.pos;
+		if(signed_w)
+			x86::movsxd(cb, x86::REG_ACC0, x86::REG_ACC0);
+		x86::mov_rr(cb, x86::REG_ACC1, x86::REG_ACC0);
+		switch(op)
+		{
+			case AMOOp::XOR:
+				x86::xor_rr(cb, x86::REG_ACC1, x86::REG_TMP);
+				break;
+			case AMOOp::OR:
+				x86::or_rr(cb, x86::REG_ACC1, x86::REG_TMP);
+				break;
+			case AMOOp::AND:
+				x86::and_rr(cb, x86::REG_ACC1, x86::REG_TMP);
+				break;
+			case AMOOp::MIN:
+				x86::cmp_rr(cb, x86::REG_ACC0, x86::REG_TMP);
+				x86::cmovcc_rr64(cb, 0xF, x86::REG_ACC1, x86::REG_TMP); // cmovg
+				break;
+			case AMOOp::MAX:
+				x86::cmp_rr(cb, x86::REG_ACC0, x86::REG_TMP);
+				x86::cmovcc_rr64(cb, 0xC, x86::REG_ACC1, x86::REG_TMP); // cmovl
+				break;
+			case AMOOp::MINU:
+				x86::cmp_rr(cb, x86::REG_ACC0, x86::REG_TMP);
+				x86::cmovcc_rr64(cb, 0x7, x86::REG_ACC1, x86::REG_TMP); // cmova
+				break;
+			case AMOOp::MAXU:
+				x86::cmp_rr(cb, x86::REG_ACC0, x86::REG_TMP);
+				x86::cmovcc_rr64(cb, 0x2, x86::REG_ACC1, x86::REG_TMP); // cmovb
+				break;
+			default:
+				__builtin_unreachable();
+		}
+		// AMO.W updates only the low 32 bits, so CAS must compare 32 bits too;
+		// the upper half of the memory word may hold unrelated data.
+		if(width == 4)
+			x86::lock_cmpxchg_m32(cb, H, 0, x86::REG_ACC1);
+		else
+			x86::lock_cmpxchg_m64(cb, H, 0, x86::REG_ACC1);
+		const uint32_t again = x86::jcc32(cb, 0x5); // jne
+		x86::patch_rel32(cb, again, retry);
+		set_result(x86::REG_ACC0);
+		release_slot(sP);
+		release_slot(s);
+	}
+
+	void JIT_Emitter::emit_csr(uint64_t helper, uint64_t packed, uint32_t inst)
+	{
+		x86::CodeBuf& cb = code();
+		// The helper reads GPR[rs1] from memory, and may modify any GPR, so all
+		// cached guest values must be committed and every mapping dropped.
+		flush_all();
+		for(uint8_t v = 0; v < 32; v++)
+		{
+			vr[v].slot  = -1;
+			vr[v].dirty = false;
+		}
+		for(size_t i = 0; i < x86::RVJIT_HOST_REGS; i++)
+			hr_vreg[i] = 0xFF;
+
+		x86::mov_rr(cb, x86::REG_RDI, x86::REG_CTX);
+		x86::mov_imm64(cb, x86::REG_RSI, packed);
+		x86::mov_imm64(cb, x86::REG_RDX, inst);
+		// Prologue pushed four registers, so RSP % 16 == 8 here.
+		x86::add_imm(cb, x86::REG_RSP, -8);
+		x86::mov_imm64(cb, x86::REG_R11, helper);
+		x86::call_r(cb, x86::REG_R11);
+		x86::add_imm(cb, x86::REG_RSP, 8);
+
+		x86::test_rr(cb, x86::REG_RAX, x86::REG_RAX);
+		const uint32_t cont = x86::jcc32(cb, 0x4); // je: helper says continue
+		x86::pop_r(cb, x86::REG_R12);
+		x86::pop_r(cb, x86::REG_R13);
+		x86::pop_r(cb, x86::REG_R15);
+		x86::pop_r(cb, x86::REG_RBP);
+		x86::ret(cb);
+		x86::patch_rel32(cb, cont, cb.pos);
 	}
 
 	void JIT_Emitter::emit_miss_stubs()
